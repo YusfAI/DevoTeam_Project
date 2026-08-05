@@ -11,6 +11,7 @@ from .llm import parse_user_query
 from .db_layer import build_and_execute_query
 # pyrefly: ignore [missing-import]
 from .vega_generator import build_vega_spec
+from .response_builder import build_data_response, get_help_message
 from .db import get_connection
 
 app = FastAPI(title="DevoTeam Dashboard")
@@ -61,37 +62,30 @@ async def generate_dashboard(request: ChatRequest):
         # Phase 4: Intent parsing
         intent = parse_user_query(request.query)
         
-        # Phase 6: Logger l'historique
         log_request(request.query, intent)
-        
-        ai_message = intent.get("message_explicatif", "Voici votre analyse :")
-        
-        # Test conversationnel : si pas de metric, le LLM dit juste bonjour ou autre
-        if not intent.get("metric"):
-            return {"vega_spec": None, "cached": False, "ai_message": ai_message}
-        
-        # Phase 6: Check Cache
+
+        if intent.get("is_conversation") or not intent.get("metric"):
+            return {"vega_spec": None, "cached": False, "ai_message": get_help_message()}
+
+        data = build_and_execute_query(intent)
+        ai_message = build_data_response(intent, data)
+        goal = intent.get("goal", "")
+
         intent_hash = hashlib.sha256(json.dumps(intent, sort_keys=True).encode('utf-8')).hexdigest()
         cached_spec = get_cached_dashboard(intent_hash)
-        if cached_spec:
-            return {"vega_spec": cached_spec, "cached": True, "ai_message": ai_message}
-        
-        # Phase 3: DB execution
-        data = build_and_execute_query(intent)
-        
+
         is_table = intent.get("use_raw_table") or bool(intent.get("range_filters")) or intent.get("chart_type") == "table"
-        
+
         if is_table:
-            # For list queries, skip Vega-Lite and send raw rows to frontend
-            return {"vega_spec": None, "table_rows": data, "cached": False, "ai_message": ai_message}
-        
-        # Phase 2: Vega generation
+            return {"vega_spec": None, "table_rows": data, "cached": False, "ai_message": ai_message, "goal": goal}
+
+        if cached_spec:
+            return {"vega_spec": cached_spec, "cached": True, "ai_message": ai_message, "goal": goal}
+
         spec = build_vega_spec(intent, data)
-        
-        # Save to Cache
         save_to_cache(intent_hash, spec)
-        
-        return {"vega_spec": spec, "cached": False, "ai_message": ai_message}
+
+        return {"vega_spec": spec, "cached": False, "ai_message": ai_message, "goal": intent.get("goal", "")}
         
     except ValueError as e:
         # Expected errors (validation failed, dimension not supported, etc)

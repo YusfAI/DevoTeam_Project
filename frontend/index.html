@@ -292,8 +292,8 @@
     </div>
     <div class="dashboard-container">
         <div class="dashboard-header">
-            <h1>Analyse des Opportunités</h1>
-            <p>Visualisation interactive générée à la volée</p>
+            <h1 id="dashboard-title">Analyse des Opportunités</h1>
+            <p id="dashboard-subtitle">Visualisation interactive générée à la volée</p>
         </div>
         <div class="vis-wrapper">
             <div id="vis">
@@ -337,6 +337,46 @@
             if (el) el.remove();
         }
 
+        function renderTable(rows) {
+            const vis = document.getElementById('vis');
+            if (!rows || rows.length === 0) {
+                vis.innerHTML = '<div style="color:#64748b;text-align:center;">Aucune donnée à afficher.</div>';
+                return;
+            }
+            const cols = Object.keys(rows[0]);
+            const header = cols.map(c => `<th>${c.replace(/_/g, ' ')}</th>`).join('');
+            const body = rows.map(row => {
+                return '<tr>' + cols.map(c => {
+                    let val = row[c] ?? '';
+                    if (c === 'status') {
+                        const cls = String(val).includes('gagn') ? 'tag-won'
+                            : String(val).includes('perdu') ? 'tag-lost' : 'tag-other';
+                        return `<td><span class="tag ${cls}">${val}</span></td>`;
+                    }
+                    if (c === 'days_remaining' && val !== '' && val < 7) {
+                        return `<td class="urgent">${val}</td>`;
+                    }
+                    if (c === 'budget' || c === 'financial_offer') {
+                        val = typeof val === 'number' ? val.toLocaleString('fr-FR') + ' €' : val;
+                    }
+                    return `<td>${val}</td>`;
+                }).join('') + '</tr>';
+            }).join('');
+            vis.innerHTML = `<div class="data-table-wrap"><table class="data-table"><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
+        }
+
+        function updateDashboardHeader(goal) {
+            const title = document.getElementById('dashboard-title');
+            const subtitle = document.getElementById('dashboard-subtitle');
+            if (goal) {
+                title.textContent = goal;
+                subtitle.textContent = 'Données extraites de la base commerciale';
+            } else {
+                title.textContent = 'Analyse des Opportunités';
+                subtitle.textContent = 'Visualisation interactive générée à la volée';
+            }
+        }
+
         chatForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const text = userInput.value.trim();
@@ -362,9 +402,12 @@
                 if (response.ok) {
                     const reply = data.ai_message || "Voici le résultat de votre demande :";
                     addMessage(reply, 'system-message');
-                    if (data.vega_spec) {
-                        document.getElementById('vis').innerHTML = ''; // clear placeholder
-                        vegaEmbed('#vis', data.vega_spec, { actions: false }).catch(console.error);
+                    updateDashboardHeader(data.goal || '');
+                    if (data.table_rows) {
+                        renderTable(data.table_rows);
+                    } else if (data.vega_spec) {
+                        document.getElementById('vis').innerHTML = '';
+                        vegaEmbed('#vis', data.vega_spec, { actions: false, theme: 'quartz' }).catch(console.error);
                     }
                 } else {
                     addMessage(`Erreur : ${data.detail || data.error}`, 'system-error');

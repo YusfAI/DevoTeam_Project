@@ -1,72 +1,116 @@
 def build_vega_spec(intent: dict, data: list) -> dict:
-    metric     = intent.get('metric', 'budget')
-    dimension  = intent.get('dimension', '')
-    chart_type = intent.get('chart_type', 'bar')
-    use_raw    = intent.get('use_raw_table', False) or bool(intent.get('range_filters'))
-    title_text = intent.get('goal', f"{metric} by {dimension}")
+    metric = intent.get("metric", "budget")
+    dimension = intent.get("dimension", "")
+    chart_type = intent.get("chart_type", "bar")
+    title_text = intent.get("goal", f"{metric} par {dimension}")
 
-    # --- TABLE / Brute list ---
-    # Vega-Lite doesn't support traditional HTML tables natively.
-    # We build a point+text layer for each important column instead.
-    if chart_type == "table" or use_raw:
-        COLUMNS = ["country", "practice", "status", "buyer", "budget", "win_probability", "days_remaining", "deadline"]
-        # Only use columns that actually exist in the data
-        cols = [c for c in COLUMNS if data and c in data[0]]
-        
+    if not data:
         return {
             "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-            "description": title_text,
             "title": title_text,
-            "data": {"values": data},
-            "width": "container",
-            "mark": {"type": "text", "align": "left"},
-            "transform": [{"window": [{"op": "row_number", "as": "row"}]}],
-            "encoding": {
-                "y": {"field": "row", "type": "ordinal", "axis": None},
-                "x": {"field": cols[0] if cols else "country", "type": "nominal"},
-                "text": {"field": cols[0] if cols else "country", "type": "nominal"},
-                "tooltip": [{"field": c, "type": "nominal" if c in ("country","practice","status","buyer","deadline") else "quantitative"} for c in cols]
-            }
+            "data": {"values": []},
+            "mark": {"type": "text", "fontSize": 16, "color": "#64748b"},
+            "encoding": {"text": {"value": "Aucune donnée à afficher"}},
         }
 
     spec = {
         "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
         "description": title_text,
-        "title": title_text,
+        "title": {"text": title_text, "fontSize": 16, "anchor": "start"},
         "data": {"values": data},
         "width": "container",
-        "height": "container",
-        "transform": [
-            {"filter": f"datum.{metric} != null"}
-        ]
+        "height": 380,
+        "padding": {"left": 10, "right": 10, "top": 10, "bottom": 10},
+        "transform": [{"filter": f"datum.{metric} != null"}],
     }
 
-    agg = intent.get('aggregation', 'sum')
-    if agg not in ['sum', 'average', 'count']:
-        agg = 'sum'
+    fmt = ",.0f" if metric != "win_probability" else ".1f"
+    suffix = " €" if metric in ("budget", "financial_offer", "weighted_amount") else ""
+    if metric == "win_probability":
+        suffix = " %"
 
     if chart_type == "bar":
         spec["mark"] = {"type": "bar", "tooltip": True, "cornerRadiusEnd": 4, "color": "#3b82f6"}
         spec["encoding"] = {
-            "x": {"field": dimension, "type": "nominal", "sort": "-y", "axis": {"labelAngle": -45}},
-            "y": {"field": metric, "type": "quantitative", "aggregate": agg}
+            "x": {
+                "field": dimension,
+                "type": "nominal",
+                "sort": "-y",
+                "axis": {"labelAngle": -35, "labelLimit": 120},
+                "title": dimension.replace("_", " ").capitalize(),
+            },
+            "y": {
+                "field": metric,
+                "type": "quantitative",
+                "title": metric.replace("_", " ").capitalize(),
+                "axis": {"format": fmt, "labelExpr": f"format(datum.value, '{fmt}') + '{suffix}'"},
+            },
+            "tooltip": [
+                {"field": dimension, "type": "nominal"},
+                {"field": metric, "type": "quantitative", "format": fmt, "title": metric},
+            ],
         }
+
     elif chart_type == "pie":
-        spec["mark"] = {"type": "arc", "innerRadius": 50, "tooltip": True}
+        spec["mark"] = {"type": "arc", "innerRadius": 60, "outerRadius": 140, "tooltip": True}
         spec["encoding"] = {
-            "theta": {"field": metric, "type": "quantitative", "aggregate": agg},
-            "color": {"field": dimension, "type": "nominal"}
+            "theta": {"field": metric, "type": "quantitative", "stack": True},
+            "color": {
+                "field": dimension,
+                "type": "nominal",
+                "legend": {"orient": "right", "columns": 1},
+            },
+            "tooltip": [
+                {"field": dimension, "type": "nominal"},
+                {"field": metric, "type": "quantitative", "format": fmt},
+            ],
         }
+
     elif chart_type == "line":
-        spec["mark"] = {"type": "line", "point": True, "tooltip": True, "color": "#10b981"}
+        spec["mark"] = {"type": "line", "point": {"size": 60}, "tooltip": True, "color": "#10b981", "strokeWidth": 2.5}
         spec["encoding"] = {
-            "x": {"field": dimension, "type": "nominal"},
-            "y": {"field": metric, "type": "quantitative", "aggregate": agg}
+            "x": {
+                "field": dimension,
+                "type": "ordinal",
+                "sort": None,
+                "title": "Mois",
+                "axis": {"labelAngle": -45},
+            },
+            "y": {
+                "field": metric,
+                "type": "quantitative",
+                "title": metric.replace("_", " ").capitalize(),
+                "axis": {"format": fmt},
+            },
+            "tooltip": [
+                {"field": dimension, "type": "nominal"},
+                {"field": metric, "type": "quantitative", "format": fmt},
+            ],
         }
+
     elif chart_type == "kpi_card":
-        spec["mark"] = {"type": "text", "fontSize": 48, "fontWeight": "bold", "color": "#0f172a"}
-        spec["encoding"] = {
-            "text": {"field": metric, "type": "quantitative", "aggregate": agg, "format": ",.0f"}
-        }
+        val = data[0].get(metric, 0) or 0
+        if metric in ("budget", "financial_offer", "weighted_amount"):
+            display = f"{val:,.0f} €".replace(",", " ")
+        elif metric == "nb_opportunities":
+            display = f"{int(val):,}".replace(",", " ")
+        elif metric == "win_probability":
+            display = f"{float(val):.1f} %"
+        else:
+            display = str(val)
+
+        spec["height"] = 200
+        spec["layer"] = [
+            {
+                "mark": {"type": "text", "fontSize": 14, "color": "#64748b", "dy": -30},
+                "encoding": {"text": {"value": title_text}},
+            },
+            {
+                "mark": {"type": "text", "fontSize": 52, "fontWeight": "bold", "color": "#0f172a"},
+                "encoding": {"text": {"value": display}},
+            },
+        ]
+        del spec["transform"]
+        del spec["encoding"]
 
     return spec
