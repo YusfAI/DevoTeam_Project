@@ -1,0 +1,159 @@
+Objectif du projet
+Ton application doit faire 3 choses très bien: comprendre la demande, choisir les bonnes données dans SQLite, puis afficher un dashboard Vega adapté. Vega est pertinent ici parce qu’il décrit les visualisations en JSON, avec la source de données, les axes, les marks, les interactions, et le rendu web.
+vega
++1
+
+SQLite sera ton cœur de données: il contient les tables métier, les KPI calculés, et éventuellement l’historique des conversations et dashboards générés. Cette approche est cohérente avec des architectures légères orientées navigateur ou web local, où le front-end reste simple et le stockage reste local.
+youtube
+vega.github
+
+Architecture complète
+Je te recommande cette architecture en 7 blocs:
+
+Interface web en HTML/CSS/JS.
+
+Chat UI pour recevoir le prompt utilisateur.
+
+LLM open source pour interpréter l’intention.
+
+Planner JSON pour structurer la demande.
+
+SQL generator pour interroger SQLite.
+
+Vega generator pour produire le dashboard.
+
+Renderer web pour afficher le résultat.
+vega.github
++1
+
+Le point crucial est le bloc 4: il sert de pont entre langage naturel et exécution technique. Sans lui, le LLM risque de produire des dashboards trop vagues ou incompatibles avec la structure réelle de ta base SQLite.
+vega
++1
+
+Pipeline de fonctionnement
+Le flux idéal est le suivant:
+
+L’utilisateur écrit: “Je veux suivre les ventes par mois et filtrer par pays”.
+
+Le LLM extrait l’intention: métrique = ventes, temps = mois, filtre = pays.
+
+Le système vérifie quelles tables SQLite contiennent ces champs.
+
+Un module construit une requête SQL sur SQLite.
+
+Les résultats sont récupérés.
+
+Un générateur crée une spec Vega.
+
+Le dashboard s’affiche dans le navigateur.
+vega
++1
+
+Ce pipeline est plus robuste que de demander au LLM de générer un dashboard complet en une seule fois, car Vega attend une structure précise et SQLite demande des requêtes cohérentes avec le schéma réel.
+vega
++1
+
+Structure SQLite
+Je te conseille de séparer SQLite en tables claires:
+
+users: comptes ou sessions.
+
+prompts: texte utilisateur et métadonnées.
+
+dashboard_requests: intention extraite, métriques, filtres.
+
+datasets: description des sources de données.
+
+facts: données principales.
+
+dimensions: pays, mois, produit, catégorie.
+
+generated_dashboards: spec Vega sauvegardée.
+
+logs: erreurs, performance, validation.
+youtube
+vega.github
+
+Si tes données viennent de plusieurs tables métier, ajoute aussi des vues SQL dans SQLite pour simplifier l’accès du LLM. C’est une bonne pratique parce que le modèle travaillera mieux avec des noms de champs simples qu’avec un schéma très complexe.
+nvidia
++1
+
+Format intermédiaire recommandé
+Au lieu de passer du prompt directement à Vega, crée un JSON intermédiaire. Par exemple:
+
+json
+
+{
+  "goal": "analyser les ventes",
+  "metric": "sales",
+  "dimension": "month",
+  "filters": ["country"],
+  "chart_type": "line",
+  "aggregation": "sum",
+  "time_range": "all"
+}
+Ce JSON intermédiaire devient le contrat entre le LLM et ton moteur Vega. Vega peut ensuite utiliser les données chargées depuis SQLite via SQL ou via un dataset préparé.
+vega.github
++1
+
+Choix du LLM
+Pour le meilleur rendu, choisis un modèle open source capable de sortie structurée, de raisonnement correct, et de génération de JSON propre. Ce qui compte le plus ici, ce n’est pas seulement la “puissance”, mais la stabilité sur les tâches de transformation d’intention en structure technique.
+github
++1
+
+Dans ton cas, il est préférable d’utiliser un modèle local ou auto-hébergé avec une API compatible, afin que ton interface web puisse lui envoyer les prompts facilement. Le modèle doit surtout exceller dans la classification d’intention, l’extraction d’entités, et la génération de schémas.
+github
++1
+
+Plan de développement
+Je te conseille ce roadmap:
+
+Phase 1: cadrage
+Définis les cas d’usage exacts: ventes, finance, stock, RH, suivi opérationnel. Définis aussi les types de graphiques autorisés: bar, line, pie, table, KPI cards.
+vega
++1
+
+Phase 2: base SQLite
+Crée le schéma, les tables, les vues SQL, et quelques jeux de données test. Valide que tes champs sont bien nommés et que les agrégations utiles existent déjà.
+nvidia
++1
+
+Phase 3: interface web
+Construis une page avec un chat à gauche et un rendu dashboard à droite. L’utilisateur doit pouvoir envoyer un prompt et voir le dashboard se mettre à jour dynamiquement.
+github
+youtube
+
+Phase 4: couche LLM
+Ajoute le prompt engineering, puis la sortie en JSON intermédiaire. Force le modèle à respecter un schéma strict pour éviter les réponses floues.
+github
++1
+
+Phase 5: SQL layer
+Ajoute un module qui traduit le JSON intermédiaire en requêtes SQLite sûres. Ce module doit valider les champs, empêcher les requêtes dangereuses, et limiter les accès aux tables autorisées.
+nvidia
++1
+
+Phase 6: Vega layer
+Convertis le résultat SQL en Vega spec JSON. Vega décrit le visuel, les données, les axes, les interactions et les signaux, donc cette couche doit être déterministe autant que possible.
+vega
++1
+
+Phase 7: amélioration
+Ajoute mémoire de conversation, validation automatique, templates de dashboard, et suggestions intelligentes selon le contexte métier.
+github
++1
+
+Règles de conception
+Ne laisse jamais le LLM écrire du SQL libre sans contrôle. Utilise une liste blanche de tables et de colonnes autorisées. C’est important pour éviter les erreurs et garder un système stable sur SQLite.
+vega.github
++1
+
+Ne génère pas directement un dashboard complet sans étape de validation. Les travaux sur la génération automatique de dashboards montrent que la qualité dépend beaucoup de la structure intermédiaire et du contrôle des interactions.
+antonioarcher
+
+Résultat visé
+À la fin, tu auras un système où l’utilisateur parle en langage naturel, le LLM comprend le besoin, SQLite fournit les données, Vega construit l’affichage, et le navigateur montre un dashboard propre et dynamique.
+vega
++2
+
+C’est une très bonne base pour un produit intelligent, surtout si tu veux ensuite ajouter des templates, des recommandations automatiques, et plusieurs types de dashboards selon le secteur.

@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pymysql
+python-dotenv
+dbutils
+pydantic
+groq
