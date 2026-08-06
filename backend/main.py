@@ -2,7 +2,7 @@ import os
 import json
 import hashlib
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # pyrefly: ignore [missing-import]
@@ -11,16 +11,17 @@ from .llm import parse_user_query
 from .db_layer import build_and_execute_query
 # pyrefly: ignore [missing-import]
 from .vega_generator import build_vega_spec
-from .response_builder import build_data_response, get_help_message
+from .response_builder import build_data_response, get_help_message, extract_metric_value, format_metric_value
 from .db import get_connection
 
 app = FastAPI(title="DevoTeam Dashboard")
 
 # Paths
-FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
+FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "dist")
 
 class ChatRequest(BaseModel):
     query: str
+    previous_intent: dict | None = None
 
 def get_cached_dashboard(intent_hash: str):
     with get_connection() as conn:
@@ -46,47 +47,53 @@ def log_request(prompt: str, intent: dict):
                          (prompt, json.dumps(intent)))
         conn.commit()
 
-@app.get("/", response_class=HTMLResponse)
-async def read_root():
-    index_path = os.path.join(FRONTEND_DIR, "index.html")
-    try:
-        with open(index_path, "r", encoding="utf-8") as f:
-            return f.read()
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="index.html not found in frontend directory")
-
 
 @app.post("/dashboard")
 async def generate_dashboard(request: ChatRequest):
     try:
         # Phase 4: Intent parsing
-        intent = parse_user_query(request.query)
-        
+        intent = parse_user_query(request.query, previous_intent=request.previous_intent)
+
         log_request(request.query, intent)
 
         if intent.get("is_conversation") or not intent.get("metric"):
-            return {"vega_spec": None, "cached": False, "ai_message": get_help_message()}
+            ai_message = intent.get("clarification") or get_help_message()
+            return {"vega_spec": None, "cached": False, "ai_message": ai_message}
 
         data = build_and_execute_query(intent)
         ai_message = build_data_response(intent, data)
         goal = intent.get("goal", "")
 
-        intent_hash = hashlib.sha256(json.dumps(intent, sort_keys=True).encode('utf-8')).hexdigest()
-        cached_spec = get_cached_dashboard(intent_hash)
-
         is_table = intent.get("use_raw_table") or bool(intent.get("range_filters")) or intent.get("chart_type") == "table"
 
         if is_table:
-            return {"vega_spec": None, "table_rows": data, "cached": False, "ai_message": ai_message, "goal": goal}
+            return {"vega_spec": None, "table_rows": data, "cached": False, "ai_message": ai_message, "goal": goal, "intent": intent}
+
+        if intent.get("chart_type") == "kpi_card":
+            metric = intent.get("metric", "budget")
+            kpi_value = extract_metric_value(data[0], metric) if data else None
+            return {
+                "vega_spec": None,
+                "kpi_value": kpi_value,
+                "kpi_value_formatted": format_metric_value(kpi_value, metric),
+                "kpi_label": goal,
+                "cached": False,
+                "ai_message": ai_message,
+                "goal": goal,
+                "intent": intent,
+            }
+
+        intent_hash = hashlib.sha256(json.dumps(intent, sort_keys=True).encode('utf-8')).hexdigest()
+        cached_spec = get_cached_dashboard(intent_hash)
 
         if cached_spec:
-            return {"vega_spec": cached_spec, "cached": True, "ai_message": ai_message, "goal": goal}
+            return {"vega_spec": cached_spec, "table_rows": data, "cached": True, "ai_message": ai_message, "goal": goal, "intent": intent}
 
         spec = build_vega_spec(intent, data)
         save_to_cache(intent_hash, spec)
 
-        return {"vega_spec": spec, "cached": False, "ai_message": ai_message, "goal": intent.get("goal", "")}
-        
+        return {"vega_spec": spec, "table_rows": data, "cached": False, "ai_message": ai_message, "goal": goal, "intent": intent}
+
     except ValueError as e:
         # Expected errors (validation failed, dimension not supported, etc)
         raise HTTPException(status_code=400, detail=str(e))
@@ -94,3 +101,9 @@ async def generate_dashboard(request: ChatRequest):
         # Protect against unhandled internal crashes by returning a 500 error gracefully
         print(f"Server error: {e}")
         raise HTTPException(status_code=500, detail="Erreur interne du serveur. Veuillez réessayer plus tard.")
+
+
+# Doit rester la DERNIÈRE route déclarée : sert le build React (frontend/dist) sur "/"
+# et les assets hashés sous "/assets/...". Les routes API explicites ci-dessus sont
+# résolues en premier ; ce montage ne gère que ce qu'aucune route API ne matche.
+app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")

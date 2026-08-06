@@ -1,0 +1,540 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--surface-page);
+  color: var(--text-primary);
+  position: relative;
+}
+
+/* Fond animé — dérive lente de deux nappes de dégradé aux couleurs de la marque,
+   discrète (faible opacité) pour rester lisible derrière le tableau de bord. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(38rem 30rem at 15% 20%, var(--brand-glow), transparent 60%),
+    radial-gradient(34rem 28rem at 85% 75%, var(--brand-primary-soft), transparent 65%);
+  opacity: 0.55;
+  animation: drift 22s ease-in-out infinite alternate;
+}
+
+@keyframes drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(2%, -3%, 0) scale(1.06);
+  }
+}
+
+.app {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- Chat ---------- */
+
+.chat-panel {
+  width: 360px;
+  flex-shrink: 0;
+  background: var(--surface-card);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-header {
+  padding: 18px 20px;
+  background: linear-gradient(135deg, var(--brand-primary) 0%, var(--text-primary) 68%);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+}
+
+.chat-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.chat-header h1 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.chat-header .tagline {
+  margin: 1px 0 0;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.75);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.devoteam-mark {
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
+}
+
+.devoteam-mark.glow {
+  animation: logoPulse 3.2s ease-in-out infinite;
+}
+
+@keyframes logoPulse {
+  0%, 100% {
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25)) drop-shadow(0 0 0 rgba(255, 255, 255, 0));
+  }
+  50% {
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25)) drop-shadow(0 0 14px var(--brand-glow));
+  }
+}
+
+.theme-toggle {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: inherit;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.chat-messages {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.message {
+  padding: 12px 16px;
+  border-radius: 10px;
+  max-width: 88%;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  white-space: pre-line;
+  animation: fadeIn 0.25s ease;
+}
+
+.message.user {
+  background: linear-gradient(135deg, var(--brand-primary), var(--brand-primary-strong));
+  color: white;
+  align-self: flex-end;
+  border-bottom-right-radius: 2px;
+  box-shadow: 0 4px 14px var(--brand-primary-soft);
+}
+
+.message.system {
+  background: var(--surface-page);
+  color: var(--text-primary);
+  align-self: flex-start;
+  border-bottom-left-radius: 2px;
+  border: 1px solid var(--border);
+}
+
+.message.error {
+  background: color-mix(in srgb, var(--status-critical) 12%, var(--surface-card));
+  color: var(--status-critical);
+  align-self: flex-start;
+  border: 1px solid color-mix(in srgb, var(--status-critical) 35%, transparent);
+}
+
+.typing {
+  display: flex;
+  gap: 5px;
+  padding: 12px 16px;
+  align-self: flex-start;
+}
+
+.typing .dot {
+  width: 7px;
+  height: 7px;
+  background: var(--brand-primary);
+  border-radius: 50%;
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+
+.typing .dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.typing .dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes bounce {
+
+  0%,
+  80%,
+  100% {
+    transform: scale(0);
+  }
+
+  40% {
+    transform: scale(1);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chat-form {
+  padding: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+}
+
+.chat-form input {
+  flex: 1;
+  padding: 11px 15px;
+  border: 1px solid var(--baseline);
+  background: var(--surface-page);
+  color: var(--text-primary);
+  border-radius: 22px;
+  outline: none;
+  font: inherit;
+  font-size: 0.92rem;
+}
+
+.chat-form input {
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.chat-form input:focus {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px var(--brand-primary-soft);
+}
+
+.chat-form button {
+  background: linear-gradient(135deg, var(--brand-primary), var(--brand-primary-strong));
+  color: white;
+  border: none;
+  padding: 0 18px;
+  border-radius: 22px;
+  cursor: pointer;
+  font-weight: 500;
+  font: inherit;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.chat-form button:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.03);
+  box-shadow: 0 6px 16px var(--brand-glow);
+}
+
+.chat-form button:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+.chat-form button:disabled {
+  background: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* ---------- Dashboard ---------- */
+
+.dashboard-panel {
+  flex: 1;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dashboard-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.dashboard-header h2 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.dashboard-header p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.view-toggle button {
+  border: none;
+  background: var(--surface-card);
+  color: var(--text-secondary);
+  padding: 7px 14px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font: inherit;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.view-toggle button.active {
+  background: var(--brand-primary);
+  color: white;
+}
+
+.dashboard-body {
+  flex: 1;
+  min-height: 0;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  padding: 22px;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.dashboard-body::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  border-radius: 14px 14px 0 0;
+  background: linear-gradient(90deg, var(--brand-primary), var(--series-1), var(--brand-primary));
+  background-size: 200% 100%;
+  animation: shimmer 6s linear infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: 200% 0;
+  }
+}
+
+.dashboard-body.align-top {
+  align-items: stretch;
+}
+
+.dashboard-placeholder {
+  color: var(--text-muted);
+  text-align: center;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.placeholder-mark {
+  opacity: 0.85;
+  animation: breathe 3.6s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+}
+
+.vega-container {
+  width: 100%;
+  height: 100%;
+}
+
+.dashboard-fade-in {
+  animation: fadeInUp 0.4s ease;
+}
+
+.dashboard-fade-in.fill {
+  width: 100%;
+  height: 100%;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---------- Stat tile ---------- */
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  animation: popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.stat-tile .label {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+}
+
+.stat-tile .value {
+  font-size: 3.2rem;
+  font-weight: 700;
+  font-variant-numeric: proportional-nums;
+  background: linear-gradient(135deg, var(--brand-primary), var(--brand-primary-strong));
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.stat-tile .value.na {
+  color: var(--text-muted);
+  background: none;
+  -webkit-text-fill-color: var(--text-muted);
+  font-size: 2.2rem;
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ---------- Table ---------- */
+
+.data-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.data-table th {
+  background: var(--text-primary);
+  color: var(--surface-card);
+  padding: 10px 14px;
+  text-align: left;
+  font-weight: 600;
+  text-transform: capitalize;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+}
+
+.data-table td {
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--gridline);
+  color: var(--text-primary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table tr:hover td {
+  background: var(--surface-page);
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.tag-won {
+  background: color-mix(in srgb, var(--status-good) 18%, var(--surface-card));
+  color: var(--success-text);
+}
+
+.tag-lost {
+  background: color-mix(in srgb, var(--status-critical) 15%, var(--surface-card));
+  color: var(--status-critical);
+}
+
+.tag-other {
+  background: color-mix(in srgb, var(--series-7) 15%, var(--surface-card));
+  color: var(--series-7);
+}
+
+.urgent {
+  color: var(--status-critical);
+  font-weight: 700;
+}
+
+/* ---------- Accessibilité : mouvement réduit ---------- */
+/* Toutes les animations décoratives ajoutées ci-dessus (fond, halo du logo,
+   pop-in, shimmer...) sont désactivées si l'utilisateur l'a demandé au niveau
+   système — seules les transitions d'état (hover, focus) restent instantanées. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

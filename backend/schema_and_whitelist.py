@@ -35,7 +35,10 @@ ALLOWED_TABLES = {
 # Ce sont les seules valeurs que le LLM peut mettre dans "metric" / "dimension" / "filters"
 VALID_METRICS = ["budget", "financial_offer", "weighted_amount", "nb_opportunities", "win_probability"]
 VALID_DIMENSIONS = ["country", "practice", "status", "deadline_month", "deadline_year", "funding_source", "opp_type"]
-VALID_FILTERS = ["country", "practice", "status", "funding_source", "opp_type", "partner"]
+VALID_FILTERS = [
+    "country", "practice", "status", "funding_source", "opp_type", "partner",
+    "deadline_month", "deadline_year",
+]
 VALID_CHART_TYPES = ["bar", "line", "pie", "table", "kpi_card"]
 VALID_AGGREGATIONS = ["sum", "avg", "count"]
 

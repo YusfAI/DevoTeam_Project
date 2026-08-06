@@ -8,6 +8,7 @@ Utilise un pool de connexions (DBUtils) : indispensable avec MySQL, contrairemen
 à SQLite, car ouvrir/fermer une connexion réseau à chaque requête HTTP coûte cher.
 """
 import os
+import threading
 import pymysql
 from pymysql.cursors import DictCursor
 from dotenv import load_dotenv
@@ -28,15 +29,28 @@ DB_CONFIG = {
     "cursorclass": DictCursor,
 }
 
-# Pool de connexions partagé par toute l'application (créé une seule fois au démarrage)
-_pool = PooledDB(
-    creator=pymysql,
-    maxconnections=10,
-    mincached=2,
-    maxcached=5,
-    blocking=True,
-    **DB_CONFIG,
-)
+# Pool de connexions partagé par toute l'application. Créé paresseusement (au premier
+# get_connection(), pas à l'import du module) : importer backend.db_layer/backend.main
+# ne doit pas exiger une DB déjà démarrée — utile pour les tests et pour un simple
+# `python -m py_compile`/import statique du code.
+_pool = None
+_pool_lock = threading.Lock()
+
+
+def _get_pool() -> PooledDB:
+    global _pool
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:
+                _pool = PooledDB(
+                    creator=pymysql,
+                    maxconnections=10,
+                    mincached=2,
+                    maxcached=5,
+                    blocking=True,
+                    **DB_CONFIG,
+                )
+    return _pool
 
 
 def get_connection():
@@ -48,4 +62,4 @@ def get_connection():
             cur.execute(sql, params)
             rows = cur.fetchall()
     """
-    return _pool.connection()
+    return _get_pool().connection()

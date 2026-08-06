@@ -1,31 +1,6 @@
 """Build user-facing messages strictly from query results (no LLM hallucination)."""
 
-METRIC_LABELS = {
-    "budget": "budget",
-    "financial_offer": "offre financière",
-    "weighted_amount": "montant pondéré",
-    "nb_opportunities": "nombre d'opportunités",
-    "win_probability": "probabilité de gain moyenne",
-}
-
-DIMENSION_LABELS = {
-    "country": "pays",
-    "practice": "practice",
-    "status": "statut",
-    "deadline_month": "mois d'échéance",
-    "deadline_year": "année d'échéance",
-    "funding_source": "source de financement",
-    "opp_type": "type d'opportunité",
-}
-
-FILTER_LABELS = {
-    "country": "pays",
-    "practice": "practice",
-    "status": "statut",
-    "funding_source": "source de financement",
-    "opp_type": "type",
-    "partner": "partenaire",
-}
+from .labels import METRIC_LABELS, DIMENSION_LABELS, FILTER_LABELS
 
 
 def get_help_message() -> str:
@@ -40,17 +15,18 @@ def get_help_message() -> str:
     )
 
 
-def _format_value(value, metric: str) -> str:
+def format_metric_value(value, metric: str) -> str:
     if value is None:
         return "N/A"
     if metric == "win_probability":
-        return f"{float(value):.1f} %"
+        # Stocké en base comme fraction 0-1 (0.74 = 74%).
+        return f"{float(value) * 100:.1f} %"
     if metric == "nb_opportunities":
         return f"{int(value):,}".replace(",", " ")
     return f"{float(value):,.0f} €".replace(",", " ")
 
 
-def _metric_value(row: dict, metric: str):
+def extract_metric_value(row: dict, metric: str):
     val = row.get(metric)
     if val is None and metric == "budget":
         val = row.get("total_budget")
@@ -65,12 +41,18 @@ def _describe_filters(intent: dict) -> str:
     parts = []
     for key, value in intent.get("filters", {}).items():
         label = FILTER_LABELS.get(key, key)
-        parts.append(f"{label} = {value}")
+        if isinstance(value, (list, tuple)):
+            parts.append(f"{label} = {', '.join(str(v) for v in value)}")
+        else:
+            parts.append(f"{label} = {value}")
     for key, rule in intent.get("range_filters", {}).items():
         label = FILTER_LABELS.get(key, key)
         op = rule.get("op", "")
         value = rule.get("value", "")
-        parts.append(f"{label} {op} {value}")
+        if op == "between" and isinstance(value, (list, tuple)) and len(value) == 2:
+            parts.append(f"{label} entre {value[0]} et {value[1]}")
+        else:
+            parts.append(f"{label} {op} {value}")
     if not parts:
         return ""
     return " — filtres : " + ", ".join(parts)
@@ -82,7 +64,7 @@ def _top_entries(rows_with_values: list, metric: str, n: int = 3) -> str:
     parts = []
     for dim, val in sorted_rows:
         pct = (val / total * 100) if total else 0
-        parts.append(f"{dim} ({_format_value(val, metric)}, {pct:.0f} %)")
+        parts.append(f"{dim} ({format_metric_value(val, metric)}, {pct:.0f} %)")
     return " | ".join(parts)
 
 
@@ -100,22 +82,22 @@ def build_data_response(intent: dict, data: list) -> str:
         return f"Aucune donnée trouvée{filter_desc}. Essayez d'élargir vos critères."
 
     if use_raw or chart_type == "table":
-        budgets = [_metric_value(r, "budget") for r in data]
+        budgets = [extract_metric_value(r, "budget") for r in data]
         budgets = [b for b in budgets if b is not None]
         total_budget = sum(budgets) if budgets else 0
-        suffix = f" Budget total : {_format_value(total_budget, 'budget')}." if budgets else ""
+        suffix = f" Budget total : {format_metric_value(total_budget, 'budget')}." if budgets else ""
         return f"{len(data)} opportunité(s){filter_desc}.{suffix}"
 
     if chart_type == "kpi_card" or (not dimension and len(data) == 1):
-        val = _metric_value(data[0], metric)
+        val = extract_metric_value(data[0], metric)
         label = goal or metric_label.capitalize()
-        return f"{label} : {_format_value(val, metric)}."
+        return f"{label} : {format_metric_value(val, metric)}."
 
     if dimension:
         dim_label = DIMENSION_LABELS.get(dimension, dimension)
         rows_with_values = []
         for row in data:
-            val = _metric_value(row, metric)
+            val = extract_metric_value(row, metric)
             if val is not None:
                 rows_with_values.append((row.get(dimension, "?"), float(val)))
 
@@ -128,9 +110,9 @@ def build_data_response(intent: dict, data: list) -> str:
         limit_note = f" (top {limit})" if limit > 0 else ""
         return (
             f"{prefix}{metric_label.capitalize()} par {dim_label}{filter_desc}{limit_note}. "
-            f"Total : {_format_value(total, metric)} sur {len(rows_with_values)} {dim_label}(s). "
+            f"Total : {format_metric_value(total, metric)} sur {len(rows_with_values)} {dim_label}(s). "
             f"Classement : {top_line}."
         )
 
-    val = _metric_value(data[0], metric)
-    return f"Résultat{filter_desc} : {_format_value(val, metric)}."
+    val = extract_metric_value(data[0], metric)
+    return f"Résultat{filter_desc} : {format_metric_value(val, metric)}."

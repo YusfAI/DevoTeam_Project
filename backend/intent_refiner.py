@@ -2,6 +2,9 @@
 
 import re
 import unicodedata
+from datetime import date
+from typing import Optional
+
 from .schema_and_whitelist import VALID_METRICS, VALID_DIMENSIONS, KNOWN_VALUES
 
 
@@ -166,7 +169,91 @@ def try_rule_based_parse(query: str) -> dict | None:
     }
 
 
-def refine_intent(query: str, intent: dict) -> dict:
+# ---------------------------------------------------------------------------
+# Dates et périodes relatives : résolues en Python déterministe, jamais confiées
+# au calcul mental du LLM (risque de dates "plausibles mais fausses").
+# ---------------------------------------------------------------------------
+
+_MONTHS_AGO_PATTERN = re.compile(r"(\d+)\s+derniers?\s+mois")
+
+
+def _month_index(year: int, month: int) -> int:
+    return year * 12 + (month - 1)
+
+
+def _month_from_index(idx: int) -> tuple[int, int]:
+    return idx // 12, idx % 12 + 1
+
+
+def _format_month(year: int, month: int) -> str:
+    return f"{year:04d}-{month:02d}"
+
+
+def _quarter_month_range(year: int, month: int) -> tuple[int, int]:
+    """Index (premier mois, dernier mois) du trimestre contenant (year, month)."""
+    start_month = ((month - 1) // 3) * 3 + 1
+    start_idx = _month_index(year, start_month)
+    return start_idx, start_idx + 2
+
+
+def _apply_relative_period(q: str, intent: dict, today: date) -> None:
+    """Détecte les tournures FR de date/période relative et remplit filters/
+    range_filters sur deadline_month/deadline_year. Ne fait rien si l'intention a
+    déjà une valeur sur l'une de ces deux colonnes (ne jamais écraser un filtre
+    explicite déjà posé, que ce soit par l'utilisateur ou par le LLM).
+    """
+    filters = intent.setdefault("filters", {})
+    range_filters = intent.setdefault("range_filters", {})
+    if "deadline_month" in filters or "deadline_year" in filters or "deadline_month" in range_filters:
+        return
+
+    today_idx = _month_index(today.year, today.month)
+
+    m_n_months = _MONTHS_AGO_PATTERN.search(q)
+    if m_n_months:
+        n = int(m_n_months.group(1))
+        sy, sm = _month_from_index(today_idx - n)
+        range_filters["deadline_month"] = {
+            "op": "between",
+            "value": [_format_month(sy, sm), _format_month(today.year, today.month)],
+        }
+        return
+
+    if "trimestre dernier" in q or "trimestre precedent" in q:
+        cur_start_idx, _ = _quarter_month_range(today.year, today.month)
+        prev_y, prev_m = _month_from_index(cur_start_idx - 3)
+        start_idx, end_idx = _quarter_month_range(prev_y, prev_m)
+        sy, sm = _month_from_index(start_idx)
+        ey, em = _month_from_index(end_idx)
+        range_filters["deadline_month"] = {"op": "between", "value": [_format_month(sy, sm), _format_month(ey, em)]}
+        return
+
+    if "ce trimestre" in q or "trimestre en cours" in q:
+        start_idx, end_idx = _quarter_month_range(today.year, today.month)
+        sy, sm = _month_from_index(start_idx)
+        ey, em = _month_from_index(end_idx)
+        range_filters["deadline_month"] = {"op": "between", "value": [_format_month(sy, sm), _format_month(ey, em)]}
+        return
+
+    if "mois dernier" in q or "mois precedent" in q:
+        y, m = _month_from_index(today_idx - 1)
+        filters["deadline_month"] = _format_month(y, m)
+        return
+
+    if "ce mois" in q or "du mois" in q:
+        filters["deadline_month"] = _format_month(today.year, today.month)
+        return
+
+    if "annee derniere" in q or "an dernier" in q:
+        filters["deadline_year"] = str(today.year - 1)
+        return
+
+    if "cette annee" in q:
+        filters["deadline_year"] = str(today.year)
+        return
+
+
+def refine_intent(query: str, intent: dict, today: Optional[date] = None) -> dict:
     """Merge rule hints into LLM output and normalize."""
     q = _norm(query)
     hints = try_rule_based_parse(query)
@@ -208,6 +295,9 @@ def refine_intent(query: str, intent: dict) -> dict:
         intent["aggregation"] = "avg"
     else:
         intent.setdefault("aggregation", "sum")
+
+    if not intent.get("is_conversation") and intent.get("metric"):
+        _apply_relative_period(q, intent, today or date.today())
 
     intent.setdefault("limit", 0)
     return intent

@@ -1,0 +1,97 @@
+/* Jetons de design — palette validée (CVD-safe) issue du skill dataviz.
+   Le mode sombre est SÉLECTIONNÉ (ses propres pas de rampe), pas un flip
+   automatique — voir palette.md pour la justification de chaque valeur. */
+
+:root {
+  color-scheme: light;
+
+  --surface-page: #f9f9f7;
+  --surface-card: #fcfcfb;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --gridline: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --success-text: #006300;
+
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #4a3aa7;
+  --series-8: #e34948;
+
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+
+  /* Marque Devoteam — corail du logo, utilisée pour le chrome de l'app
+     (header, bulles, boutons, focus, logo) — distincte de --series-1
+     (teinte de graphique validée CVD, ne pas mélanger les deux rôles). */
+  --brand-primary: #f2405a;
+  --brand-primary-strong: #d42a45;
+  --brand-primary-soft: rgba(242, 64, 90, 0.12);
+  --brand-glow: rgba(242, 64, 90, 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+
+    --surface-page: #0d0d0d;
+    --surface-card: #1a1a19;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --gridline: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --success-text: #0ca30c;
+
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
+
+    --brand-primary: #ff5f78;
+    --brand-primary-strong: #ff8296;
+    --brand-primary-soft: rgba(255, 95, 120, 0.16);
+    --brand-glow: rgba(255, 95, 120, 0.45);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --surface-page: #0d0d0d;
+  --surface-card: #1a1a19;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
+  --gridline: #2c2c2a;
+  --baseline: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --success-text: #0ca30c;
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+
+  --brand-primary: #ff5f78;
+  --brand-primary-strong: #ff8296;
+  --brand-primary-soft: rgba(255, 95, 120, 0.16);
+  --brand-glow: rgba(255, 95, 120, 0.45);
+}

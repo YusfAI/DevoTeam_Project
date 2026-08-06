@@ -1,31 +1,9 @@
-def _compute_target_table(dimension: str, filters: dict, use_raw: bool = False) -> str:
-    if use_raw:
-        return "opportunities"
-    if dimension == "country" and "practice" in filters:
-        return "v_by_country_practice"
-    elif dimension == "country":
-        return "v_by_country"
-    elif dimension == "practice" and "country" in filters:
-        return "v_by_country_practice"
-    elif dimension == "practice":
-        return "v_by_practice"
-    elif dimension == "status":
-        return "v_by_status"
-    elif dimension == "deadline_month":
-        return "v_by_month"
-    elif dimension == "funding_source":
-        return "v_by_funding_source"
-    elif not dimension:
-        return "opportunities"
-    return "v_by_" + dimension
-
-
 from .db import get_connection
 from .schema_and_whitelist import ALLOWED_TABLES
 
 INT_COLS = {"deadline_year", "days_remaining"}
 FLOAT_COLS = {"budget", "financial_offer", "weighted_amount", "win_probability"}
-VALID_OPS = {"<", ">", "<=", ">=", "="}
+VALID_OPS = {"<", ">", "<=", ">=", "=", "between"}
 
 METRIC_EXPR = {
     "budget": "SUM(budget)",
@@ -35,6 +13,35 @@ METRIC_EXPR = {
     "win_probability": "AVG(win_probability)",
 }
 
+# Vue pré-agrégée à utiliser pour chaque dimension (seules les vues qui existent réellement
+# en base). Une dimension sans vue dédiée (deadline_year, opp_type) retombe explicitement
+# sur "opportunities", ce qui déclenche le calcul groupé à la volée (use_grouped) plutôt que
+# de fabriquer un nom de vue inexistant.
+_DIMENSION_VIEWS = {
+    "country": "v_by_country",
+    "practice": "v_by_practice",
+    "status": "v_by_status",
+    "deadline_month": "v_by_month",
+    "funding_source": "v_by_funding_source",
+}
+
+# Alias de colonne metric -> colonne agrégée telle que stockée dans les vues.
+_VIEW_METRIC_ALIASES = {
+    "budget": "total_budget",
+    "financial_offer": "total_offer",
+    "weighted_amount": "total_weighted",
+}
+
+
+def _compute_target_table(dimension: str, filters: dict, use_raw: bool = False) -> str:
+    if use_raw or not dimension:
+        return "opportunities"
+    if dimension == "country" and "practice" in filters:
+        return "v_by_country_practice"
+    if dimension == "practice" and "country" in filters:
+        return "v_by_country_practice"
+    return _DIMENSION_VIEWS.get(dimension, "opportunities")
+
 
 def _view_supports_filters(view: str, filter_keys: set) -> bool:
     if view == "opportunities":
@@ -43,10 +50,6 @@ def _view_supports_filters(view: str, filter_keys: set) -> bool:
         return False
     allowed = set(ALLOWED_TABLES[view]["columns"])
     return filter_keys.issubset(allowed)
-
-
-def _metric_sort_column(metric: str) -> str:
-    return metric
 
 
 def build_and_execute_query(intent: dict) -> list:
@@ -61,30 +64,45 @@ def build_and_execute_query(intent: dict) -> list:
 
     target_table = _compute_target_table(dimension, filters, use_raw)
     filter_keys = set(filters.keys()) | set(range_filters.keys())
+
+    select_metric = _VIEW_METRIC_ALIASES.get(metric, metric) if target_table != "opportunities" else metric
+    metric_available = target_table == "opportunities" or (
+        target_table in ALLOWED_TABLES and select_metric in ALLOWED_TABLES[target_table]["columns"]
+    )
+
+    # Le calcul groupé à la volée (GROUP BY sur la table brute) sert de filet de sécurité
+    # dès que la vue pré-agrégée ne peut pas répondre à la demande — filtre non supporté,
+    # métrique absente de la vue, ou dimension sans vue dédiée. Les données restent
+    # exactes dans tous les cas, seul le chemin de calcul change.
     use_grouped = use_raw is False and (
         target_table not in ALLOWED_TABLES
         or not _view_supports_filters(target_table, filter_keys)
+        or not metric_available
         or (dimension and target_table == "opportunities")
     )
 
-    select_metric = metric
-    if not use_grouped and target_table != "opportunities":
-        if metric == "budget":
-            select_metric = "total_budget"
-        elif metric == "financial_offer":
-            select_metric = "total_offer"
-        elif metric == "weighted_amount":
-            select_metric = "total_weighted"
-
     params = []
     conditions = []
+
+    def _cast(col: str, val):
+        if col in INT_COLS:
+            return int(val)
+        if col in FLOAT_COLS:
+            return float(val)
+        return val
 
     def add_conditions(allowed_cols: set):
         nonlocal params, conditions
         for k, v in filters.items():
             if k in allowed_cols or allowed_cols is None:
-                conditions.append(f"{k} = %s")
-                params.append(int(v) if k in INT_COLS else v)
+                if isinstance(v, (list, tuple)):
+                    # Filtre de comparaison ("compare France vs Maroc") -> IN (...)
+                    placeholders = ", ".join(["%s"] * len(v))
+                    conditions.append(f"{k} IN ({placeholders})")
+                    params.extend(_cast(k, item) for item in v)
+                else:
+                    conditions.append(f"{k} = %s")
+                    params.append(_cast(k, v))
         for col, rule in range_filters.items():
             op = rule.get("op", "<")
             value = rule.get("value")
@@ -92,13 +110,15 @@ def build_and_execute_query(intent: dict) -> list:
                 continue
             if allowed_cols is not None and col not in allowed_cols:
                 continue
-            conditions.append(f"{col} {op} %s")
-            if col in INT_COLS:
-                params.append(int(value))
-            elif col in FLOAT_COLS:
-                params.append(float(value))
+            if op == "between":
+                if not isinstance(value, (list, tuple)) or len(value) != 2:
+                    continue
+                conditions.append(f"{col} BETWEEN %s AND %s")
+                params.append(_cast(col, value[0]))
+                params.append(_cast(col, value[1]))
             else:
-                params.append(value)
+                conditions.append(f"{col} {op} %s")
+                params.append(_cast(col, value))
 
     if use_raw:
         query = (
@@ -140,8 +160,6 @@ def build_and_execute_query(intent: dict) -> list:
             query += " WHERE " + " AND ".join(conditions)
 
     else:
-        if select_metric not in ALLOWED_TABLES[target_table]["columns"]:
-            raise ValueError(f"Métrique '{metric}' non disponible pour l'axe '{dimension}'.")
         query = f"SELECT * FROM {target_table}"
         add_conditions(set(ALLOWED_TABLES[target_table]["columns"]))
         if conditions:
