@@ -66,6 +66,10 @@ uvicorn backend.main:app --reload          # API sur http://127.0.0.1:8000
 cd frontend && npm run dev                 # UI sur http://127.0.0.1:5173 (proxy /dashboard -> :8000)
 ```
 
+**Windows** : `scripts/start_dev.bat` démarre MySQL (XAMPP), l'API et le frontend en une
+seule fois, puis ouvre le dashboard dans le navigateur — pratique en raccourci bureau
+(icône fournie : `scripts/devoteam.ico`). Ne pas fermer les fenêtres de terminal qu'il ouvre.
+
 ## Lancer en local "prod" (un seul processus)
 
 ```bash
