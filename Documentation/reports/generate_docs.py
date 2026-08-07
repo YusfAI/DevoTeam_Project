@@ -166,6 +166,18 @@ def add_body(doc, text, bold=False, italic=False):
     return p
 
 
+def add_cue(doc, text):
+    """Didascalie pour un script oral (ex: [Montrer le chat à l'écran]) — italique,
+    ton discret, jamais confondue avec le texte à prononcer."""
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(2)
+    run = p.add_run(text)
+    run.italic = True
+    run.font.size = Pt(9.5)
+    run.font.color.rgb = MUTED
+    return p
+
+
 def add_bullet(doc, text, lead=None):
     p = doc.add_paragraph(style="List Bullet")
     if lead:
@@ -1098,8 +1110,127 @@ def build_guide_technique():
     return out_path
 
 
+# ---------- Document 3 : script de présentation orale ----------
+
+def build_presentation_script():
+    doc = new_document()
+    add_cover(
+        doc,
+        "Notes de présentation",
+        "DevoTeam Dashboard",
+        "Script pour une présentation orale — à lire, pas à distribuer",
+    )
+
+    add_h1(doc, "Accroche")
+    add_cue(doc, "[Ton confiant, ne pas se presser — laisser la phrase respirer]")
+    add_body(doc,
+        "Je vais vous présenter DevoTeam Dashboard. En une phrase : c'est un tableau de "
+        "bord commercial à qui on parle en français, et qui répond avec le bon graphique — "
+        "pas de menu à chercher, pas de SQL à écrire, pas de formation à prévoir.")
+    add_body(doc,
+        "L'idée de départ tient en une ligne : « montre-moi le budget par pays pour Risk "
+        "Advisory », et une seconde plus tard, le graphique est là, à l'écran, à côté du "
+        "chat.")
+
+    add_h1(doc, "Le problème que ça résout")
+    add_body(doc,
+        "Les équipes commerciales suivent des centaines d'opportunités — budgets, pays, "
+        "statuts, échéances. Deux frictions reviennent tout le temps : il faut un outil BI "
+        "ou des requêtes SQL pour croiser ces données, et une échéance qui approche peut "
+        "passer inaperçue si personne ne pense à consulter le dashboard ce jour-là. Ce "
+        "projet attaque les deux en même temps : l'accès aux données devient conversationnel, "
+        "et le système prévient tout seul quand une échéance approche.")
+
+    add_h1(doc, "Ce qui va vous surprendre : huit façons de voir les mêmes données")
+    add_cue(doc, "[Montrer le chat à l'écran — poser une vraie question en direct si possible]")
+    add_body(doc,
+        "Barres, courbes, aires, camemberts, cartes KPI, tableaux — jusque-là, classique. "
+        "Mais j'ai aussi construit un entonnoir de vente, qui montre visuellement où les "
+        "deals se perdent dans le pipeline commercial, et un nuage de points qui croise le "
+        "budget avec la probabilité de gain pour révéler une vraie corrélation : "
+        "est-ce que les gros budgets ont statistiquement plus de chances d'être gagnés ? "
+        "Ce sont des types de graphiques qu'on ne trouve pas dans un dashboard interne "
+        "standard, et le système choisit tout seul lequel utiliser selon la question posée.")
+    add_body(doc,
+        "Le chat comprend aussi le contexte : je peux demander « et pour Data Management ? » "
+        "juste après une première question, et il comprend que je veux le même graphique, "
+        "juste filtré différemment. Il comprend aussi les dates relatives — « ce mois-ci », "
+        "« le trimestre dernier » — et les comparaisons — « compare la France et le Maroc ».")
+
+    add_h1(doc, "Ce qu'on ne voit pas : pourquoi on peut lui faire confiance")
+    add_body(doc,
+        "C'est le point sur lequel j'ai le plus travaillé, et c'est invisible à l'écran. "
+        "Un assistant qui invente un chiffre plausible mais faux, c'est pire qu'un assistant "
+        "qui ne répond pas — surtout sur des données commerciales. Alors la règle absolue "
+        "du projet, c'est : jamais deviner. Si le système n'est pas sûr de ce qu'on lui "
+        "demande, il pose une question de clarification, plutôt que d'afficher un résultat "
+        "séduisant mais inventé.")
+    add_body(doc,
+        "Concrètement, ça veut dire que le modèle de langage ne touche jamais directement "
+        "la base de données. Il produit uniquement une intention structurée, entièrement "
+        "validée contre une liste blanche de colonnes et de valeurs réelles avant qu'une "
+        "seule requête SQL soit construite. Et cette architecture est vérifiée par cent "
+        "tests automatisés, qui tournent sans base de données réelle ni connexion internet.")
+
+    add_h1(doc, "Une fonctionnalité que personne ne m'a demandée")
+    add_body(doc,
+        "Au-delà du périmètre initial, j'ai ajouté un système d'alertes deadlines : chaque "
+        "jour, l'application envoie automatiquement un email récapitulant les opportunités "
+        "dont l'échéance approche, et affiche la même liste dans un bandeau du dashboard. "
+        "Et j'ai poussé le soin du détail jusqu'à gérer le cas où le serveur serait éteint "
+        "pile à l'heure prévue : au redémarrage, le système vérifie tout seul s'il a manqué "
+        "l'envoi du jour et le rattrape, sans jamais envoyer le même email deux fois.")
+
+    add_h1(doc, "Des bugs trouvés en testant pour de vrai, pas juste en croisant les doigts")
+    add_cue(doc, "[C'est la partie qui montre la rigueur — ne pas la survoler]")
+    add_body(doc,
+        "Les tests automatisés, c'est nécessaire, mais ça ne suffit pas. J'ai trouvé un vrai "
+        "bug en utilisant l'application moi-même : demander la liste des « opportunités "
+        "urgentes » remontait des deadlines dépassées depuis des mois, parce que "
+        "mathématiquement, moins sept jours est bien inférieur à sept jours — juste que ça "
+        "n'a aucun sens métier. Je l'ai corrigé à trois niveaux différents plutôt qu'un "
+        "seul, par prudence : le raisonnement, c'est qu'une instruction donnée à un modèle "
+        "de langage n'est jamais une garantie à cent pour cent, donc la correction qui "
+        "compte vraiment est celle qui ne dépend pas du modèle pour s'appliquer.")
+    add_body(doc,
+        "Même logique pour deux graphiques : le texte qui accompagnait l'entonnoir de vente "
+        "et la carte de chaleur décrivait plus de données que ce que le graphique affichait "
+        "réellement à l'écran. Des tests unitaires bien écrits n'auraient jamais attrapé ça "
+        "— il a fallu utiliser l'application comme un vrai utilisateur pour le voir.")
+
+    add_h1(doc, "Le soin du détail")
+    add_body(doc,
+        "L'interface reprend les couleurs et le logo Devoteam, avec un mode sombre "
+        "entièrement lisible — et pas juste esthétique : j'ai trouvé et corrigé deux bugs "
+        "de contraste où le texte devenait quasiment invisible en mode sombre, en relisant "
+        "le CSS ligne par ligne plutôt qu'en devinant. Et pour que ce soit simple à lancer "
+        "au quotidien, j'ai construit un raccourci bureau en un clic qui démarre MySQL, le "
+        "serveur et l'interface, puis ouvre directement la page.")
+
+    add_h1(doc, "Les chiffres à retenir")
+    add_bullet(doc, "8 types de graphiques choisis automatiquement selon la question posée.")
+    add_bullet(doc, "100 tests automatisés, aucune dépendance à une base de données réelle.")
+    add_bullet(doc, "15 phases de développement livrées, de bout en bout, en autonomie.")
+    add_bullet(doc, "0 hallucination tolérée : donnée non fiable = question posée en retour, jamais un chiffre inventé.")
+
+    add_h1(doc, "Pour conclure")
+    add_cue(doc, "[Marquer une pause avant cette dernière phrase]")
+    add_body(doc,
+        "Ce projet, c'est un dashboard qu'on peut vraiment donner à une équipe commerciale "
+        "sans formation, avec la rigueur d'ingénierie qui garantit que ce qu'il affiche est "
+        "juste — et deux documents détaillés, un rapport et un guide technique, pour qui "
+        "veut aller plus loin. Je suis disponible pour une démonstration en direct, ou pour "
+        "répondre à vos questions dès maintenant.")
+
+    out_path = os.path.join(DOC_DIR, "Script_Presentation_DevoTeam_Dashboard.docx")
+    doc.save(out_path)
+    return out_path
+
+
 if __name__ == "__main__":
     p1 = build_rapport_professionnel()
     p2 = build_guide_technique()
+    p3 = build_presentation_script()
     print("Généré :", p1)
     print("Généré :", p2)
+    print("Généré :", p3)
