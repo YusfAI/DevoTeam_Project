@@ -1,0 +1,911 @@
+"""Génère les deux documents .docx (rapport professionnel + guide technique) au
+branding Devoteam, à partir du contenu réel du projet (code, tests, PROGRESS.md).
+
+Script one-shot, à relancer si le contenu doit être régénéré après une évolution
+du projet. Nécessite python-docx (voir requirements-dev.txt) — pas une dépendance
+runtime de l'application.
+
+Usage : python Documentation/generate_docs.py
+"""
+import os
+
+from docx import Document
+from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Cm, Inches, Pt, RGBColor
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DOC_DIR = os.path.join(ROOT, "Documentation")
+LOGO = os.path.join(ROOT, "Dev_logo_rgb.png")
+EMAIL_PROOF = os.path.join(DOC_DIR, "assets", "email_proof.png")
+
+CORAL = RGBColor(0xF2, 0x40, 0x5A)
+CORAL_HEX = "F2405A"
+CORAL_STRONG = RGBColor(0xD4, 0x2A, 0x45)
+CORAL_STRONG_HEX = "D42A45"
+CORAL_TINT_HEX = "FCE9EC"
+CHARCOAL = RGBColor(0x24, 0x24, 0x22)
+MUTED = RGBColor(0x52, 0x51, 0x4E)
+WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+
+FONT = "Calibri"
+
+
+# ---------- helpers de style ----------
+
+def new_document():
+    doc = Document()
+    section = doc.sections[0]
+    section.page_width = Cm(21)
+    section.page_height = Cm(29.7)
+    section.top_margin = Cm(2)
+    section.bottom_margin = Cm(1.8)
+    section.left_margin = Cm(2.2)
+    section.right_margin = Cm(2.2)
+
+    style = doc.styles["Normal"]
+    style.font.name = FONT
+    style.font.size = Pt(10.5)
+    style.font.color.rgb = CHARCOAL
+    style.paragraph_format.space_after = Pt(6)
+    style.paragraph_format.line_spacing = 1.18
+    return doc
+
+
+def _bottom_border(paragraph, hex_color, size="18"):
+    pPr = paragraph._p.get_or_add_pPr()
+    pBdr = OxmlElement("w:pBdr")
+    bottom = OxmlElement("w:bottom")
+    bottom.set(qn("w:val"), "single")
+    bottom.set(qn("w:sz"), size)
+    bottom.set(qn("w:space"), "4")
+    bottom.set(qn("w:color"), hex_color)
+    pBdr.append(bottom)
+    pPr.append(pBdr)
+
+
+def shade_cell(cell, hex_color):
+    tcPr = cell._tc.get_or_add_tcPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:fill"), hex_color)
+    tcPr.append(shd)
+
+
+def add_cover(doc, doc_label, title, subtitle):
+    doc.add_picture(LOGO, width=Inches(2.3))
+    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for _ in range(3):
+        doc.add_paragraph()
+
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run(doc_label.upper())
+    run.font.size = Pt(12)
+    run.font.bold = True
+    run.font.color.rgb = CORAL
+    run.font.name = FONT
+
+    p2 = doc.add_paragraph()
+    p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run2 = p2.add_run(title)
+    run2.font.size = Pt(27)
+    run2.font.bold = True
+    run2.font.color.rgb = CHARCOAL
+
+    p3 = doc.add_paragraph()
+    p3.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run3 = p3.add_run(subtitle)
+    run3.font.size = Pt(13)
+    run3.font.color.rgb = MUTED
+
+    for _ in range(6):
+        doc.add_paragraph()
+
+    meta = doc.add_paragraph()
+    meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    mrun = meta.add_run("DevoTeam Dashboard — Projet interne  |  Août 2026  |  Youssef Hmidi")
+    mrun.font.size = Pt(10)
+    mrun.font.color.rgb = MUTED
+    doc.add_page_break()
+
+
+def add_sommaire(doc, entries):
+    add_h1(doc, "Sommaire")
+    for entry in entries:
+        p = doc.add_paragraph(style="List Bullet")
+        r = p.add_run(entry)
+        r.font.color.rgb = CHARCOAL
+    doc.add_page_break()
+
+
+def add_h1(doc, text):
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(20)
+    p.paragraph_format.space_after = Pt(10)
+    p.paragraph_format.keep_with_next = True
+    run = p.add_run(text)
+    run.font.size = Pt(18)
+    run.font.bold = True
+    run.font.color.rgb = CORAL
+    _bottom_border(p, CORAL_STRONG_HEX)
+    return p
+
+
+def add_h2(doc, text):
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(14)
+    p.paragraph_format.space_after = Pt(6)
+    p.paragraph_format.keep_with_next = True
+    run = p.add_run(text)
+    run.font.size = Pt(13.5)
+    run.font.bold = True
+    run.font.color.rgb = CHARCOAL
+    return p
+
+
+def add_h3(doc, text):
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(10)
+    p.paragraph_format.space_after = Pt(4)
+    p.paragraph_format.keep_with_next = True
+    run = p.add_run(text)
+    run.font.size = Pt(11.5)
+    run.font.bold = True
+    run.font.color.rgb = CORAL_STRONG
+    return p
+
+
+def add_body(doc, text, bold=False, italic=False):
+    p = doc.add_paragraph()
+    run = p.add_run(text)
+    run.bold = bold
+    run.italic = italic
+    return p
+
+
+def add_bullet(doc, text, lead=None):
+    p = doc.add_paragraph(style="List Bullet")
+    if lead:
+        r = p.add_run(lead + " ")
+        r.bold = True
+        r.font.color.rgb = CORAL_STRONG
+    p.add_run(text)
+    return p
+
+
+def add_numbered(doc, text, lead=None):
+    p = doc.add_paragraph(style="List Number")
+    if lead:
+        r = p.add_run(lead + " ")
+        r.bold = True
+        r.font.color.rgb = CORAL_STRONG
+    p.add_run(text)
+    return p
+
+
+def add_table(doc, headers, rows):
+    table = doc.add_table(rows=1, cols=len(headers))
+    table.style = "Table Grid"
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    hdr_cells = table.rows[0].cells
+    for i, h in enumerate(headers):
+        hdr_cells[i].paragraphs[0].text = ""
+        run = hdr_cells[i].paragraphs[0].add_run(h)
+        run.bold = True
+        run.font.size = Pt(9.5)
+        run.font.color.rgb = WHITE
+        shade_cell(hdr_cells[i], CORAL_HEX)
+    for r_i, row in enumerate(rows):
+        cells = table.add_row().cells
+        for i, val in enumerate(row):
+            cells[i].paragraphs[0].text = ""
+            run = cells[i].paragraphs[0].add_run(str(val))
+            run.font.size = Pt(9.5)
+            if r_i % 2 == 1:
+                shade_cell(cells[i], "FAFAF8")
+    doc.add_paragraph()
+    return table
+
+
+def add_image_block(doc, path, width_inches, caption=None):
+    doc.add_picture(path, width=Inches(width_inches))
+    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if caption:
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run(caption)
+        run.italic = True
+        run.font.size = Pt(9)
+        run.font.color.rgb = MUTED
+
+
+def add_code_block(doc, text):
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(4)
+    p.paragraph_format.space_after = Pt(10)
+    shade_cell  # noqa: keep import usage grouped
+    run = p.add_run(text)
+    run.font.name = "Consolas"
+    run.font.size = Pt(9)
+    run.font.color.rgb = CHARCOAL
+    pPr = p._p.get_or_add_pPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:fill"), "F3F2EE")
+    pPr.append(shd)
+    pBdr = OxmlElement("w:pBdr")
+    for side in ("top", "left", "bottom", "right"):
+        el = OxmlElement(f"w:{side}")
+        el.set(qn("w:val"), "single")
+        el.set(qn("w:sz"), "4")
+        el.set(qn("w:space"), "4")
+        el.set(qn("w:color"), "E1E0D9")
+        pBdr.append(el)
+    pPr.append(pBdr)
+
+
+# ---------- Document 1 : rapport professionnel ----------
+
+def build_rapport_professionnel():
+    doc = new_document()
+    add_cover(
+        doc,
+        "Rapport de projet",
+        "DevoTeam Dashboard",
+        "Dashboard commercial conversationnel — Rapport professionnel",
+    )
+    add_sommaire(doc, [
+        "Résumé exécutif",
+        "Contexte et besoin métier",
+        "Solution proposée",
+        "Fonctionnalités",
+        "Conception et architecture",
+        "Stack technique",
+        "Sécurité et fiabilité",
+        "Preuve de fonctionnement — alertes deadlines",
+        "État d'avancement et roadmap",
+        "Conclusion",
+    ])
+
+    # --- Résumé exécutif ---
+    add_h1(doc, "1. Résumé exécutif")
+    add_body(doc,
+        "DevoTeam Dashboard est une application de tableau de bord commercial "
+        "conversationnel : un utilisateur pose une question en français dans un chat "
+        "(ex. « budget par pays pour Risk Advisory »), et l'application produit "
+        "instantanément le graphique, la carte KPI ou le tableau correspondant, à "
+        "partir des données réelles des opportunités commerciales stockées en base. "
+        "Aucune compétence SQL ou BI n'est requise côté utilisateur.")
+    add_body(doc,
+        "Le projet est aujourd'hui fonctionnel de bout en bout, hébergé localement, "
+        "et couvre l'ensemble du cycle : compréhension du langage naturel, "
+        "génération de requêtes sécurisées, visualisation, et — dernière brique "
+        "livrée — un système d'alerte proactive par email et dans l'interface pour "
+        "les opportunités dont l'échéance approche, avec une donnée « jours restants » "
+        "recalculée chaque jour pour rester exacte.")
+
+    # --- Contexte et besoin métier ---
+    add_h1(doc, "2. Contexte et besoin métier")
+    add_body(doc,
+        "Les équipes commerciales suivent un grand nombre d'opportunités (appels "
+        "d'offres, manifestations d'intérêt, consultations…) réparties sur plusieurs "
+        "pays et practices (Digital Transformation, Risk Advisory, Data Management). "
+        "Deux problèmes récurrents motivent ce projet :")
+    add_bullet(doc,
+        "l'analyse de ces données (budget par pays, taux de réussite, répartition "
+        "par statut…) nécessite normalement un outil BI ou des requêtes SQL — un frein "
+        "pour un usage quotidien rapide par des non-techniciens ;",
+        lead="Accès à l'information :")
+    add_bullet(doc,
+        "une opportunité dont l'échéance approche peut passer inaperçue si personne "
+        "ne consulte le dashboard ce jour-là, avec un risque direct de manquer une "
+        "date de remise d'offre.",
+        lead="Risque de deadline manquée :")
+    add_body(doc,
+        "Le besoin métier est donc double : donner un accès conversationnel, "
+        "immédiat et fiable aux données commerciales, et transformer le suivi des "
+        "échéances d'un geste passif (consulter le dashboard) en une alerte active "
+        "(le système prévient l'équipe).")
+
+    # --- Solution proposée ---
+    add_h1(doc, "3. Solution proposée")
+    add_body(doc,
+        "L'application répond à ce besoin par un assistant conversationnel branché "
+        "directement sur les données commerciales réelles, avec une garantie forte : "
+        "le système ne répond jamais par une donnée inventée. Si la demande est "
+        "ambiguë (métrique, filtre ou valeur non reconnue), il demande une "
+        "clarification plutôt que de deviner un résultat plausible mais faux — un "
+        "choix de conception délibéré, central pour la confiance dans les chiffres "
+        "affichés à des fins commerciales.")
+    add_body(doc,
+        "Pour le risque de deadline manquée, une brique d'alerte a été ajoutée : "
+        "chaque jour, le système identifie automatiquement les opportunités encore "
+        "actives dont l'échéance tombe dans les 7 jours suivants, envoie un email "
+        "récapitulatif, et affiche un bandeau d'alerte directement dans le dashboard.")
+
+    # --- Fonctionnalités ---
+    add_h1(doc, "4. Fonctionnalités")
+    add_h2(doc, "4.1 Chat et compréhension du langage naturel")
+    add_bullet(doc, "Questions en français libre, sans syntaxe imposée.")
+    add_bullet(doc, "Contexte multi-tour : une question de suivi (« et pour Data Management ? ») "
+                     "hérite automatiquement du contexte de la question précédente.")
+    add_bullet(doc, "Dates et périodes relatives comprises et calculées de façon fiable "
+                     "(« ce mois-ci », « l'année dernière », « le trimestre dernier »…).")
+    add_bullet(doc, "Requêtes de comparaison entre plusieurs valeurs (« compare la France et le Maroc »).")
+    add_bullet(doc, "Demande de clarification explicite si la question reste ambiguë, plutôt "
+                     "qu'une réponse devinée.")
+
+    add_h2(doc, "4.2 Visualisation")
+    add_bullet(doc, "Graphiques en barres, courbes et camemberts (Vega-Lite), cartes KPI, "
+                     "tableaux détaillés.")
+    add_bullet(doc, "Bascule automatique camembert → barres horizontales au-delà de 6 segments, "
+                     "pour rester lisible.")
+    add_bullet(doc, "Thème clair / sombre, palette de couleurs validée pour l'accessibilité "
+                     "(daltonisme).")
+    add_bullet(doc, "Mise en cache des graphiques déjà générés pour un ré-affichage instantané.")
+
+    add_h2(doc, "4.3 Alertes deadlines (nouvelle fonctionnalité)")
+    add_bullet(doc, "Email quotidien automatique récapitulant les opportunités actives à "
+                     "échéance ≤ 7 jours, envoyé chaque matin à 8h.")
+    add_bullet(doc, "Rappel répété chaque jour tant que l'échéance n'est pas passée — "
+                     "aucune opportunité à risque ne peut être oubliée.")
+    add_bullet(doc, "Bandeau d'alerte visible directement dans le dashboard, avec le détail "
+                     "par opportunité (client, pays, practice, statut, budget, jours restants).")
+    add_bullet(doc, "Exclusion automatique des opportunités déjà closes (gagnées, perdues, "
+                     "signées, infructueuses…) pour ne pas polluer l'alerte.")
+    add_bullet(doc, "Donnée « jours restants » recalculée chaque nuit à partir de la date "
+                     "réelle du jour, pour ne jamais afficher un chiffre obsolète.")
+
+    add_h2(doc, "4.4 Branding et expérience utilisateur")
+    add_bullet(doc, "Interface habillée aux couleurs et au logo Devoteam.")
+    add_bullet(doc, "Micro-interactions et animations (fond animé, transitions, mise en avant "
+                     "des nouveaux résultats).")
+
+    # --- Conception et architecture ---
+    add_h1(doc, "5. Conception et architecture")
+    add_body(doc,
+        "L'architecture suit un principe simple : le LLM ne produit jamais "
+        "directement un graphique ou du SQL. Il transforme la question de "
+        "l'utilisateur en une structure intermédiaire strictement validée (métrique, "
+        "dimension, filtres, type de graphique…), qui est ensuite traduite en requête "
+        "SQL sécurisée par du code déterministe. Cette séparation garantit que les "
+        "résultats affichés proviennent toujours des données réelles.")
+    add_table(doc,
+        ["Étape", "Rôle"],
+        [
+            ["1. Chat utilisateur", "L'utilisateur pose sa question en français dans l'interface."],
+            ["2. Compréhension d'intention", "Le LLM (ou un parseur rapide par mots-clés pour les cas "
+             "simples) extrait une intention structurée et validée."],
+            ["3. Résolution des filtres", "Chaque valeur de filtre (pays, statut…) est vérifiée contre "
+             "les données réelles ; en cas de doute, une clarification est demandée."],
+            ["4. Requête SQL sécurisée", "L'intention est traduite en requête paramétrée sur une liste "
+             "blanche de tables/colonnes autorisées."],
+            ["5. Génération du résultat", "Graphique Vega-Lite, carte KPI ou tableau, plus un message "
+             "texte calculé directement depuis les données (jamais rédigé par le LLM)."],
+            ["6. Affichage", "Le frontend React affiche le résultat, avec mise en cache pour les "
+             "requêtes déjà vues."],
+        ])
+    add_body(doc,
+        "L'alerte deadlines suit le même principe de fiabilité : la vérification des "
+        "échéances se fait par un calcul de date direct en base (jamais une valeur "
+        "mise en cache trop longtemps), sur un calendrier automatique indépendant de "
+        "toute action utilisateur.")
+
+    # --- Stack technique ---
+    add_h1(doc, "6. Stack technique")
+    add_table(doc,
+        ["Brique", "Technologie", "Pourquoi"],
+        [
+            ["Backend / API", "FastAPI (Python)", "Framework léger, typé, avec validation de données native "
+             "(Pydantic) — cohérent avec l'exigence anti-hallucination."],
+            ["Base de données", "MySQL / MariaDB (XAMPP)", "Vues pré-agrégées par dimension, requêtes "
+             "paramétrées, adapté au volume et à l'hébergement local."],
+            ["Compréhension du langage", "Groq — Llama 3.3 70B", "Sortie JSON structurée, faible latence, "
+             "complétée par une validation stricte côté serveur."],
+            ["Visualisation", "Vega-Lite / vega-embed", "Grammaire de graphiques déclarative en JSON, génération "
+             "automatique fiable, rendu navigateur natif."],
+            ["Frontend", "Vite + React", "Interface réactive, thème clair/sombre, build optimisé pour "
+             "un déploiement local en un seul processus."],
+            ["Planification des tâches", "APScheduler", "Exécution fiable des vérifications quotidiennes "
+             "(alertes deadlines, mise à jour des données) sans dépendance externe."],
+            ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
+             "sans infrastructure d'envoi supplémentaire à maintenir."],
+            ["Tests", "pytest (63 tests)", "Suite automatisée sans dépendance réseau/DB réelle (mocks), "
+             "garde-fou contre les régressions."],
+        ])
+    add_body(doc,
+        "Côté données, la base MySQL repose sur une table principale `opportunities` "
+        "(360 opportunités commerciales, 18 colonnes : pays, practice, statut, "
+        "budget, échéance…) et six vues pré-agrégées par dimension (pays, practice, "
+        "statut, mois, source de financement, croisement pays/practice), qui "
+        "accélèrent les questions les plus fréquentes du chat sans dupliquer les "
+        "données.")
+
+    # --- Sécurité et fiabilité ---
+    add_h1(doc, "7. Sécurité et fiabilité")
+    add_bullet(doc, "Aucune clé API ni identifiant n'est versionné dans le code source "
+                     "(fichier .env exclu du dépôt git).")
+    add_bullet(doc, "Le LLM ne peut interroger que les tables et colonnes d'une liste blanche "
+                     "explicite — aucune requête SQL libre.")
+    add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
+                     "de clarification plutôt qu'une hypothèse silencieuse.")
+    add_bullet(doc, "63 tests automatisés couvrent la compréhension du langage, la couche SQL, "
+                     "la génération des graphiques et le système d'alerte.")
+    add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
+                     "(jamais le mot de passe principal du compte), également hors du dépôt git.")
+
+    # --- Preuve de fonctionnement ---
+    add_h1(doc, "8. Preuve de fonctionnement — alertes deadlines")
+    add_body(doc,
+        "Capture d'écran ci-dessous : email de rappel automatique réellement reçu, "
+        "listant les opportunités actives dont l'échéance tombait dans les 7 jours "
+        "suivants au moment de l'envoi (5 et 7 jours restants), avec pays, practice, "
+        "statut et budget pour chacune.")
+    add_image_block(doc, EMAIL_PROOF, 6.3,
+                     caption="Email d'alerte reçu dans la boîte de réception — preuve de bon fonctionnement.")
+
+    # --- État d'avancement et roadmap ---
+    add_h1(doc, "9. État d'avancement et roadmap")
+    add_body(doc, "L'application est complète et fonctionnelle de bout en bout, en hébergement local. "
+                   "Onze phases de développement ont été livrées, de la mise en place du backend "
+                   "jusqu'au système d'alertes deadlines le plus récent.", bold=False)
+    add_h2(doc, "Améliorations envisagées (hors périmètre actuel)")
+    add_bullet(doc, "Authentification et gestion multi-utilisateurs (restriction par practice/BU).")
+    add_bullet(doc, "Historique de conversation persistant côté navigateur.")
+    add_bullet(doc, "Suivi analytique des sessions utilisateur.")
+
+    # --- Conclusion ---
+    add_h1(doc, "10. Conclusion")
+    add_body(doc,
+        "DevoTeam Dashboard transforme une problématique classique de BI (accès aux "
+        "données commerciales, suivi des échéances) en une expérience conversationnelle "
+        "fiable, à la fois simple d'usage pour les équipes commerciales et rigoureuse "
+        "dans sa conception technique (validation stricte, tests automatisés, "
+        "traçabilité des résultats). La dernière brique livrée — les alertes deadlines "
+        "par email et dans l'interface — répond directement au risque métier "
+        "identifié : ne plus jamais manquer une échéance commerciale faute d'avoir "
+        "consulté le dashboard à temps.")
+
+    out_path = os.path.join(DOC_DIR, "Rapport_Professionnel_DevoTeam_Dashboard.docx")
+    doc.save(out_path)
+    return out_path
+
+
+# ---------- Document 2 : guide technique ----------
+
+def build_guide_technique():
+    doc = new_document()
+    add_cover(
+        doc,
+        "Documentation technique",
+        "DevoTeam Dashboard",
+        "Guide technique détaillé — architecture, code et préparation entretien",
+    )
+    add_sommaire(doc, [
+        "Vue d'ensemble de l'architecture",
+        "Stack technique et justifications",
+        "Structure du dépôt",
+        "Base de données",
+        "Pipeline requête → réponse",
+        "Compréhension du langage naturel (backend/llm.py, intent_refiner.py)",
+        "Couche SQL sécurisée (backend/db_layer.py, schema_and_whitelist.py)",
+        "Génération des graphiques (backend/vega_generator.py)",
+        "Réponses textuelles déterministes (backend/response_builder.py)",
+        "Alertes deadlines (backend/alerts.py, maintenance.py, scheduler)",
+        "Frontend (Vite + React)",
+        "Sécurité",
+        "Tests automatisés",
+        "Questions d'entretien probables",
+        "Limites connues",
+    ])
+
+    # --- Vue d'ensemble ---
+    add_h1(doc, "1. Vue d'ensemble de l'architecture")
+    add_body(doc,
+        "L'application suit un pipeline linéaire, chaque étape gérée par un module "
+        "backend dédié. Le principe directeur : le LLM ne produit jamais directement "
+        "un graphique ni du SQL — il produit uniquement un JSON intermédiaire "
+        "strictement validé, que du code déterministe transforme ensuite en requête "
+        "puis en visualisation.")
+    add_code_block(doc,
+        "Utilisateur (chat React)\n"
+        "   │  POST /dashboard { query, previous_intent }\n"
+        "   ▼\n"
+        "backend/llm.py :: parse_user_query()\n"
+        "   │  parseur rapide (mots-clés) OU appel Groq + validation Pydantic\n"
+        "   │  résolution des filtres (fuzzy match) contre les données réelles\n"
+        "   ▼  intent = {metric, dimension, filters, chart_type, aggregation, ...}\n"
+        "backend/db_layer.py :: build_and_execute_query(intent)\n"
+        "   │  requête SQL paramétrée sur une liste blanche de tables/colonnes\n"
+        "   ▼  data = [ {...}, {...} ]\n"
+        "backend/vega_generator.py + response_builder.py\n"
+        "   │  spec Vega-Lite (ou carte KPI / table) + message texte calculé\n"
+        "   ▼\n"
+        "Frontend React :: DashboardPanel + vega-embed\n"
+        "   affichage du graphique / KPI / tableau")
+    add_body(doc,
+        "En parallèle, un scheduler (APScheduler) exécute deux tâches quotidiennes "
+        "indépendantes du chat : le recalcul de « jours restants » à minuit, et la "
+        "vérification des échéances proches à 8h (voir section 10).")
+
+    # --- Stack et justifications ---
+    add_h1(doc, "2. Stack technique et justifications")
+    add_h2(doc, "2.1 Pourquoi MySQL plutôt que SQLite (prévu dans le brief initial)")
+    add_body(doc,
+        "Le document de cadrage initial du projet envisageait SQLite pour sa "
+        "simplicité. Le choix final s'est porté sur MySQL/MariaDB via XAMPP : accès "
+        "concurrent plus robuste pour un backend FastAPI multi-requêtes, support natif "
+        "des vues SQL pré-agrégées par dimension (utilisées pour accélérer les "
+        "requêtes fréquentes comme « budget par pays »), et un pool de connexions "
+        "(DBUtils PooledDB) adapté à ce moteur. Le schéma reste simple (une table "
+        "principale `opportunities` + des vues), donc le coût de complexité "
+        "supplémentaire par rapport à SQLite reste faible.")
+    add_h2(doc, "2.2 Pourquoi Groq (Llama 3.3) plutôt qu'un modèle propriétaire")
+    add_body(doc,
+        "Le mandat du projet imposait un modèle open source à faible latence. Groq "
+        "sert Llama 3.3 70B avec un `response_format: json_object` qui garantit une "
+        "sortie JSON syntaxiquement valide. Limite connue et documentée : ce mode ne "
+        "garantit pas le respect d'un schéma strict (contrairement à un mode "
+        "« structured outputs » complet) — d'où l'importance de la couche de "
+        "validation Pydantic + liste blanche placée juste après (section 6).")
+    add_h2(doc, "2.3 Pourquoi APScheduler plutôt qu'une tâche planifiée externe (cron/Task Scheduler)")
+    add_body(doc,
+        "L'application est un processus unique en local (`uvicorn`). APScheduler "
+        "tourne dans ce même processus (`BackgroundScheduler`), démarré/arrêté via le "
+        "cycle de vie FastAPI (`lifespan`) — aucune dépendance à un ordonnanceur "
+        "système externe, ce qui simplifie le déploiement local. Limite assumée : si "
+        "le processus est arrêté au moment précis d'une exécution planifiée, elle est "
+        "manquée (pas de rattrapage automatique en cours de journée).")
+
+    # --- Structure du dépôt ---
+    add_h1(doc, "3. Structure du dépôt")
+    add_table(doc,
+        ["Chemin", "Contenu"],
+        [
+            ["backend/main.py", "Application FastAPI, endpoints, câblage du scheduler."],
+            ["backend/llm.py", "Appel LLM, validation Pydantic, résolution des filtres, anti-hallucination."],
+            ["backend/intent_refiner.py", "Parseur rapide par mots-clés, dates relatives, affinage de l'intention."],
+            ["backend/db_layer.py", "Construction et exécution des requêtes SQL paramétrées."],
+            ["backend/schema_and_whitelist.py", "Source unique de vérité : tables/colonnes autorisées, valeurs connues."],
+            ["backend/vega_generator.py", "Génération des spécifications Vega-Lite."],
+            ["backend/response_builder.py", "Messages texte déterministes (jamais générés par le LLM)."],
+            ["backend/alerts.py", "Requête des opportunités à échéance proche, envoi de l'email d'alerte."],
+            ["backend/maintenance.py", "Recalcul quotidien de days_remaining."],
+            ["backend/db.py", "Pool de connexions MySQL (DBUtils PooledDB), paresseux."],
+            ["frontend/src/", "Application Vite + React (composants, hooks, styles)."],
+            ["tests/", "Suite pytest — 63 tests, aucune dépendance réseau/DB réelle."],
+            ["data/devoteam_dashboard.sql", "Dump SQL de référence (schéma + données)."],
+            ["Documentation/", "Documents de projet, dont ce guide."],
+        ])
+
+    # --- Base de données ---
+    add_h1(doc, "4. Base de données")
+    add_body(doc,
+        "Moteur MySQL/MariaDB (XAMPP en local, utilisateur root sans mot de passe par "
+        "défaut). Le schéma tient volontairement en peu de tables : une table de "
+        "faits, six vues de lecture pré-agrégées, et deux tables techniques pour le "
+        "cache et l'historique.")
+
+    add_h2(doc, "4.1 Table de faits — opportunities")
+    add_body(doc,
+        "360 lignes au moment de la rédaction. Chaque ligne représente une "
+        "opportunité commerciale ; c'est la seule table sur laquelle des écritures "
+        "ont lieu (mise à jour quotidienne de days_remaining).")
+    add_table(doc,
+        ["Colonne", "Type", "Rôle"],
+        [
+            ["id", "INT, clé primaire", "Identifiant unique."],
+            ["country", "VARCHAR(100)", "Pays de l'opportunité (indexé)."],
+            ["created_date", "DATE", "Date de création de l'opportunité."],
+            ["deadline", "DATE", "Date limite de remise — source de vérité pour toute "
+             "notion d'urgence (jamais une valeur mise en cache)."],
+            ["deadline_month / deadline_year", "VARCHAR(7) / INT", "Dérivées de deadline, "
+             "utilisées comme dimensions d'analyse (indexées)."],
+            ["days_remaining", "INT, nullable", "Jours restants — recalculée chaque nuit "
+             "depuis deadline (voir section 10.1), jamais la source de vérité elle-même."],
+            ["practice", "VARCHAR(100)", "Digital Transformation / Risk Advisory / Data "
+             "Management (indexé)."],
+            ["description, buyer, partner", "TEXT / VARCHAR", "Informations descriptives "
+             "libres."],
+            ["opp_type", "VARCHAR(50)", "AO, DP, AMI, Consultation, Prospection…"],
+            ["status", "VARCHAR(100)", "Statut du cycle de vente (indexé) — 16 valeurs "
+             "possibles, dont les 7 statuts « clos » exclus des alertes."],
+            ["budget, financial_offer, weighted_amount", "DOUBLE, nullable", "Montants en "
+             "euros ; weighted_amount ~47% NULL (offres sans probabilité assignée)."],
+            ["funding_source", "VARCHAR(100), nullable", "Source de financement (indexée)."],
+            ["win_probability", "DOUBLE, nullable", "Fraction 0–1 (0.74 = 74%), jamais "
+             "stockée déjà multipliée par 100 — voir response_builder.py."],
+        ])
+
+    add_h2(doc, "4.2 Vues pré-agrégées (lecture seule)")
+    add_body(doc,
+        "Chacune est un simple GROUP BY sur opportunities (recalculée à la demande "
+        "par MySQL, pas matérialisée) — elles existent pour donner au LLM des noms de "
+        "colonnes déjà agrégés et simples plutôt que de lui faire recalculer une "
+        "agrégation à chaque requête, et pour que db_layer.py puisse choisir la bonne "
+        "source selon la dimension demandée (voir section 7).")
+    add_table(doc,
+        ["Vue", "Regroupée par", "Colonnes agrégées"],
+        [
+            ["v_by_country", "country", "nb_opportunities, total_budget, total_offer, total_weighted"],
+            ["v_by_practice", "practice", "nb_opportunities, total_budget, total_offer, total_weighted"],
+            ["v_by_status", "status", "nb_opportunities, total_budget, total_offer"],
+            ["v_by_month", "deadline_month", "nb_opportunities, total_budget, total_offer, total_weighted"],
+            ["v_by_funding_source", "funding_source", "nb_opportunities, total_budget"],
+            ["v_by_country_practice", "country, practice", "nb_opportunities, total_budget, total_weighted"],
+        ])
+    add_body(doc,
+        "Une vue qui ne couvre pas la métrique demandée (ex. weighted_amount sur "
+        "v_by_status) déclenche un repli automatique vers un GROUP BY à la volée sur "
+        "opportunities plutôt qu'une erreur (voir section 7).")
+
+    add_h2(doc, "4.3 Tables techniques")
+    add_table(doc,
+        ["Table", "Rôle"],
+        [
+            ["dashboard_requests", "Historique : chaque question posée au chat, avec l'intention "
+             "JSON extraite — utile pour l'audit et l'amélioration continue du prompt."],
+            ["generated_dashboards", "Cache des spécifications Vega-Lite déjà générées, indexé par le "
+             "hash SHA-256 de l'intention — évite de régénérer une spec identique."],
+        ])
+
+    add_h2(doc, "4.4 Accès depuis le backend")
+    add_body(doc,
+        "backend/db.py centralise l'unique point de connexion : un pool "
+        "(DBUtils PooledDB, 2 à 10 connexions) créé de façon paresseuse — importer les "
+        "modules backend ne nécessite donc pas que MySQL soit déjà démarré, ce qui "
+        "permet à la suite de tests de s'exécuter sans base de données réelle.")
+
+    # --- Pipeline détaillé ---
+    add_h1(doc, "5. Pipeline requête → réponse (backend/main.py)")
+    add_body(doc, "L'endpoint POST /dashboard orchestre l'ensemble :")
+    add_numbered(doc, "appelle parse_user_query(query, previous_intent) — jamais de session serveur, "
+                       "le frontend renvoie le dernier intent résolu à chaque nouvelle question.")
+    add_numbered(doc, "si l'intention est une conversation générale (salutation, hors sujet) ou "
+                       "reste ambiguë, renvoie directement le message de clarification, sans requête SQL.")
+    add_numbered(doc, "sinon, exécute build_and_execute_query(intent), puis choisit le format de "
+                       "réponse (table brute, carte KPI, ou graphique Vega-Lite).")
+    add_numbered(doc, "pour un graphique, un hash de l'intention sert de clé de cache "
+                       "(table generated_dashboards) pour éviter de régénérer une spec déjà connue.")
+    add_numbered(doc, "chaque requête est aussi journalisée (table dashboard_requests) à des fins "
+                       "d'historique.")
+
+    # --- LLM ---
+    add_h1(doc, "6. Compréhension du langage naturel")
+    add_h2(doc, "6.1 Deux chemins : parseur rapide vs LLM")
+    add_body(doc,
+        "try_rule_based_parse() (intent_refiner.py) reconnaît par mots-clés fixes les "
+        "cas simples (practice, statut, métrique, dimension). Il n'est utilisé que "
+        "s'il n'y a pas de contexte de conversation précédent, et seulement après "
+        "passage par _augment_rule_based_result(), qui refuse de lui faire confiance "
+        "dès qu'une comparaison ou plusieurs pays sont mentionnés (retour à None → "
+        "bascule vers le LLM). Dans tous les autres cas, l'appel Groq (llm.py) prend "
+        "le relais, avec le contexte multi-tour injecté dans le prompt système.")
+    add_h2(doc, "6.2 Validation stricte — DashboardIntent (Pydantic)")
+    add_body(doc,
+        "La sortie JSON du LLM est chargée dans un modèle Pydantic dont le "
+        "field_validator sur `filters` rejette toute clé absente de VALID_FILTERS. "
+        "Toute erreur de validation renvoie un message de clarification à "
+        "l'utilisateur — jamais un objet partiellement rempli avec des valeurs par "
+        "défaut devinées.")
+    add_h2(doc, "6.3 Résolution des valeurs de filtre — _fuzzy_match()")
+    add_body(doc, "Ordre de résolution, dans cet ordre strict :")
+    add_numbered(doc, "correspondance exacte dans la liste des valeurs connues ;")
+    add_numbered(doc, "alias métier explicite (ex. « gagné » → « Offre gagnée ») ;")
+    add_numbered(doc, "sous-chaîne bidirectionnelle ;")
+    add_numbered(doc, "correspondance approchée via difflib (seuil 0.72).")
+    add_body(doc,
+        "Si rien ne correspond avec confiance, IntentUnclear est levée et remonte "
+        "comme demande de clarification nommant explicitement la valeur non reconnue "
+        "— jamais un filtre silencieusement ignoré ou remplacé.")
+    add_h2(doc, "6.4 Dates relatives — calcul déterministe, jamais par le LLM")
+    add_body(doc,
+        "refine_intent() / _apply_relative_period() (intent_refiner.py) résolvent "
+        "des expressions comme « ce mois-ci », « l'année dernière » ou « le trimestre "
+        "dernier » par de l'arithmétique de date pure en Python (gestion des passages "
+        "d'année incluse). Le prompt système interdit explicitement au LLM de deviner "
+        "un calcul de date incertain — un choix qui élimine une classe entière "
+        "d'erreurs plausibles-mais-fausses.")
+
+    # --- SQL ---
+    add_h1(doc, "7. Couche SQL sécurisée")
+    add_body(doc,
+        "schema_and_whitelist.py est la source unique de vérité : ALLOWED_TABLES "
+        "définit les tables/vues et leurs colonnes autorisées ; VALID_METRICS, "
+        "VALID_DIMENSIONS, VALID_FILTERS bornent ce que le LLM peut produire. "
+        "db_layer.py traduit l'intention validée en requête SQL paramétrée (jamais "
+        "de concaténation de valeurs utilisateur dans la chaîne SQL).")
+    add_bullet(doc, "Chaque dimension a une vue pré-agrégée dédiée (ex. v_by_country) ; à "
+                     "défaut, bascule sur un GROUP BY à la volée sur la table opportunities.")
+    add_bullet(doc, "Un filtre à valeurs multiples (comparaison) devient une clause SQL IN (...).")
+    add_bullet(doc, "Les filtres numériques (range_filters) supportent <, >, <=, >=, =, et between.")
+    add_bullet(doc, "Si une vue ne contient pas la métrique demandée, bascule automatique et "
+                     "cohérente vers un calcul groupé sur la table brute plutôt qu'une erreur.")
+
+    # --- Vega ---
+    add_h1(doc, "8. Génération des graphiques (Vega-Lite)")
+    add_bullet(doc, "Un camembert de plus de 6 segments bascule automatiquement en barres "
+                     "horizontales (lisibilité) — MAX_PIE_SLICES / MAX_BAR_CATEGORIES.")
+    add_bullet(doc, "Pour sum/count, la traîne au-delà du seuil est regroupée dans « Autres » ; "
+                     "pour avg (ex. win_probability), simple troncature — une moyenne de moyennes "
+                     "n'aurait pas de sens statistique.")
+    add_bullet(doc, "Palette catégorielle fixe et validée (contraste daltonisme) pour les "
+                     "camemberts, distincte de la teinte de marque (ACCENT) utilisée pour les "
+                     "graphiques à série unique (barres/courbes) — séparation volontaire pour ne "
+                     "pas perturber la validation CVD de la première en retintant pour le branding.")
+    add_bullet(doc, "Les valeurs KPI NULL (win_probability/weighted_amount, ~47% des lignes) "
+                     "restent None côté Python et s'affichent « N/A » — jamais silencieusement "
+                     "converties en 0.")
+
+    # --- Réponses texte ---
+    add_h1(doc, "9. Réponses textuelles déterministes")
+    add_body(doc,
+        "response_builder.py calcule le message affiché à l'utilisateur directement "
+        "depuis les données retournées par la requête SQL — jamais par le LLM. "
+        "format_metric_value() applique les règles d'unité (budget en €, "
+        "win_probability en % en multipliant par 100 car stocké en base comme "
+        "fraction 0-1, nb_opportunities en entier). Cette séparation garantit que le "
+        "texte affiché ne peut jamais diverger des chiffres réels du graphique.")
+
+    # --- Alertes ---
+    add_h1(doc, "10. Alertes deadlines — dernière fonctionnalité livrée")
+    add_h2(doc, "10.1 Pourquoi ne pas se fier à la colonne days_remaining seule")
+    add_body(doc,
+        "days_remaining est une colonne figée au moment de l'import des données — "
+        "elle ne diminue pas toute seule au fil des jours. get_upcoming_deadline_"
+        "opportunities() (alerts.py) calcule donc la fenêtre « échéance ≤ 7 jours » "
+        "en direct via DATEDIFF(deadline, CURDATE()) côté MySQL, jamais depuis cette "
+        "colonne. En complément, maintenance.py::refresh_days_remaining() recalcule "
+        "purement et simplement cette colonne chaque nuit (UPDATE ... SET "
+        "days_remaining = DATEDIFF(deadline, CURDATE())), pour que sa valeur reste "
+        "cohérente partout ailleurs dans l'application (tableaux, requêtes « urgentes "
+        "< 7 jours » posées au chat).")
+    add_h2(doc, "10.2 Pourquoi recalculer plutôt que décrémenter de 1 chaque jour")
+    add_body(doc,
+        "Un simple `days_remaining = days_remaining - 1` accumulerait une dérive "
+        "silencieuse dès que le job est manqué un jour (serveur éteint, redémarrage) "
+        "— l'écart resterait indéfiniment. Recalculer depuis la deadline réelle est "
+        "idempotent et se corrige tout seul à la prochaine exécution, quel que soit "
+        "le nombre de jours manqués entre-temps.")
+    add_h2(doc, "10.3 Deux jobs planifiés (APScheduler, backend/main.py)")
+    add_table(doc,
+        ["Heure", "Job", "Rôle"],
+        [
+            ["00:05", "refresh_days_remaining", "Recalcule days_remaining pour toutes les opportunités."],
+            ["08:00", "run_daily_alert_check", "Requête les opportunités actives à échéance ≤ 7 jours et "
+             "envoie l'email récapitulatif si la liste n'est pas vide."],
+        ])
+    add_body(doc,
+        "refresh_days_remaining() est aussi appelée une première fois au démarrage "
+        "du serveur (lifespan), pour rattraper immédiatement une valeur restée figée "
+        "depuis le dernier arrêt, sans attendre minuit.")
+    add_h2(doc, "10.4 Envoi de l'email (Gmail SMTP)")
+    add_body(doc,
+        "send_alert_email() utilise smtplib avec STARTTLS sur smtp.gmail.com:587, "
+        "authentifié par un mot de passe d'application Gmail (jamais le mot de passe "
+        "principal du compte) — trois variables d'environnement dédiées "
+        "(GMAIL_SENDER, GMAIL_APP_PASSWORD, ALERT_RECIPIENT_EMAIL), absentes du dépôt "
+        "git. Le corps de l'email liste chaque opportunité avec son urgence, son "
+        "client, son statut et son budget.")
+    add_h2(doc, "10.5 Exclusion des statuts clos")
+    add_body(doc,
+        "EXCLUDED_STATUSES filtre les opportunités déjà gagnées, perdues, signées, "
+        "infructueuses, « NO GO », hors scope ou non shortlistées — une opportunité "
+        "close ne doit plus jamais déclencher d'alerte, même si sa date d'échéance "
+        "reste techniquement proche.")
+    add_h2(doc, "10.6 Bandeau frontend (AlertBanner.jsx)")
+    add_body(doc,
+        "Le composant interroge GET /alerts/deadlines au montage (lecture live, "
+        "indépendante du digest email quotidien — mêmes règles métier) et affiche un "
+        "bandeau dépliable en haut du dashboard, avec un code couleur d'urgence "
+        "(rouge ≤ 3 jours, orange 4-7 jours) réutilisant les jetons de statut déjà "
+        "définis dans le design system de l'application.")
+
+    # --- Frontend ---
+    add_h1(doc, "11. Frontend (Vite + React)")
+    add_bullet(doc, "Composants principaux : ChatPanel, DashboardPanel, AlertBanner, VegaChart, "
+                     "DataTable, StatTile, ThemeToggle, DevoteamLogo.")
+    add_bullet(doc, "Hooks dédiés : useTheme (clair/sombre), useVegaEmbed (rendu Vega-Lite dans "
+                     "le DOM).")
+    add_bullet(doc, "Thème géré par variables CSS (custom properties) — le mode sombre est "
+                     "SÉLECTIONNÉ avec ses propres valeurs, pas un simple filtre inversé "
+                     "automatique.")
+    add_bullet(doc, "Jetons de marque (--brand-primary…) volontairement séparés des jetons "
+                     "de sécurité des graphiques (--series-1…8) pour ne jamais mélanger "
+                     "esthétique et lisibilité daltonisme.")
+    add_bullet(doc, "Astuce React : un compteur dashboardKey, incrémenté à chaque nouvelle "
+                     "réponse, est utilisé comme prop key pour forcer le remontage des "
+                     "composants et rejouer les animations d'entrée à chaque nouveau résultat.")
+
+    # --- Sécurité ---
+    add_h1(doc, "12. Sécurité")
+    add_bullet(doc, "Aucune injection SQL possible : le LLM ne produit jamais de SQL, "
+                     "uniquement un JSON borné par une liste blanche, converti en requêtes "
+                     "paramétrées.")
+    add_bullet(doc, ".env (clés API, identifiants email) exclu du suivi git via .gitignore ; "
+                     ".env.example documente les variables attendues sans valeurs réelles.")
+    add_bullet(doc, "Le mot de passe d'application Gmail est distinct du mot de passe principal "
+                     "du compte et révocable indépendamment.")
+
+    # --- Tests ---
+    add_h1(doc, "13. Tests automatisés")
+    add_body(doc,
+        "63 tests pytest, sans dépendance réseau ni base de données réelle : le client "
+        "Groq et les connexions MySQL sont simulés (monkeypatch) via de faux objets "
+        "(fake cursor/connection capturant la requête générée pour l'affirmer dans le "
+        "test).")
+    add_table(doc,
+        ["Fichier", "Tests", "Ce qu'il protège"],
+        [
+            ["test_llm_validation.py", "14", "Anti-hallucination : clarification plutôt que valeur devinée, "
+             "résolution fuzzy des filtres, chemin rapide vs LLM."],
+            ["test_intent_refiner.py", "15", "Dates relatives, parseur par mots-clés, affinage d'intention."],
+            ["test_db_layer.py", "7", "Construction des requêtes SQL, choix de vue, clauses IN/BETWEEN."],
+            ["test_vega_generator.py", "9", "Cardinalité des graphiques, palette, gestion des valeurs NULL."],
+            ["test_response_builder.py", "8", "Formatage des unités, messages texte déterministes."],
+            ["test_alerts.py", "7", "Fenêtre de 7 jours en direct, exclusion des statuts clos, envoi email."],
+            ["test_maintenance.py", "3", "Recalcul de days_remaining, résilience à une panne DB."],
+        ])
+
+    # --- Q&A entretien ---
+    add_h1(doc, "14. Questions d'entretien probables")
+    qa = [
+        ("Pourquoi ne pas laisser le LLM écrire du SQL directement ?",
+         "Parce qu'un LLM peut halluciner une colonne, une table ou une valeur inexistante. "
+         "En le limitant à produire un JSON borné par une liste blanche stricte "
+         "(schema_and_whitelist.py), toute requête SQL exécutée est garantie syntaxiquement "
+         "et sémantiquement valide, quelle que soit la sortie du modèle."),
+        ("Comment évitez-vous les hallucinations, concrètement ?",
+         "Trois filets superposés : (1) Pydantic rejette toute clé de filtre hors liste "
+         "blanche, (2) _fuzzy_match ne retourne jamais une valeur absente des données "
+         "réelles — sinon IntentUnclear déclenche une clarification, (3) les dates relatives "
+         "sont calculées par arithmétique Python déterministe, jamais devinées par le LLM."),
+        ("Pourquoi MySQL plutôt que SQLite comme prévu dans le brief initial ?",
+         "Accès concurrent plus robuste pour un backend multi-requêtes, support natif de "
+         "vues pré-agrégées par dimension, et un pool de connexions dédié — le schéma reste "
+         "simple, donc la complexité ajoutée reste faible face au bénéfice."),
+        ("Comment gérez-vous le contexte multi-tour sans session serveur ?",
+         "Le frontend renvoie le dernier intent résolu (previous_intent) à chaque nouvelle "
+         "question. Dès qu'un contexte est présent, le parseur rapide est systématiquement "
+         "court-circuité au profit du LLM, à qui ce contexte est injecté dans le prompt "
+         "système pour qu'il décide d'hériter ou non des paramètres précédents."),
+        ("Pourquoi recalculer days_remaining plutôt que le décrémenter de 1 chaque jour ?",
+         "Un décrément accumule une dérive silencieuse si un jour est manqué (serveur "
+         "éteint). Recalculer depuis DATEDIFF(deadline, CURDATE()) est idempotent : le "
+         "résultat est toujours correct, peu importe combien de jours se sont écoulés "
+         "depuis la dernière exécution."),
+        ("Que se passe-t-il si le LLM renvoie un JSON malformé ou un schéma invalide ?",
+         "json.JSONDecodeError et pydantic.ValidationError sont interceptées explicitement "
+         "et transformées en message de clarification pour l'utilisateur — jamais une "
+         "exception non gérée ni une réponse partiellement remplie."),
+        ("Comment le système empêche-t-il un graphique illisible (trop de catégories) ?",
+         "MAX_PIE_SLICES (6) et MAX_BAR_CATEGORIES (12) : au-delà, un camembert bascule "
+         "en barres horizontales, et la traîne est regroupée dans « Autres » pour les "
+         "agrégations sum/count (jamais pour une moyenne, qui n'aurait pas de sens agrégée)."),
+    ]
+    for question, answer in qa:
+        add_h3(doc, "Q : " + question)
+        add_body(doc, answer)
+
+    # --- Limites ---
+    add_h1(doc, "15. Limites connues")
+    add_bullet(doc, "Le scheduler ne tourne que si le processus backend reste démarré en "
+                     "continu — pas de rattrapage si le job planifié tombe pendant un arrêt.")
+    add_bullet(doc, "Pas de session de chat persistante côté navigateur (rechargement de page "
+                     "= perte de l'historique de conversation).")
+    add_bullet(doc, "Le mode « sortie structurée stricte » n'est pas supporté par Groq/Llama "
+                     "3.3 (testé et confirmé) — le filet de sécurité Pydantic + liste blanche "
+                     "reste donc le mécanisme d'application des règles, plutôt qu'une garantie "
+                     "au niveau du schéma du modèle.")
+
+    out_path = os.path.join(DOC_DIR, "Guide_Technique_DevoTeam_Dashboard.docx")
+    doc.save(out_path)
+    return out_path
+
+
+if __name__ == "__main__":
+    p1 = build_rapport_professionnel()
+    p2 = build_guide_technique()
+    print("Généré :", p1)
+    print("Généré :", p2)
