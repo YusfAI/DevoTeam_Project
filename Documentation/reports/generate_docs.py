@@ -5,7 +5,7 @@ Script one-shot, à relancer si le contenu doit être régénéré après une é
 du projet. Nécessite python-docx (voir requirements-dev.txt) — pas une dépendance
 runtime de l'application.
 
-Usage : python Documentation/generate_docs.py
+Usage : python Documentation/reports/generate_docs.py
 """
 import os
 
@@ -16,10 +16,11 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Inches, Pt, RGBColor
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DOC_DIR = os.path.join(ROOT, "Documentation")
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))  # Documentation/reports/
+ROOT = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+DOC_DIR = SCRIPT_DIR
 LOGO = os.path.join(ROOT, "Dev_logo_rgb.png")
-EMAIL_PROOF = os.path.join(DOC_DIR, "assets", "email_proof.png")
+EMAIL_PROOF = os.path.join(SCRIPT_DIR, "assets", "email_proof.png")
 
 CORAL = RGBColor(0xF2, 0x40, 0x5A)
 CORAL_HEX = "F2405A"
@@ -280,8 +281,8 @@ def build_rapport_professionnel():
     add_body(doc,
         "Le projet est aujourd'hui fonctionnel de bout en bout, hébergé localement, "
         "et couvre l'ensemble du cycle : compréhension du langage naturel, "
-        "génération de requêtes sécurisées, visualisation, et — dernière brique "
-        "livrée — un système d'alerte proactive par email et dans l'interface pour "
+        "génération de requêtes sécurisées, visualisation (huit types de graphiques au "
+        "choix), et un système d'alerte proactive par email et dans l'interface pour "
         "les opportunités dont l'échéance approche, avec une donnée « jours restants » "
         "recalculée chaque jour pour rester exacte.")
 
@@ -337,8 +338,16 @@ def build_rapport_professionnel():
                      "qu'une réponse devinée.")
 
     add_h2(doc, "4.2 Visualisation")
-    add_bullet(doc, "Graphiques en barres, courbes et camemberts (Vega-Lite), cartes KPI, "
-                     "tableaux détaillés.")
+    add_bullet(doc, "Huit types de rendu au choix, décidés automatiquement selon la question : "
+                     "barres, courbes, camemberts, cartes KPI, tableaux détaillés, entonnoir de "
+                     "vente, nuage de points et carte de chaleur (Vega-Lite).")
+    add_bullet(doc, "Entonnoir de vente : nombre ou budget par étape du pipeline commercial, dans "
+                     "l'ordre réel du cycle de vente — visualise directement où les deals se perdent.")
+    add_bullet(doc, "Nuage de points : budget vs probabilité de gain, taille des points = montant "
+                     "pondéré — révèle si les gros budgets ont statistiquement plus de chances de "
+                     "gagner.")
+    add_bullet(doc, "Carte de chaleur : intensité croisée entre une dimension (pays, statut…) et "
+                     "practice, pour repérer d'un coup d'œil les combinaisons les plus fortes.")
     add_bullet(doc, "Bascule automatique camembert → barres horizontales au-delà de 6 segments, "
                      "pour rester lisible.")
     add_bullet(doc, "Thème clair / sombre, palette de couleurs validée pour l'accessibilité "
@@ -411,7 +420,7 @@ def build_rapport_professionnel():
              "(alertes deadlines, mise à jour des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (63 tests)", "Suite automatisée sans dépendance réseau/DB réelle (mocks), "
+            ["Tests", "pytest (91 tests)", "Suite automatisée sans dépendance réseau/DB réelle (mocks), "
              "garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -430,7 +439,7 @@ def build_rapport_professionnel():
                      "explicite — aucune requête SQL libre.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "63 tests automatisés couvrent la compréhension du langage, la couche SQL, "
+    add_bullet(doc, "91 tests automatisés couvrent la compréhension du langage, la couche SQL, "
                      "la génération des graphiques et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -448,12 +457,16 @@ def build_rapport_professionnel():
     # --- État d'avancement et roadmap ---
     add_h1(doc, "9. État d'avancement et roadmap")
     add_body(doc, "L'application est complète et fonctionnelle de bout en bout, en hébergement local. "
-                   "Onze phases de développement ont été livrées, de la mise en place du backend "
-                   "jusqu'au système d'alertes deadlines le plus récent.", bold=False)
+                   "Quatorze phases de développement ont été livrées, de la mise en place du backend "
+                   "jusqu'aux nouveaux types de graphiques les plus récents.", bold=False)
     add_h2(doc, "Améliorations envisagées (hors périmètre actuel)")
     add_bullet(doc, "Authentification et gestion multi-utilisateurs (restriction par practice/BU).")
     add_bullet(doc, "Historique de conversation persistant côté navigateur.")
     add_bullet(doc, "Suivi analytique des sessions utilisateur.")
+    add_bullet(doc, "Barres empilées/groupées (2 dimensions croisées, ex: budget par pays décomposé "
+                     "par statut) — nécessite une évolution du schéma d'intention.")
+    add_bullet(doc, "Rattrapage automatique du scheduler si une exécution planifiée est manquée "
+                     "(serveur arrêté au moment précis du job quotidien).")
 
     # --- Conclusion ---
     add_h1(doc, "10. Conclusion")
@@ -462,10 +475,11 @@ def build_rapport_professionnel():
         "données commerciales, suivi des échéances) en une expérience conversationnelle "
         "fiable, à la fois simple d'usage pour les équipes commerciales et rigoureuse "
         "dans sa conception technique (validation stricte, tests automatisés, "
-        "traçabilité des résultats). La dernière brique livrée — les alertes deadlines "
-        "par email et dans l'interface — répond directement au risque métier "
-        "identifié : ne plus jamais manquer une échéance commerciale faute d'avoir "
-        "consulté le dashboard à temps.")
+        "traçabilité des résultats). Les alertes deadlines par email et dans "
+        "l'interface répondent directement au risque métier identifié : ne plus "
+        "jamais manquer une échéance commerciale faute d'avoir consulté le dashboard "
+        "à temps ; les nouveaux types de graphiques donnent aux équipes davantage de "
+        "façons de présenter et d'expliquer ces données à un client.")
 
     out_path = os.path.join(DOC_DIR, "Rapport_Professionnel_DevoTeam_Dashboard.docx")
     doc.save(out_path)
@@ -574,9 +588,10 @@ def build_guide_technique():
             ["backend/maintenance.py", "Recalcul quotidien de days_remaining."],
             ["backend/db.py", "Pool de connexions MySQL (DBUtils PooledDB), paresseux."],
             ["frontend/src/", "Application Vite + React (composants, hooks, styles)."],
-            ["tests/", "Suite pytest — 63 tests, aucune dépendance réseau/DB réelle."],
-            ["data/devoteam_dashboard.sql", "Dump SQL de référence (schéma + données)."],
-            ["Documentation/", "Documents de projet, dont ce guide."],
+            ["tests/", "Suite pytest — 91 tests, aucune dépendance réseau/DB réelle."],
+            ["data/devoteam_dashboard_mysql.sql", "Dump SQL de référence (schéma + données)."],
+            ["Documentation/reports/", "Ce rapport, le guide technique et leur générateur (generate_docs.py)."],
+            ["Documentation/planning/", "Brief initial du projet et données sources (hors suivi git du dépôt)."],
         ])
 
     # --- Base de données ---
@@ -725,6 +740,7 @@ def build_guide_technique():
 
     # --- Vega ---
     add_h1(doc, "8. Génération des graphiques (Vega-Lite)")
+    add_h2(doc, "8.1 Bar / pie / line — règles communes")
     add_bullet(doc, "Un camembert de plus de 6 segments bascule automatiquement en barres "
                      "horizontales (lisibilité) — MAX_PIE_SLICES / MAX_BAR_CATEGORIES.")
     add_bullet(doc, "Pour sum/count, la traîne au-delà du seuil est regroupée dans « Autres » ; "
@@ -738,6 +754,50 @@ def build_guide_technique():
                      "restent None côté Python et s'affichent « N/A » — jamais silencieusement "
                      "converties en 0.")
 
+    add_h2(doc, "8.2 Quatre types supplémentaires (funnel, scatter, heatmap, area)")
+    add_body(doc,
+        "Ajoutés après une relecture du skill de data-visualisation (choix de forme par "
+        "le job de la donnée, palette validée par un script, specs de marks) pour donner "
+        "plus de façons de raconter la même donnée commerciale sans sortir du cadre "
+        "CVD-safe déjà en place.")
+    add_bullet(doc, "Entonnoir (funnel) : dimension forcée à « status » (backend/intent_refiner.py), "
+                     "réordonné selon l'ordre réel du pipeline (FUNNEL_STAGE_ORDER) — jamais trié "
+                     "par valeur, qui donnerait un entonnoir qui ne raconte rien. Les statuts de "
+                     "sortie (perdu, NO GO, infructueux…) sont exclus : ce sont des sorties du "
+                     "pipeline, pas des étapes séquentielles. Géométrie symétrique (x_start/x_end "
+                     "centrés sur 0) précalculée en Python — Vega-Lite ne sait pas produire un "
+                     "entonnoir nativement. Rampe de bleus ordinale (une teinte par étape).")
+    add_bullet(doc, "Nuage de points (scatter) : budget × probabilité de gain, taille = montant "
+                     "pondéré, couleur = practice. Practice a exactement 3 valeurs fixes — sous le "
+                     "plafond de 3 séries que le skill impose aux formes « toutes paires » "
+                     "(scatter/bubble) pour rester lisible en vision daltonienne.")
+    add_bullet(doc, "Carte de chaleur (heatmap) : n'importe quelle dimension croisée avec practice, "
+                     "plafonnée aux 15 valeurs les plus fortes (MAX_HEATMAP_ROWS) pour rester lisible "
+                     "— rampe séquentielle (un seul hue, clair → foncé), jamais une palette "
+                     "catégorielle sur un encodage de magnitude.")
+    add_bullet(doc, "Aire (area) : même donnée qu'une courbe, remplissage en dégradé pour plus "
+                     "d'impact visuel — un principe du skill (« color comes last ») appliqué "
+                     "littéralement : la forme est identique à « line », seul l'habillage change.")
+
+    add_h2(doc, "8.3 Étude de cas — deux bugs texte/graphique trouvés en vérifiant en conditions réelles")
+    add_body(doc,
+        "Les tests automatisés valident la structure des données ; ils ne suffisent pas à "
+        "garantir que le message texte affiché au-dessus d'un graphique décrit bien ce que "
+        "ce graphique montre. Deux écarts réels ont été trouvés en interrogeant l'application "
+        "en direct (pas seulement en pytest) :")
+    add_bullet(doc, "Le texte de l'entonnoir décrivait les 19 statuts de la base (y compris "
+                     "« Offre perdue ») alors que le graphique n'en affiche que 10 (les étapes du "
+                     "pipeline). Corrigé en appliquant le même filtre de statuts au texte qu'au "
+                     "graphique — jamais deux sources de vérité différentes pour la même réponse.")
+    add_bullet(doc, "Le texte de la carte de chaleur annonçait 21 pays quand le graphique n'en "
+                     "affiche que 15 (plafond de lisibilité). Même correction : le texte réutilise "
+                     "désormais exactement la fonction de plafonnage du graphique.")
+    add_body(doc,
+        "Les deux sont couverts par un test de non-régression dédié — la leçon retenue : "
+        "un test unitaire qui vérifie chaque brique séparément peut rester vert alors que "
+        "l'assemblage final ment à l'utilisateur ; seule une vérification bout-en-bout, sur "
+        "de vraies données, le révèle.")
+
     # --- Réponses texte ---
     add_h1(doc, "9. Réponses textuelles déterministes")
     add_body(doc,
@@ -749,7 +809,7 @@ def build_guide_technique():
         "texte affiché ne peut jamais diverger des chiffres réels du graphique.")
 
     # --- Alertes ---
-    add_h1(doc, "10. Alertes deadlines — dernière fonctionnalité livrée")
+    add_h1(doc, "10. Alertes deadlines")
     add_h2(doc, "10.1 Pourquoi ne pas se fier à la colonne days_remaining seule")
     add_body(doc,
         "days_remaining est une colonne figée au moment de l'import des données — "
@@ -802,6 +862,33 @@ def build_guide_technique():
         "(rouge ≤ 3 jours, orange 4-7 jours) réutilisant les jetons de statut déjà "
         "définis dans le design system de l'application.")
 
+    add_h2(doc, "10.7 Bug trouvé : une échéance déjà passée dans une liste « urgente »")
+    add_body(doc,
+        "En testant la question « liste des opportunités urgentes (< 7 jours) », des "
+        "opportunités dont l'échéance était dépassée depuis des mois apparaissaient dans "
+        "les résultats. Cause : la traduction en filtre SQL était days_remaining < 7, "
+        "et une deadline dépassée depuis 50 jours a days_remaining = -50, donc -50 < 7 "
+        "est vrai — mathématiquement correct, sémantiquement faux : « urgent » sous-entend "
+        "une échéance encore à venir.")
+    add_body(doc,
+        "Corrigé à trois niveaux plutôt qu'un seul, par prudence — le même principe de "
+        "défense en profondeur que le reste de l'anti-hallucination du projet :")
+    add_numbered(doc, "le chemin rapide par mots-clés (intent_refiner.py) produit désormais "
+                       "{\"op\": \"between\", \"value\": [0, N]} au lieu de {\"op\": \"<\", \"value\": N} ;")
+    add_numbered(doc, "l'exemple few-shot et une instruction explicite ont été ajoutés au prompt "
+                       "système du LLM (llm.py) pour le même cas ;")
+    add_numbered(doc, "un garde-fou déterministe dans refine_intent() normalise automatiquement "
+                       "tout days_remaining avec un opérateur \"<\" ou \"<=\" en \"between\" à partir "
+                       "de 0 — quelle que soit son origine (LLM ou règle), et même si les deux "
+                       "premiers points étaient un jour contournés.")
+    add_body(doc,
+        "Le troisième niveau est le plus important pédagogiquement : une instruction de prompt "
+        "n'est jamais une garantie (le LLM l'a déjà ignorée une fois pour le scatter, voir "
+        "section 14), donc la correction réellement fiable est celle qui ne dépend pas du "
+        "LLM pour se déclencher. Le tableau affiche aussi désormais « Échéance dépassée "
+        "depuis N jours » plutôt qu'un nombre négatif brut, pour les cas où une deadline "
+        "passée reste légitimement visible (ex: une liste non filtrée par date).")
+
     # --- Frontend ---
     add_h1(doc, "11. Frontend (Vite + React)")
     add_bullet(doc, "Composants principaux : ChatPanel, DashboardPanel, AlertBanner, VegaChart, "
@@ -831,19 +918,26 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "13. Tests automatisés")
     add_body(doc,
-        "63 tests pytest, sans dépendance réseau ni base de données réelle : le client "
+        "91 tests pytest, sans dépendance réseau ni base de données réelle : le client "
         "Groq et les connexions MySQL sont simulés (monkeypatch) via de faux objets "
         "(fake cursor/connection capturant la requête générée pour l'affirmer dans le "
-        "test).")
+        "test). Complétés systématiquement par une vérification en conditions réelles "
+        "(DB MySQL réelle, appel Groq réel, et compilation par le vrai moteur vega-lite "
+        "en Node.js) — les tests protègent contre les régressions, la vérification réelle "
+        "est ce qui a révélé les deux bugs texte/graphique de la section 8.3.")
     add_table(doc,
         ["Fichier", "Tests", "Ce qu'il protège"],
         [
+            ["test_intent_refiner.py", "25", "Dates relatives, parseur par mots-clés, affinage d'intention, "
+             "normalisation funnel/heatmap/scatter/days_remaining."],
+            ["test_vega_generator.py", "18", "Cardinalité des graphiques, palette, valeurs NULL, "
+             "les 4 nouveaux types de graphiques."],
             ["test_llm_validation.py", "14", "Anti-hallucination : clarification plutôt que valeur devinée, "
              "résolution fuzzy des filtres, chemin rapide vs LLM."],
-            ["test_intent_refiner.py", "15", "Dates relatives, parseur par mots-clés, affinage d'intention."],
-            ["test_db_layer.py", "7", "Construction des requêtes SQL, choix de vue, clauses IN/BETWEEN."],
-            ["test_vega_generator.py", "9", "Cardinalité des graphiques, palette, gestion des valeurs NULL."],
-            ["test_response_builder.py", "8", "Formatage des unités, messages texte déterministes."],
+            ["test_response_builder.py", "13", "Formatage des unités, messages texte déterministes, "
+             "cohérence texte/graphique pour funnel et heatmap."],
+            ["test_db_layer.py", "11", "Construction des requêtes SQL, choix de vue, clauses IN/BETWEEN, "
+             "requête 2D du heatmap, chemin brut du scatter."],
             ["test_alerts.py", "7", "Fenêtre de 7 jours en direct, exclusion des statuts clos, envoi email."],
             ["test_maintenance.py", "3", "Recalcul de days_remaining, résilience à une panne DB."],
         ])
@@ -883,6 +977,19 @@ def build_guide_technique():
          "MAX_PIE_SLICES (6) et MAX_BAR_CATEGORIES (12) : au-delà, un camembert bascule "
          "en barres horizontales, et la traîne est regroupée dans « Autres » pour les "
          "agrégations sum/count (jamais pour une moyenne, qui n'aurait pas de sens agrégée)."),
+        ("Une instruction de prompt suffit-elle à garantir un comportement du LLM ?",
+         "Non — observé concrètement : une question de corrélation était systématiquement "
+         "interprétée comme un simple KPI malgré un exemple few-shot explicite, parce que "
+         "le parseur rapide (mots-clés, avant même l'appel LLM) l'interceptait avec une "
+         "confiance mal placée. Corrigé en élargissant la détection de mots-clés — la leçon : "
+         "diagnostiquer d'abord QUEL composant a décidé avant de corriger le prompt, le "
+         "problème n'est pas toujours là où on l'imagine."),
+        ("Pourquoi corriger le bug days_remaining à trois endroits différents ?",
+         "Défense en profondeur, le même principe que l'anti-hallucination générale du "
+         "projet : le chemin rapide et le prompt LLM sont corrigés pour ne plus produire "
+         "le bug, ET un garde-fou déterministe dans refine_intent() normalise le résultat "
+         "quelle que soit son origine — utile si jamais les deux premiers correctifs sont "
+         "un jour contournés par une reformulation imprévue."),
     ]
     for question, answer in qa:
         add_h3(doc, "Q : " + question)

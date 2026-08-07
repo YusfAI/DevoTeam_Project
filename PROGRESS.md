@@ -16,6 +16,9 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 9 — Compréhension du prompt : contexte multi-tour, dates relatives, comparaisons
 - [x] Phase 10 — Migration du LLM : Groq (Llama 3.3) → Claude (Anthropic) *(annulée en Phase 11)*
 - [x] Phase 11 — Retour à Groq (Llama 3.3)
+- [x] Phase 12 — Identité visuelle Devoteam (logo, couleurs, animations)
+- [x] Phase 13 — Alertes deadlines (email + bannière) et recalcul quotidien de days_remaining
+- [x] Phase 14 — Nouveaux types de graphiques (funnel, scatter, heatmap, area) et correction du bug days_remaining négatif
 
 ## 📝 Journaux
 
@@ -45,6 +48,12 @@ Vérifié en conditions réelles (MySQL + Groq) pour les trois : date relative r
 
 **Phase 11** : Terminée. Retour complet à Groq (`llama-3.3-70b-versatile`) — `backend/llm.py` et `tests/test_llm_validation.py` restaurés à l'état de fin de Phase 9 (JSON libre + validation Pydantic + réparation heuristique `_resolve_metric`/`_resolve_dimension`, toutes les capacités de la Phase 9 — dates relatives, comparaisons, contexte multi-tour — inchangées et déjà compatibles avec ce chemin). `requirements.txt`, `.env`, `.env.example`, `README.md` repointés vers `GROQ_API_KEY`. Suite `pytest` (53 tests) revérifiée après restauration.
 
+**Phase 12** : Terminée. Refonte visuelle aux couleurs et au logo Devoteam (corail `#f2405a` + charbon), séparée en jetons CSS distincts des jetons de sécurité des graphiques (`--brand-primary…` vs `--series-1…8`) pour ne jamais mélanger esthétique et lisibilité daltonisme. Logo recréé en SVG (`DevoteamLogo.jsx`), intégré au header du chat et au favicon. Animations : fond dégradé animé, halo pulsé sur le logo, apparition en fondu des messages/graphiques (compteur `dashboardKey` pour forcer le rejeu des animations à chaque nouvelle réponse), respect de `prefers-reduced-motion`. `ACCENT` (bar/line, teinte unique) reteinté en corail, `CATEGORICAL_PALETTE` (pie, plusieurs teintes) laissée intacte pour ne pas invalider sa validation CVD.
+
+**Phase 13** : Terminée. Système d'alerte deadlines : un scheduler (`APScheduler`, intégré au cycle de vie FastAPI) vérifie chaque jour à 8h les opportunités actives (statuts clos exclus) dont l'échéance tombe dans les 7 jours suivants (`DATEDIFF(deadline, CURDATE())`, jamais une valeur en cache), et envoie un email récapitulatif (Gmail SMTP/STARTTLS, mot de passe d'application) — répété chaque jour tant que la deadline n'est pas dépassée. Un bandeau dépliable (`AlertBanner.jsx`) affiche la même liste en direct dans le dashboard (`GET /alerts/deadlines`). Corrigé au passage : `days_remaining` était figée à la valeur importée en base (ne diminuait jamais) — un second job quotidien (minuit) et un appel au démarrage la recalculent désormais depuis la deadline réelle (`backend/maintenance.py`), plutôt que de la décrémenter de 1 (qui dériverait silencieusement après tout arrêt du serveur).
+
+**Phase 14** : Terminée. Quatre nouveaux types de graphiques ajoutés en s'appuyant sur le skill de data-visualisation (choix de forme par le job de la donnée, palette validée, specs de marks) : entonnoir de vente (statut, ordre fixe du pipeline, statuts de sortie exclus), nuage de points (budget × probabilité de gain × montant pondéré, couleur = practice), carte de chaleur (dimension × practice, plafonnée aux 15 lignes les plus fortes) et aire (variante de la courbe, remplissage en dégradé). Chaque spec Vega-Lite générée est vérifiée par compilation réelle (`vega-lite` en Node.js), pas seulement par la structure du dict Python. Deux bugs texte/graphique trouvés en vérifiant bout-en-bout (le message décrivait plus de lignes que le graphique n'en affiche, pour l'entonnoir et la carte de chaleur) et corrigés avec un test de non-régression chacun. Corrigé aussi, signalé par l'utilisateur : `days_remaining < N` (« opportunités urgentes ») incluait les deadlines déjà dépassées (valeur négative) — corrigé à trois niveaux (parseur rapide, prompt LLM, et un garde-fou déterministe dans `refine_intent` qui normalise toute occurrence, quelle que soit son origine). Suite `pytest` : 91 tests (était 63).
+
 
 ## 📊 Bilan du Produit
 
@@ -54,6 +63,9 @@ L'application est **complète et fonctionnelle, exécutable de bout-en-bout**, h
 - Le LLM reste volontairement rigide sur les demandes ambiguës : une métrique/dimension/valeur de filtre non reconnue déclenche désormais systématiquement une demande de clarification explicite plutôt qu'un résultat deviné — c'est un choix délibéré (anti-hallucination), pas un bug, mais ça veut dire que certaines formulations très informelles échoueront là où un système plus permissif aurait deviné (parfois correctement, parfois non).
 - L'interface ne maintient pas de véritable "contexte de session de chat" persistant côté navigateur (rechargement efface le chat).
 - Le bundle frontend (Vega/Vega-Lite/Vega-Embed) dépasse le seuil d'avertissement Vite (~1 Mo minifié) — sans impact réel en usage local, mais un code-splitting (import dynamique de vega-embed) serait la prochaine étape si l'app devait un jour être servie sur un réseau plus lent.
+- Le scheduler des alertes/du recalcul `days_remaining` (APScheduler) ne tourne que si le processus backend reste démarré en continu — si le serveur est arrêté pile au moment d'une exécution planifiée (8h ou minuit), elle est manquée ce jour-là, sans rattrapage automatique.
+- La liste « opportunités urgentes » n'exclut pas les statuts déjà clos (une offre déjà perdue avec une deadline dans 3 jours y apparaît encore) — contrairement aux alertes email/bannière (Phase 13) qui excluent bien ces statuts. Les deux chemins pourraient être unifiés.
+- Le nuage de points et la carte de chaleur (Phase 14) n'ont pas de garde-fou de cardinalité aussi mûr que bar/pie pour des cas extrêmes (ex: une dimension à très forte cardinalité en axe du heatmap au-delà du plafond testé).
 
 ### Prochaines améliorations possibles
 *(hors scope initial du mandat)*
@@ -61,3 +73,5 @@ L'application est **complète et fonctionnelle, exécutable de bout-en-bout**, h
 - **Session ID Tracking** : Dans le log MySQL `dashboard_requests`, ajouter `session_id` pour faire du vrai product-analytics sur le comportement des utilisateurs.
 - **Contexte de chat persistant** : conserver l'historique de conversation côté navigateur (localStorage) entre les rechargements (le contexte multi-tour de la Phase 9 vit déjà en mémoire React, mais disparaît au rechargement comme le reste du chat).
 - **Mode JSON Schema strict** : non supporté par Groq/`llama-3.3-70b-versatile` (testé en Phase 9, confirmé 400 explicite). Fonctionne nativement avec Claude (validé en Phase 10) si l'app devait un jour migrer à nouveau — le filet de sécurité actuel (Pydantic + whitelist + `IntentUnclear`) reste suffisant en attendant.
+- **Barres empilées/groupées (2 dimensions)** : ex. « budget par pays, décomposé par statut ». Chart type envisagé en Phase 14 mais pas construit — nécessiterait un champ `group_by` dans le schéma d'intention, plus gros chantier que les 4 types livrés (qui réutilisent tous la dimension unique existante).
+- **Rattrapage du scheduler** : au démarrage, vérifier si l'exécution planifiée du jour a été manquée (ex: serveur resté éteint pendant la fenêtre 8h) et la rejouer immédiatement plutôt que d'attendre le lendemain.
