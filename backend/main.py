@@ -1,6 +1,9 @@
 import os
 import json
 import hashlib
+from contextlib import asynccontextmanager
+
+from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -13,8 +16,27 @@ from .db_layer import build_and_execute_query
 from .vega_generator import build_vega_spec
 from .response_builder import build_data_response, get_help_message, extract_metric_value, format_metric_value
 from .db import get_connection
+from .alerts import get_upcoming_deadline_opportunities, run_daily_alert_check
+from .maintenance import refresh_days_remaining
 
-app = FastAPI(title="DevoTeam Dashboard")
+# Deux jobs quotidiens : days_remaining est recalculé à minuit (pour que la valeur
+# affichée dans le chat/tableaux soit déjà correcte au réveil), puis l'alerte deadline
+# tourne à 8h (heure serveur) sur la base de ces valeurs fraîches — assez tôt pour que
+# l'équipe commerciale la voie en arrivant, sans dépendre d'un déclenchement manuel.
+_scheduler = BackgroundScheduler()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    refresh_days_remaining()  # rattrape immédiatement une valeur restée figée depuis l'import/le dernier arrêt
+    _scheduler.add_job(refresh_days_remaining, "cron", hour=0, minute=5, id="daily_days_remaining_refresh")
+    _scheduler.add_job(run_daily_alert_check, "cron", hour=8, minute=0, id="daily_deadline_alert")
+    _scheduler.start()
+    yield
+    _scheduler.shutdown(wait=False)
+
+
+app = FastAPI(title="DevoTeam Dashboard", lifespan=lifespan)
 
 # Paths
 FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "dist")
@@ -101,6 +123,14 @@ async def generate_dashboard(request: ChatRequest):
         # Protect against unhandled internal crashes by returning a 500 error gracefully
         print(f"Server error: {e}")
         raise HTTPException(status_code=500, detail="Erreur interne du serveur. Veuillez réessayer plus tard.")
+
+
+@app.get("/alerts/deadlines")
+async def get_deadline_alerts():
+    """Lecture live (indépendante du digest email quotidien) pour le panneau d'alerte
+    du frontend — mêmes règles : opportunités actives, échéance ≤ 7 jours."""
+    opportunities = get_upcoming_deadline_opportunities()
+    return {"opportunities": opportunities, "window_days": 7}
 
 
 # Doit rester la DERNIÈRE route déclarée : sert le build React (frontend/dist) sur "/"

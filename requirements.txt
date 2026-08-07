@@ -6,3 +6,4 @@ dbutils
 pydantic
 groq
 aiofiles
+apscheduler

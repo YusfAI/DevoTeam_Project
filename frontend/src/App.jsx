@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import ChatPanel from './components/ChatPanel'
 import DashboardPanel from './components/DashboardPanel'
+import AlertBanner from './components/AlertBanner'
 import { useTheme } from './hooks/useTheme'
 import { postDashboardQuery } from './api'
 
@@ -54,16 +55,19 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      <ChatPanel
-        messages={messages}
-        loading={loading}
-        onSubmit={handleSubmit}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        inputRef={inputRef}
-      />
-      <DashboardPanel dashboard={dashboard} theme={theme} dashboardKey={dashboardKey} />
+    <div className="app-shell">
+      <AlertBanner />
+      <div className="app">
+        <ChatPanel
+          messages={messages}
+          loading={loading}
+          onSubmit={handleSubmit}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          inputRef={inputRef}
+        />
+        <DashboardPanel dashboard={dashboard} theme={theme} dashboardKey={dashboardKey} />
+      </div>
     </div>
   )
 }

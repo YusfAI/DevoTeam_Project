@@ -40,12 +40,137 @@ body::before {
   }
 }
 
-.app {
+.app-shell {
   display: flex;
+  flex-direction: column;
   height: 100vh;
-  overflow: hidden;
   position: relative;
   z-index: 1;
+}
+
+.app {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ---------- Bannière d'alerte deadlines ---------- */
+
+.alert-banner {
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--status-critical) 10%, var(--surface-card));
+  border-bottom: 1px solid color-mix(in srgb, var(--status-critical) 30%, transparent);
+  border-left: 4px solid var(--status-critical);
+  display: flex;
+  align-items: center;
+  position: relative;
+  animation: fadeIn 0.3s ease;
+}
+
+.alert-banner-summary {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+}
+
+.alert-banner-icon {
+  color: var(--status-critical);
+  font-size: 1rem;
+}
+
+.alert-banner-chevron {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  margin-left: 4px;
+}
+
+.alert-banner-dismiss {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 8px 16px;
+}
+
+.alert-banner-dismiss:hover {
+  color: var(--text-primary);
+}
+
+.alert-banner-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-top: none;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  z-index: 5;
+  animation: fadeInUp 0.2s ease;
+}
+
+.alert-banner-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--gridline);
+  font-size: 0.85rem;
+}
+
+.alert-banner-row:last-child {
+  border-bottom: none;
+}
+
+.alert-days {
+  flex-shrink: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+
+.alert-days.critical {
+  background: color-mix(in srgb, var(--status-critical) 18%, var(--surface-card));
+  color: var(--status-critical);
+}
+
+.alert-days.warning {
+  background: color-mix(in srgb, var(--status-warning) 20%, var(--surface-card));
+  color: color-mix(in srgb, var(--status-warning) 70%, black);
+}
+
+.alert-buyer {
+  font-weight: 600;
+  flex-shrink: 0;
+  min-width: 140px;
+}
+
+.alert-meta {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.alert-budget {
+  margin-left: auto;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 
 /* ---------- Chat ---------- */

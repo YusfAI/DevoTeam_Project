@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/dashboard': 'http://127.0.0.1:8000',
+      '/alerts': 'http://127.0.0.1:8000',
     },
   },
 })
