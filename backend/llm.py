@@ -321,7 +321,7 @@ User: "combien d'opportunités gagnées ?"
 → {"goal":"Nombre d'offres gagnées","metric":"nb_opportunities","dimension":"","filters":{"status":"Offre gagnée"},"range_filters":{},"chart_type":"kpi_card","aggregation":"count","use_raw_table":false,"is_conversation":false}
 
 User: "liste des opportunités qui expirent dans moins de 7 jours"
-→ {"goal":"Opportunités urgentes","metric":"budget","dimension":"","filters":{},"range_filters":{"days_remaining":{"op":"<","value":7}},"chart_type":"table","aggregation":"sum","use_raw_table":true,"is_conversation":false}
+→ {"goal":"Opportunités urgentes","metric":"budget","dimension":"","filters":{},"range_filters":{"days_remaining":{"op":"between","value":[0,7]}},"chart_type":"table","aggregation":"sum","use_raw_table":true,"is_conversation":false}
 
 User: "répartition par practice"
 → {"goal":"Répartition par practice","metric":"nb_opportunities","dimension":"practice","filters":{},"range_filters":{},"chart_type":"pie","aggregation":"sum","use_raw_table":false,"is_conversation":false}
@@ -334,6 +334,18 @@ User: (contexte précédent : budget par pays pour Risk Advisory) "et pour Data 
 
 User: "bonjour"
 → {"goal":"","metric":"","dimension":"","filters":{},"range_filters":{},"chart_type":"bar","aggregation":"sum","use_raw_table":false,"is_conversation":true}
+
+User: "montre-moi l'entonnoir de vente"
+→ {"goal":"Entonnoir de vente","metric":"nb_opportunities","dimension":"status","filters":{},"range_filters":{},"chart_type":"funnel","aggregation":"count","use_raw_table":false,"is_conversation":false}
+
+User: "y a-t-il un lien entre le budget et la probabilité de gain ?"
+→ {"goal":"Budget vs probabilité de gain","metric":"budget","dimension":"","filters":{},"range_filters":{},"chart_type":"scatter","aggregation":"sum","use_raw_table":false,"is_conversation":false}
+
+User: "carte de chaleur du budget par pays et practice"
+→ {"goal":"Budget par pays et practice","metric":"budget","dimension":"country","filters":{},"range_filters":{},"chart_type":"heatmap","aggregation":"sum","use_raw_table":false,"is_conversation":false}
+
+User: "évolution du budget en aire"
+→ {"goal":"Évolution du budget","metric":"budget","dimension":"deadline_month","filters":{},"range_filters":{},"chart_type":"area","aggregation":"sum","use_raw_table":false,"is_conversation":false}
 """
 
     system_prompt = f"""Tu es un parseur d'intentions pour un dashboard commercial DevoTeam.
@@ -347,6 +359,10 @@ RÈGLES ABSOLUES :
 - Toujours mapper les termes vague vers les valeurs EXACTES listées ci-dessous.
 - N'invente JAMAIS de calcul de date : si une période relative n'est pas claire (ex. "récemment"),
   laisse deadline_month/deadline_year de côté plutôt que de deviner une date.
+- Si la question porte sur un LIEN, une CORRÉLATION, une RELATION ou demande si deux mesures
+  "vont ensemble" (ex: "le budget influence-t-il les chances de gagner ?", "lien entre X et Y") →
+  chart_type = "scatter", metric = "budget", dimension = "". Ce n'est JAMAIS un kpi_card : un seul
+  chiffre moyen ne répond pas à une question de corrélation, il faut le nuage de points par opportunité.
 
 COLONNES metric autorisées : {VALID_METRICS}
   budget = CA, montant, chiffre ; nb_opportunities = nombre, volume, combien ;
@@ -355,7 +371,11 @@ COLONNES metric autorisées : {VALID_METRICS}
 COLONNES dimension autorisées : {VALID_DIMENSIONS} ("" si total global ou KPI)
 
 chart_type : {VALID_CHART_TYPES}
-  bar = comparaison ; pie = répartition ; line = évolution ; kpi_card = un seul chiffre ; table = liste détaillée
+  bar = comparaison ; pie = répartition (≤ 6 catégories) ; line = évolution ; area = évolution
+  (accent visuel, même donnée que line) ; kpi_card = un seul chiffre ; table = liste détaillée ;
+  funnel = entonnoir de vente par étape du pipeline (dimension forcée à "status", ne pas t'en soucier) ;
+  scatter = corrélation entre deux mesures (toujours budget vs probabilité de gain — laisse dimension="") ;
+  heatmap = intensité croisée entre une dimension (ex: pays) et practice
 
 aggregation : ['sum', 'avg', 'count']
 
@@ -382,6 +402,9 @@ range_filters (colonnes numériques : days_remaining, deadline_year, budget, win
 deadline_month au format "YYYY-MM") :
 Format simple : {{"colonne": {{"op": "<"|">"|"<="|">="|"=", "value": valeur}}}}
 Format intervalle : {{"colonne": {{"op": "between", "value": [debut, fin]}}}}
+IMPORTANT pour days_remaining : "urgentes" / "expire dans moins de N jours" signifie une échéance
+encore À VENIR, jamais déjà passée (days_remaining peut être négatif pour une deadline dépassée).
+Utilise TOUJOURS {{"op": "between", "value": [0, N]}} pour ce cas, jamais {{"op": "<", "value": N}} seul.
 
 use_raw_table = true si l'utilisateur veut une LISTE d'opportunités (noms, détails), pas un graphique agrégé.
 

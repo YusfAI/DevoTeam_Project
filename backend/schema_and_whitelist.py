@@ -39,7 +39,7 @@ VALID_FILTERS = [
     "country", "practice", "status", "funding_source", "opp_type", "partner",
     "deadline_month", "deadline_year",
 ]
-VALID_CHART_TYPES = ["bar", "line", "pie", "table", "kpi_card"]
+VALID_CHART_TYPES = ["bar", "line", "pie", "table", "kpi_card", "area", "scatter", "heatmap", "funnel"]
 VALID_AGGREGATIONS = ["sum", "avg", "count"]
 
 # ---- Valeurs catégorielles réelles (pour que le LLM/validateur sache ce qui existe) ----

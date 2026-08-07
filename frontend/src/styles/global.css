@@ -649,6 +649,14 @@ body::before {
   font-weight: 700;
 }
 
+/* Échéance déjà passée : informatif, pas une alerte à traiter — sobre plutôt que
+   rouge/gras (qui suggère une action urgente, alors qu'il n'y a plus rien à faire). */
+.expired {
+  color: var(--text-muted);
+  font-style: italic;
+  white-space: nowrap;
+}
+
 /* ---------- Accessibilité : mouvement réduit ---------- */
 /* Toutes les animations décoratives ajoutées ci-dessus (fond, halo du logo,
    pop-in, shimmer...) sont désactivées si l'utilisateur l'a demandé au niveau

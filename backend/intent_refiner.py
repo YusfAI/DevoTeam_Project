@@ -92,6 +92,16 @@ def _detect_dimension(q: str) -> str | None:
 def _detect_chart_type(q: str, dimension: str) -> str | None:
     if any(w in q for w in ("liste", "lister", "detail", "tableau")):
         return "table"
+    if any(w in q for w in ("entonnoir", "funnel", "pipeline de vente", "pipeline commercial")):
+        return "funnel"
+    if any(w in q for w in ("nuage de points", "scatter", "bulles", "correlation", "correle",
+                             "lien entre", "rapport entre", "en fonction de")):
+        return "scatter"
+    if any(w in q for w in ("carte de chaleur", "heatmap", "heat map")):
+        return "heatmap"
+    # \b requis : "aire" en simple sous-chaîne matcherait "faire"/"affaire"/"nécessaire".
+    if re.search(r"\baire\b", q) or "area chart" in q:
+        return "area"
     if any(w in q for w in ("camembert", "repartition", "part de")):
         return "pie"
     if any(w in q for w in ("evolution", "tendance", "courbe")):
@@ -137,7 +147,10 @@ def try_rule_based_parse(query: str) -> dict | None:
     range_filters = {}
     m_days = re.search(r"(?:moins de|<=|<|inferieur(?:e)? a)\s*(\d+)\s*jours?", q)
     if m_days:
-        range_filters["days_remaining"] = {"op": "<", "value": int(m_days.group(1))}
+        # "moins de N jours" signifie une échéance encore À VENIR (urgente), jamais déjà
+        # passée — days_remaining < N inclurait aussi les valeurs négatives (deadlines
+        # dépassées depuis longtemps), donc bornée explicitement à [0, N].
+        range_filters["days_remaining"] = {"op": "between", "value": [0, int(m_days.group(1))]}
         use_raw = True
         chart_type = "table"
 
@@ -288,6 +301,37 @@ def refine_intent(query: str, intent: dict, today: Optional[date] = None) -> dic
         intent["chart_type"] = "table"
     if any(w in q for w in ("combien", "kpi", "total")) and not dimension:
         intent["chart_type"] = "kpi_card"
+
+    # Un entonnoir de vente n'a de sens que sur le statut (les étapes du pipeline) —
+    # imposé plutôt que de compter sur le LLM pour le deviner correctement à chaque fois.
+    if intent.get("chart_type") == "funnel":
+        intent["dimension"] = "status"
+
+    # Une carte de chaleur croise toujours deux dimensions (voir db_layer.py) ; si
+    # aucune n'a été précisée, "country" est un choix par défaut raisonnable — grande
+    # cardinalité, le plus intéressant à croiser avec les 3 practices fixes.
+    if intent.get("chart_type") == "heatmap" and not intent.get("dimension"):
+        intent["dimension"] = "country"
+
+    # Le scatter affiche toujours budget × probabilité de gain × montant pondéré —
+    # fixé plutôt que piloté par "metric" (voir vega_generator.py). Sans ce verrou,
+    # un metric="win_probability" ferait appliquer la mise à l'échelle ×100 (destinée
+    # à un pourcentage agrégé unique) sur le champ brut utilisé comme axe Y du nuage.
+    if intent.get("chart_type") == "scatter":
+        intent["metric"] = "budget"
+
+    # "days_remaining < N" (ou "<=") sous-entend toujours une échéance encore À VENIR —
+    # jamais déjà passée. Sans ce garde-fou déterministe, un LLM qui produit "<" au lieu
+    # de "between" (l'instruction du prompt n'est pas une garantie à 100%) laisserait
+    # passer des opportunités expirées depuis des semaines dans une liste "urgente".
+    days_filter = intent.get("range_filters", {}).get("days_remaining")
+    if days_filter and days_filter.get("op") in ("<", "<="):
+        try:
+            upper = float(days_filter["value"])
+        except (TypeError, ValueError):
+            upper = None
+        if upper is not None and upper >= 0:
+            intent["range_filters"]["days_remaining"] = {"op": "between", "value": [0, days_filter["value"]]}
 
     if intent.get("metric") == "nb_opportunities":
         intent["aggregation"] = "count"

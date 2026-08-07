@@ -59,27 +59,12 @@ def build_and_execute_query(intent: dict) -> list:
     metric = intent.get("metric", "budget")
     filters = intent.get("filters", {})
     range_filters = intent.get("range_filters", {})
-    use_raw = intent.get("use_raw_table", False) or bool(range_filters)
+    chart_type = intent.get("chart_type", "")
+    # Le scatter a besoin de plusieurs mesures par opportunité (budget, probabilité de
+    # gain, montant pondéré) — jamais une seule mesure agrégée par dimension, donc il
+    # emprunte le même chemin "lignes brutes" que use_raw_table/range_filters.
+    use_raw = intent.get("use_raw_table", False) or bool(range_filters) or chart_type == "scatter"
     limit = int(intent.get("limit") or 0)
-
-    target_table = _compute_target_table(dimension, filters, use_raw)
-    filter_keys = set(filters.keys()) | set(range_filters.keys())
-
-    select_metric = _VIEW_METRIC_ALIASES.get(metric, metric) if target_table != "opportunities" else metric
-    metric_available = target_table == "opportunities" or (
-        target_table in ALLOWED_TABLES and select_metric in ALLOWED_TABLES[target_table]["columns"]
-    )
-
-    # Le calcul groupé à la volée (GROUP BY sur la table brute) sert de filet de sécurité
-    # dès que la vue pré-agrégée ne peut pas répondre à la demande — filtre non supporté,
-    # métrique absente de la vue, ou dimension sans vue dédiée. Les données restent
-    # exactes dans tous les cas, seul le chemin de calcul change.
-    use_grouped = use_raw is False and (
-        target_table not in ALLOWED_TABLES
-        or not _view_supports_filters(target_table, filter_keys)
-        or not metric_available
-        or (dimension and target_table == "opportunities")
-    )
 
     params = []
     conditions = []
@@ -120,10 +105,52 @@ def build_and_execute_query(intent: dict) -> list:
                 conditions.append(f"{col} {op} %s")
                 params.append(_cast(col, value))
 
+    # Une carte de chaleur croise TOUJOURS deux dimensions (la dimension demandée ×
+    # practice, ou × country si la dimension demandée est déjà practice) — aucune vue
+    # pré-agrégée existante ne couvre ce croisement pour une dimension arbitraire, donc
+    # un GROUP BY à deux colonnes dédié est nécessaire, indépendant du reste de la fonction.
+    if chart_type == "heatmap" and dimension:
+        secondary = "country" if dimension == "practice" else "practice"
+        expr = METRIC_EXPR.get(metric, "SUM(budget)")
+        query = f"SELECT {dimension}, {secondary}, {expr} AS {metric} FROM opportunities"
+        add_conditions(set(ALLOWED_TABLES["opportunities"]["columns"]))
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += f" GROUP BY {dimension}, {secondary}"
+
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, tuple(params))
+                results = cur.fetchall()
+        for r in results:
+            for key, val in list(r.items()):
+                if isinstance(val, (datetime.date, datetime.datetime)):
+                    r[key] = val.isoformat()
+        return results
+
+    target_table = _compute_target_table(dimension, filters, use_raw)
+    filter_keys = set(filters.keys()) | set(range_filters.keys())
+
+    select_metric = _VIEW_METRIC_ALIASES.get(metric, metric) if target_table != "opportunities" else metric
+    metric_available = target_table == "opportunities" or (
+        target_table in ALLOWED_TABLES and select_metric in ALLOWED_TABLES[target_table]["columns"]
+    )
+
+    # Le calcul groupé à la volée (GROUP BY sur la table brute) sert de filet de sécurité
+    # dès que la vue pré-agrégée ne peut pas répondre à la demande — filtre non supporté,
+    # métrique absente de la vue, ou dimension sans vue dédiée. Les données restent
+    # exactes dans tous les cas, seul le chemin de calcul change.
+    use_grouped = use_raw is False and (
+        target_table not in ALLOWED_TABLES
+        or not _view_supports_filters(target_table, filter_keys)
+        or not metric_available
+        or (dimension and target_table == "opportunities")
+    )
+
     if use_raw:
         query = (
             "SELECT country, practice, status, buyer, budget, "
-            "financial_offer, win_probability, days_remaining, deadline "
+            "financial_offer, win_probability, weighted_amount, days_remaining, deadline "
             "FROM opportunities"
         )
         add_conditions(set(ALLOWED_TABLES["opportunities"]["columns"]))

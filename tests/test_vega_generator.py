@@ -1,4 +1,6 @@
-from backend.vega_generator import build_vega_spec, MAX_BAR_CATEGORIES
+from backend.vega_generator import (
+    build_vega_spec, MAX_BAR_CATEGORIES, MAX_HEATMAP_ROWS, KNOWN_PRACTICES, HEATMAP_COLOR_RANGE,
+)
 
 
 def _base_intent(**overrides):
@@ -106,3 +108,137 @@ def test_empty_data_returns_placeholder_without_crashing():
     spec = build_vega_spec(_base_intent(), [])
     assert spec["data"]["values"] == []
     assert "transform" not in spec
+
+
+# ---------------------------------------------------------------------------
+# area
+# ---------------------------------------------------------------------------
+
+def test_area_has_gradient_fill_and_same_shape_as_line():
+    data = [{"deadline_month": "2026-01", "budget": 1000}, {"deadline_month": "2026-02", "budget": 2000}]
+    spec = build_vega_spec(
+        _base_intent(dimension="deadline_month", chart_type="area"),
+        data,
+    )
+    assert spec["mark"]["type"] == "area"
+    assert spec["mark"]["line"]["color"] == "#f2405a"
+    assert spec["mark"]["color"]["gradient"] == "linear"
+    assert spec["encoding"]["x"]["field"] == "deadline_month"
+    assert spec["encoding"]["y"]["field"] == "budget"
+
+
+# ---------------------------------------------------------------------------
+# scatter
+# ---------------------------------------------------------------------------
+
+def _scatter_data():
+    return [
+        {"buyer": "ACME", "country": "France", "practice": "Risk Advisory", "status": "Offre remise",
+         "budget": 100000, "win_probability": 0.6, "weighted_amount": 60000},
+        {"buyer": "BIAT", "country": "Maroc", "practice": "Digital Transformation", "status": "Lead",
+         "budget": 200000, "win_probability": None, "weighted_amount": None},
+    ]
+
+
+def test_scatter_encodes_budget_win_probability_size_and_practice_color():
+    spec = build_vega_spec(_base_intent(dimension="", chart_type="scatter"), _scatter_data())
+    assert spec["mark"]["type"] == "circle"
+    enc = spec["encoding"]
+    assert enc["x"]["field"] == "budget"
+    assert enc["y"]["field"] == "win_probability"
+    assert enc["size"]["field"] == "weighted_amount"
+    assert enc["color"]["field"] == "practice"
+    assert enc["color"]["scale"]["domain"] == KNOWN_PRACTICES
+    assert len(enc["color"]["scale"]["range"]) == len(KNOWN_PRACTICES)
+
+
+def test_scatter_filters_rows_missing_either_axis_client_side():
+    spec = build_vega_spec(_base_intent(dimension="", chart_type="scatter"), _scatter_data())
+    assert spec["transform"] == [{"filter": "datum.budget != null && datum.win_probability != null"}]
+    # The raw row (including its None win_probability) still reaches the client —
+    # filtering happens in Vega, never by silently dropping rows in Python.
+    assert spec["data"]["values"][1]["win_probability"] is None
+
+
+# ---------------------------------------------------------------------------
+# heatmap
+# ---------------------------------------------------------------------------
+
+def test_heatmap_crosses_dimension_with_practice_by_default():
+    data = [
+        {"country": "France", "practice": "Risk Advisory", "budget": 100000},
+        {"country": "France", "practice": "Data Management", "budget": 50000},
+        {"country": "Maroc", "practice": "Risk Advisory", "budget": 80000},
+    ]
+    spec = build_vega_spec(_base_intent(dimension="country", chart_type="heatmap"), data)
+    assert spec["mark"]["type"] == "rect"
+    assert spec["encoding"]["y"]["field"] == "country"
+    assert spec["encoding"]["x"]["field"] == "practice"
+    assert spec["encoding"]["color"]["field"] == "budget"
+    assert spec["encoding"]["color"]["scale"]["range"] == HEATMAP_COLOR_RANGE
+
+
+def test_heatmap_uses_country_as_secondary_when_dimension_is_practice():
+    data = [{"practice": "Risk Advisory", "country": "France", "budget": 1000}]
+    spec = build_vega_spec(_base_intent(dimension="practice", chart_type="heatmap"), data)
+    assert spec["encoding"]["y"]["field"] == "practice"
+    assert spec["encoding"]["x"]["field"] == "country"
+
+
+def test_heatmap_caps_to_top_countries_by_total_not_insertion_order():
+    # 20 countries, each with one practice row — the weakest 5 must be dropped, and
+    # the strongest (highest total budget) must survive, regardless of input order.
+    data = [{"country": f"C{i}", "practice": "Risk Advisory", "budget": i * 1000} for i in range(20)]
+    spec = build_vega_spec(_base_intent(dimension="country", chart_type="heatmap"), data)
+    countries = {row["country"] for row in spec["data"]["values"]}
+    assert len(countries) == MAX_HEATMAP_ROWS
+    assert "C19" in countries  # highest budget must survive the cap
+    assert "C0" not in countries  # lowest budget must be dropped
+
+
+# ---------------------------------------------------------------------------
+# funnel
+# ---------------------------------------------------------------------------
+
+def _funnel_data():
+    # Deliberately out of pipeline order, and not sorted by value — the funnel must
+    # reorder by stage, never by value (that would misrepresent a sales pipeline).
+    return [
+        {"status": "Offre gagnée", "nb_opportunities": 5},
+        {"status": "Lead", "nb_opportunities": 40},
+        {"status": "Offre perdue", "nb_opportunities": 12},  # exit, not a pipeline stage
+        {"status": "NO GO", "nb_opportunities": 3},  # exit, not a pipeline stage
+        {"status": "En cours de qualification", "nb_opportunities": 25},
+    ]
+
+
+def test_funnel_reorders_by_pipeline_stage_and_drops_exit_statuses():
+    spec = build_vega_spec(
+        _base_intent(dimension="status", metric="nb_opportunities", chart_type="funnel"),
+        _funnel_data(),
+    )
+    bar_layer = spec["layer"][0]
+    stages = [row["stage"] for row in spec["data"]["values"]]
+    assert stages == ["Lead", "En cours de qualification", "Offre gagnée"]
+    assert "Offre perdue" not in stages
+    assert "NO GO" not in stages
+    assert bar_layer["encoding"]["y"]["sort"] == stages
+
+
+def test_funnel_geometry_is_symmetric_around_zero():
+    spec = build_vega_spec(
+        _base_intent(dimension="status", metric="nb_opportunities", chart_type="funnel"),
+        [{"status": "Lead", "nb_opportunities": 40}],
+    )
+    row = spec["data"]["values"][0]
+    assert row["x_start"] == -20.0
+    assert row["x_end"] == 20.0
+
+
+def test_funnel_with_no_known_pipeline_stage_returns_placeholder_not_empty_chart():
+    spec = build_vega_spec(
+        _base_intent(dimension="status", metric="nb_opportunities", chart_type="funnel"),
+        [{"status": "Offre perdue", "nb_opportunities": 12}, {"status": "NO GO", "nb_opportunities": 3}],
+    )
+    assert "layer" not in spec
+    assert spec["mark"]["type"] == "text"

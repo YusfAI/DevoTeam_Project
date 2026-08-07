@@ -99,3 +99,53 @@ def test_between_range_filter_produces_between_clause(monkeypatch):
 
     assert "deadline_month BETWEEN %s AND %s" in capture["query"]
     assert capture["params"] == ("2026-07", "2026-09")
+
+
+def test_heatmap_groups_by_dimension_and_practice(monkeypatch):
+    capture = {}
+    monkeypatch.setattr(db_layer, "get_connection", lambda: _FakeConn(capture))
+
+    intent = {"dimension": "country", "metric": "budget", "filters": {}, "range_filters": {}, "chart_type": "heatmap"}
+    db_layer.build_and_execute_query(intent)
+
+    assert "SELECT country, practice, SUM(budget) AS budget" in capture["query"]
+    assert "GROUP BY country, practice" in capture["query"]
+
+
+def test_heatmap_uses_country_as_secondary_when_dimension_is_practice(monkeypatch):
+    capture = {}
+    monkeypatch.setattr(db_layer, "get_connection", lambda: _FakeConn(capture))
+
+    intent = {"dimension": "practice", "metric": "nb_opportunities", "filters": {}, "range_filters": {}, "chart_type": "heatmap"}
+    db_layer.build_and_execute_query(intent)
+
+    assert "SELECT practice, country, COUNT(*) AS nb_opportunities" in capture["query"]
+    assert "GROUP BY practice, country" in capture["query"]
+
+
+def test_heatmap_applies_filters(monkeypatch):
+    capture = {}
+    monkeypatch.setattr(db_layer, "get_connection", lambda: _FakeConn(capture))
+
+    intent = {
+        "dimension": "country", "metric": "budget", "filters": {"country": ["France", "Maroc"]},
+        "range_filters": {}, "chart_type": "heatmap",
+    }
+    db_layer.build_and_execute_query(intent)
+
+    assert "country IN (%s, %s)" in capture["query"]
+    assert capture["params"] == ("France", "Maroc")
+
+
+def test_scatter_forces_the_raw_per_opportunity_path_and_includes_weighted_amount(monkeypatch):
+    # Scatter needs several measures per opportunity (budget, win_probability,
+    # weighted_amount) — never a single metric aggregated by a dimension.
+    capture = {}
+    monkeypatch.setattr(db_layer, "get_connection", lambda: _FakeConn(capture))
+
+    intent = {"dimension": "", "metric": "budget", "filters": {}, "range_filters": {}, "chart_type": "scatter"}
+    db_layer.build_and_execute_query(intent)
+
+    assert "weighted_amount" in capture["query"]
+    assert "win_probability" in capture["query"]
+    assert "FROM opportunities" in capture["query"]

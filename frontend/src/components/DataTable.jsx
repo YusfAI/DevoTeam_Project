@@ -10,6 +10,10 @@ function formatCell(col, val) {
   if ((col === 'budget' || col === 'financial_offer') && typeof val === 'number') {
     return `${val.toLocaleString('fr-FR')} €`
   }
+  if (col === 'days_remaining' && typeof val === 'number' && val < 0) {
+    const days = Math.abs(val)
+    return `Échéance dépassée depuis ${days} jour${days > 1 ? 's' : ''}`
+  }
   return String(val)
 }
 
@@ -42,8 +46,11 @@ export default function DataTable({ rows }) {
                     </td>
                   )
                 }
-                if (col === 'days_remaining' && val !== null && val !== '' && val < 7) {
-                  return <td key={col} className="urgent">{val}</td>
+                if (col === 'days_remaining' && typeof val === 'number') {
+                  const className = val < 0 ? 'expired' : val < 7 ? 'urgent' : undefined
+                  if (className) {
+                    return <td key={col} className={className}>{formatCell(col, val)}</td>
+                  }
                 }
                 return <td key={col}>{formatCell(col, val)}</td>
               })}

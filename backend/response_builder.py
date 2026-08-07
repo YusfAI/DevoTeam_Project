@@ -1,6 +1,7 @@
 """Build user-facing messages strictly from query results (no LLM hallucination)."""
 
 from .labels import METRIC_LABELS, DIMENSION_LABELS, FILTER_LABELS
+from .vega_generator import FUNNEL_STAGE_ORDER, _cap_heatmap_rows
 
 
 def get_help_message() -> str:
@@ -80,6 +81,62 @@ def build_data_response(intent: dict, data: list) -> str:
 
     if not data:
         return f"Aucune donnée trouvée{filter_desc}. Essayez d'élargir vos critères."
+
+    if chart_type == "scatter":
+        # data = lignes brutes par opportunité (budget, win_probability, weighted_amount) —
+        # ni un chiffre unique ni une répartition par dimension, donc pas les branches ci-dessous.
+        plotted = [r for r in data if r.get("budget") is not None and r.get("win_probability") is not None]
+        if not plotted:
+            return f"Aucune opportunité avec budget et probabilité de gain renseignés{filter_desc}."
+        return (
+            f"{len(plotted)} opportunité(s) avec budget et probabilité de gain renseignés{filter_desc} "
+            "— survolez les points pour le détail (client, pays, statut)."
+        )
+
+    if chart_type == "funnel" and dimension:
+        # data = toutes les valeurs du dimension demandé (ex: 19 statuts), pas seulement
+        # les étapes du pipeline que le graphique affiche réellement (voir vega_generator.py
+        # ::_build_funnel_rows) — sans ce filtre, le texte inclurait des statuts de sortie
+        # ("Offre perdue"...) que l'entonnoir ne montre pas, et divergerait du graphique.
+        stage_set = set(FUNNEL_STAGE_ORDER)
+        rows_with_values = []
+        for row in data:
+            if row.get(dimension) not in stage_set:
+                continue
+            val = extract_metric_value(row, metric)
+            if val is not None:
+                rows_with_values.append((row.get(dimension), float(val)))
+        if not rows_with_values:
+            return f"Aucune étape du pipeline trouvée dans ces données{filter_desc}."
+        total = sum(v for _, v in rows_with_values)
+        top_line = _top_entries(rows_with_values, metric, 3)
+        return (
+            f"Entonnoir de vente — {metric_label}{filter_desc}. "
+            f"Total : {format_metric_value(total, metric)} sur {len(rows_with_values)} étape(s) du pipeline. "
+            f"Principales étapes : {top_line}."
+        )
+
+    if chart_type == "heatmap" and dimension:
+        # data = toutes les valeurs de la dimension (ex: 21 pays), alors que le graphique
+        # ne garde que les plus fortes (voir vega_generator.py::_cap_heatmap_rows) — le
+        # même plafond est appliqué ici pour que le texte décrive ce qui est réellement
+        # affiché, jamais une donnée plus large que le graphique.
+        dim_label = DIMENSION_LABELS.get(dimension, dimension)
+        capped, _ = _cap_heatmap_rows(data, dimension, metric)
+        totals: dict = {}
+        for row in capped:
+            key = row.get(dimension)
+            val = extract_metric_value(row, metric)
+            if val is not None:
+                totals[key] = (totals.get(key) or 0) + val
+        if not totals:
+            return f"Aucune valeur de {metric_label} disponible{filter_desc}."
+        grand_total = sum(totals.values())
+        return (
+            f"{metric_label.capitalize()} croisé(e) {dim_label} × practice{filter_desc}. "
+            f"Total : {format_metric_value(grand_total, metric)} sur {len(totals)} {dim_label}(s) "
+            f"et {len(capped)} combinaisons affichées."
+        )
 
     if use_raw or chart_type == "table":
         budgets = [extract_metric_value(r, "budget") for r in data]

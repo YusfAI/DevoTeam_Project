@@ -51,3 +51,62 @@ def test_between_range_filter_is_rendered_readably():
     intent = {"filters": {}, "range_filters": {"deadline_month": {"op": "between", "value": ["2026-07", "2026-09"]}}}
     desc = _describe_filters(intent)
     assert "entre 2026-07 et 2026-09" in desc
+
+
+def test_scatter_message_counts_plottable_rows_not_all_rows():
+    intent = {"metric": "budget", "dimension": "", "chart_type": "scatter", "filters": {}, "range_filters": {}}
+    data = [
+        {"budget": 1000, "win_probability": 0.5},
+        {"budget": 2000, "win_probability": None},  # not plottable, must not be counted
+    ]
+    message = build_data_response(intent, data)
+    assert "1 opportunité" in message
+
+
+def test_scatter_message_handles_no_plottable_rows_without_crashing():
+    intent = {"metric": "budget", "dimension": "", "chart_type": "scatter", "filters": {}, "range_filters": {}}
+    data = [{"budget": None, "win_probability": None}]
+    message = build_data_response(intent, data)
+    assert "Aucune opportunité" in message
+
+
+def test_funnel_message_excludes_exit_statuses_not_shown_in_the_chart():
+    # data includes every status the DB query returns (19), but the funnel chart only
+    # plots pipeline stages — the text must match what's actually drawn, not the raw query.
+    intent = {"metric": "nb_opportunities", "dimension": "status", "chart_type": "funnel",
+              "goal": "Entonnoir de vente", "filters": {}, "range_filters": {}}
+    data = [
+        {"status": "Lead", "nb_opportunities": 32},
+        {"status": "Offre gagnée", "nb_opportunities": 4},
+        {"status": "Offre perdue", "nb_opportunities": 63},  # exit status, not a pipeline stage
+        {"status": "NO GO", "nb_opportunities": 3},  # exit status, not a pipeline stage
+    ]
+    message = build_data_response(intent, data)
+    assert "Offre perdue" not in message
+    assert "NO GO" not in message
+    assert "2 étape" in message
+
+
+def test_heatmap_message_respects_the_same_top_n_cap_as_the_chart():
+    # 20 countries: the chart caps to the top 15 by total (see vega_generator.py
+    # MAX_HEATMAP_ROWS) — the text must describe that same capped set, not all 20,
+    # or the message and the chart would silently disagree on what's shown.
+    intent = {"metric": "budget", "dimension": "country", "chart_type": "heatmap", "filters": {}, "range_filters": {}}
+    data = [{"country": f"C{i}", "practice": "Risk Advisory", "budget": i * 1000} for i in range(20)]
+    message = build_data_response(intent, data)
+    assert "15 pays" in message
+    assert "20 pays" not in message
+
+
+def test_heatmap_message_sums_by_dimension_not_by_grid_cell():
+    # Two cells share the same country (France) — the reported total must be the
+    # true sum across both cells, not just whichever cell happened to sort first.
+    intent = {"metric": "budget", "dimension": "country", "chart_type": "heatmap", "filters": {}, "range_filters": {}}
+    data = [
+        {"country": "France", "practice": "Risk Advisory", "budget": 100},
+        {"country": "France", "practice": "Data Management", "budget": 50},
+        {"country": "Maroc", "practice": "Risk Advisory", "budget": 80},
+    ]
+    message = build_data_response(intent, data)
+    assert "230" in message  # 100 + 50 + 80
+    assert "2 pays" in message

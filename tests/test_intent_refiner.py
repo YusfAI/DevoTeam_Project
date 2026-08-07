@@ -38,7 +38,38 @@ def test_urgent_list_forces_table():
     result = try_rule_based_parse("liste des opportunités qui expirent dans moins de 7 jours")
     assert result["use_raw_table"] is True
     assert result["chart_type"] == "table"
-    assert result["range_filters"]["days_remaining"] == {"op": "<", "value": 7}
+    # "moins de 7 jours" veut dire une échéance À VENIR — jamais déjà passée
+    # (days_remaining négatif) — donc borné à [0, 7], pas juste "< 7".
+    assert result["range_filters"]["days_remaining"] == {"op": "between", "value": [0, 7]}
+
+
+def test_refine_intent_normalizes_a_raw_lt_days_remaining_filter_from_the_llm():
+    # Defensive guard: even if the LLM ignores the prompt instruction and emits a bare
+    # "<" on days_remaining, refine_intent must still exclude already-expired deadlines.
+    intent = _base_intent(
+        metric="budget", dimension="", chart_type="table", use_raw_table=True,
+        range_filters={"days_remaining": {"op": "<", "value": 10}},
+    )
+    result = refine_intent("opportunités urgentes", intent)
+    assert result["range_filters"]["days_remaining"] == {"op": "between", "value": [0, 10]}
+
+
+def test_refine_intent_normalizes_lte_days_remaining_too():
+    intent = _base_intent(
+        metric="budget", dimension="", chart_type="table", use_raw_table=True,
+        range_filters={"days_remaining": {"op": "<=", "value": 5}},
+    )
+    result = refine_intent("opportunités urgentes", intent)
+    assert result["range_filters"]["days_remaining"] == {"op": "between", "value": [0, 5]}
+
+
+def test_refine_intent_leaves_other_range_filters_untouched():
+    intent = _base_intent(
+        metric="budget", dimension="", chart_type="table", use_raw_table=True,
+        range_filters={"budget": {"op": "<", "value": 100000}},
+    )
+    result = refine_intent("opportunités sous 100000", intent)
+    assert result["range_filters"]["budget"] == {"op": "<", "value": 100000}
 
 
 def test_refine_intent_backfills_filters_without_overriding():
@@ -69,6 +100,56 @@ def test_refine_intent_forces_pie_on_camembert_keyword():
     }
     result = refine_intent("fais un camembert par practice", intent)
     assert result["chart_type"] == "pie"
+
+
+def test_refine_intent_forces_status_dimension_for_funnel():
+    # A funnel only ever makes sense on the pipeline status — forced deterministically
+    # rather than trusting the LLM to set dimension="status" correctly every time.
+    intent = _base_intent(chart_type="funnel", dimension="country", metric="nb_opportunities")
+    result = refine_intent("montre-moi l'entonnoir de vente", intent)
+    assert result["dimension"] == "status"
+
+
+def test_refine_intent_defaults_heatmap_dimension_to_country_when_missing():
+    intent = _base_intent(chart_type="heatmap", dimension="", metric="budget")
+    result = refine_intent("carte de chaleur du budget", intent)
+    assert result["dimension"] == "country"
+
+
+def test_refine_intent_does_not_override_an_explicit_heatmap_dimension():
+    intent = _base_intent(chart_type="heatmap", dimension="status", metric="budget")
+    result = refine_intent("carte de chaleur du budget par statut", intent)
+    assert result["dimension"] == "status"
+
+
+def test_refine_intent_forces_budget_metric_for_scatter():
+    # Prevents the win_probability x100 rescale (meant for a single aggregated
+    # percentage) from corrupting the raw fraction used as the scatter's y-axis.
+    intent = _base_intent(chart_type="scatter", dimension="", metric="win_probability")
+    result = refine_intent("lien entre budget et probabilité de gain", intent)
+    assert result["metric"] == "budget"
+
+
+def test_rule_based_parser_detects_funnel_scatter_heatmap_area_keywords():
+    assert try_rule_based_parse("montre le nombre d'opportunités en entonnoir")["chart_type"] == "funnel"
+    assert try_rule_based_parse("budget en nuage de points")["chart_type"] == "scatter"
+    assert try_rule_based_parse("budget en carte de chaleur")["chart_type"] == "heatmap"
+    assert try_rule_based_parse("budget en aire par mois")["chart_type"] == "area"
+
+
+def test_correlation_phrasing_without_the_literal_word_scatter_still_routes_to_scatter():
+    # Regression: "lien entre X et Y" was previously caught by the metric-only fast
+    # path (win_probability detected, no dimension -> silently defaulted to kpi_card,
+    # which answers a completely different question than what was asked).
+    result = try_rule_based_parse("y a-t-il un lien entre le budget et la probabilite de gain")
+    assert result["chart_type"] == "scatter"
+
+
+def test_area_keyword_does_not_false_positive_on_faire_or_affaire():
+    # "aire" as a bare substring would wrongly match inside "faire"/"affaire" —
+    # must require a word boundary.
+    result = try_rule_based_parse("peux-tu me faire le budget par pays")
+    assert result["chart_type"] != "area"
 
 
 # --- Dates et périodes relatives (déterministe, jamais calculées par le LLM) ---
