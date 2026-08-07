@@ -19,6 +19,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 12 — Identité visuelle Devoteam (logo, couleurs, animations)
 - [x] Phase 13 — Alertes deadlines (email + bannière) et recalcul quotidien de days_remaining
 - [x] Phase 14 — Nouveaux types de graphiques (funnel, scatter, heatmap, area) et correction du bug days_remaining négatif
+- [x] Phase 15 — Finitions : mode sombre lisible, statuts clos exclus des requêtes urgentes, rattrapage du scheduler, historique de conversation persistant, réorganisation du dépôt
 
 ## 📝 Journaux
 
@@ -54,6 +55,15 @@ Vérifié en conditions réelles (MySQL + Groq) pour les trois : date relative r
 
 **Phase 14** : Terminée. Quatre nouveaux types de graphiques ajoutés en s'appuyant sur le skill de data-visualisation (choix de forme par le job de la donnée, palette validée, specs de marks) : entonnoir de vente (statut, ordre fixe du pipeline, statuts de sortie exclus), nuage de points (budget × probabilité de gain × montant pondéré, couleur = practice), carte de chaleur (dimension × practice, plafonnée aux 15 lignes les plus fortes) et aire (variante de la courbe, remplissage en dégradé). Chaque spec Vega-Lite générée est vérifiée par compilation réelle (`vega-lite` en Node.js), pas seulement par la structure du dict Python. Deux bugs texte/graphique trouvés en vérifiant bout-en-bout (le message décrivait plus de lignes que le graphique n'en affiche, pour l'entonnoir et la carte de chaleur) et corrigés avec un test de non-régression chacun. Corrigé aussi, signalé par l'utilisateur : `days_remaining < N` (« opportunités urgentes ») incluait les deadlines déjà dépassées (valeur négative) — corrigé à trois niveaux (parseur rapide, prompt LLM, et un garde-fou déterministe dans `refine_intent` qui normalise toute occurrence, quelle que soit son origine). Suite `pytest` : 91 tests (était 63).
 
+**Phase 15** : Terminée. Cinq retouches finales :
+- *Statuts clos exclus des requêtes urgentes* : `intent_refiner.py::refine_intent` pose désormais `exclude_statuses` (réutilisant `alerts.EXCLUDED_STATUSES`, une seule liste de statuts "clos" pour tout le projet) dès qu'un filtre `days_remaining` est présent — `db_layer.py` le traduit en `status NOT IN (...)`. Une offre déjà perdue/gagnée n'apparaît plus dans « opportunités urgentes », cohérent avec les alertes email (Phase 13).
+- *Rattrapage du scheduler* : nouvelle table `scheduler_state` (auto-créée, aucune migration à relancer) trace la dernière date d'exécution de l'alerte email. `run_daily_alert_check_if_needed()` est appelée à la fois par le cron 8h et au démarrage du serveur — idempotente (un digest déjà envoyé aujourd'hui n'est jamais renvoyé), donc un serveur éteint pile à 8h rattrape dès son redémarrage plutôt que d'attendre le lendemain.
+- *Historique de conversation persistant* : nouveau hook `useChatHistory.js` (`localStorage`, plafonné à 100 messages) restaure messages, dashboard et contexte multi-tour au rechargement de page. Un bouton "Effacer la conversation" (avec confirmation) a été ajouté dans le header du chat, puisqu'un historique qui persiste indéfiniment a besoin d'une porte de sortie.
+- *Mode sombre* : deux bugs de contraste trouvés en relisant le CSS (pas en testant à l'œil, faute d'outil de capture) — le dégradé du header utilisait `--text-primary`, qui vaut blanc en mode sombre, rendant le texte et le logo (blancs eux aussi) illisibles sur leur propre fond ; corrigé avec un nouveau jeton `--header-ink` fixe, jamais réactif au thème. Le texte "warning" du bandeau d'alerte mixait sa couleur vers du noir littéral (`color-mix(..., black)`), illisible sur un fond déjà sombre ; corrigé avec un jeton `--warning-ink-mix` qui vaut `black` en clair et `white` en sombre. Aucune valeur n'a changé en mode clair.
+- *Nettoyage* : dernier `print()` de `backend/main.py` remplacé par `logging` (cohérent avec le reste du projet depuis la Phase 8) ; `.gitignore` complété (`.pytest_cache/`, éditeurs, fichiers OS).
+
+Suite `pytest` : 100 tests (était 91).
+
 
 ## 📊 Bilan du Produit
 
@@ -61,17 +71,13 @@ L'application est **complète et fonctionnelle, exécutable de bout-en-bout**, h
 
 ### Limites connues
 - Le LLM reste volontairement rigide sur les demandes ambiguës : une métrique/dimension/valeur de filtre non reconnue déclenche désormais systématiquement une demande de clarification explicite plutôt qu'un résultat deviné — c'est un choix délibéré (anti-hallucination), pas un bug, mais ça veut dire que certaines formulations très informelles échoueront là où un système plus permissif aurait deviné (parfois correctement, parfois non).
-- L'interface ne maintient pas de véritable "contexte de session de chat" persistant côté navigateur (rechargement efface le chat).
 - Le bundle frontend (Vega/Vega-Lite/Vega-Embed) dépasse le seuil d'avertissement Vite (~1 Mo minifié) — sans impact réel en usage local, mais un code-splitting (import dynamique de vega-embed) serait la prochaine étape si l'app devait un jour être servie sur un réseau plus lent.
-- Le scheduler des alertes/du recalcul `days_remaining` (APScheduler) ne tourne que si le processus backend reste démarré en continu — si le serveur est arrêté pile au moment d'une exécution planifiée (8h ou minuit), elle est manquée ce jour-là, sans rattrapage automatique.
-- La liste « opportunités urgentes » n'exclut pas les statuts déjà clos (une offre déjà perdue avec une deadline dans 3 jours y apparaît encore) — contrairement aux alertes email/bannière (Phase 13) qui excluent bien ces statuts. Les deux chemins pourraient être unifiés.
 - Le nuage de points et la carte de chaleur (Phase 14) n'ont pas de garde-fou de cardinalité aussi mûr que bar/pie pour des cas extrêmes (ex: une dimension à très forte cardinalité en axe du heatmap au-delà du plafond testé).
+- L'historique de conversation persistant (Phase 15) est par navigateur/appareil (localStorage), pas partagé entre postes — un vrai compte utilisateur serait nécessaire pour ça.
 
 ### Prochaines améliorations possibles
 *(hors scope initial du mandat)*
 - **Auth / Multi-tenancy** : Authentifier l'utilisateur via JWT pour restreindre la visualisation aux seules pratiques de sa BU.
 - **Session ID Tracking** : Dans le log MySQL `dashboard_requests`, ajouter `session_id` pour faire du vrai product-analytics sur le comportement des utilisateurs.
-- **Contexte de chat persistant** : conserver l'historique de conversation côté navigateur (localStorage) entre les rechargements (le contexte multi-tour de la Phase 9 vit déjà en mémoire React, mais disparaît au rechargement comme le reste du chat).
 - **Mode JSON Schema strict** : non supporté par Groq/`llama-3.3-70b-versatile` (testé en Phase 9, confirmé 400 explicite). Fonctionne nativement avec Claude (validé en Phase 10) si l'app devait un jour migrer à nouveau — le filet de sécurité actuel (Pydantic + whitelist + `IntentUnclear`) reste suffisant en attendant.
 - **Barres empilées/groupées (2 dimensions)** : ex. « budget par pays, décomposé par statut ». Chart type envisagé en Phase 14 mais pas construit — nécessiterait un champ `group_by` dans le schéma d'intention, plus gros chantier que les 4 types livrés (qui réutilisent tous la dimension unique existante).
-- **Rattrapage du scheduler** : au démarrage, vérifier si l'exécution planifiée du jour a été manquée (ex: serveur resté éteint pendant la fenêtre 8h) et la rejouer immédiatement plutôt que d'attendre le lendemain.

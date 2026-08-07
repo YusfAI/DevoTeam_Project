@@ -68,6 +68,7 @@ def build_and_execute_query(intent: dict) -> list:
 
     params = []
     conditions = []
+    exclude_statuses = intent.get("exclude_statuses") or []
 
     def _cast(col: str, val):
         if col in INT_COLS:
@@ -88,6 +89,12 @@ def build_and_execute_query(intent: dict) -> list:
                 else:
                     conditions.append(f"{k} = %s")
                     params.append(_cast(k, v))
+        # Exclusion des statuts clos (ex: liste "opportunités urgentes") — jamais
+        # piloté par le LLM, posé en amont par intent_refiner.py::refine_intent().
+        if exclude_statuses and (allowed_cols is None or "status" in allowed_cols):
+            placeholders = ", ".join(["%s"] * len(exclude_statuses))
+            conditions.append(f"status NOT IN ({placeholders})")
+            params.extend(exclude_statuses)
         for col, rule in range_filters.items():
             op = rule.get("op", "<")
             value = rule.get("value")

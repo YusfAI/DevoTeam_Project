@@ -3,9 +3,8 @@ import ChatPanel from './components/ChatPanel'
 import DashboardPanel from './components/DashboardPanel'
 import AlertBanner from './components/AlertBanner'
 import { useTheme } from './hooks/useTheme'
+import { useChatHistory } from './hooks/useChatHistory'
 import { postDashboardQuery } from './api'
-
-let nextMessageId = 1
 
 const WELCOME_MESSAGE = {
   id: 0,
@@ -16,24 +15,20 @@ const WELCOME_MESSAGE = {
 }
 
 export default function App() {
-  const [messages, setMessages] = useState([WELCOME_MESSAGE])
+  const { messages, addMessage, dashboard, setDashboard, lastIntent, setLastIntent, clearHistory } =
+    useChatHistory(WELCOME_MESSAGE)
   const [loading, setLoading] = useState(false)
-  const [dashboard, setDashboard] = useState(null)
   const [dashboardKey, setDashboardKey] = useState(0)
-  const [lastIntent, setLastIntent] = useState(null)
   const [theme, toggleTheme] = useTheme()
   const inputRef = useRef(null)
 
   async function handleSubmit(text) {
-    setMessages((prev) => [...prev, { id: nextMessageId++, type: 'user', text }])
+    addMessage({ type: 'user', text })
     setLoading(true)
 
     try {
       const data = await postDashboardQuery(text, lastIntent)
-      setMessages((prev) => [
-        ...prev,
-        { id: nextMessageId++, type: 'system', text: data.ai_message || 'Voici le résultat de votre demande :' },
-      ])
+      addMessage({ type: 'system', text: data.ai_message || 'Voici le résultat de votre demande :' })
       if (data.kpi_value !== undefined || data.vega_spec || data.table_rows) {
         setDashboard(data)
         setDashboardKey((k) => k + 1)
@@ -44,14 +39,17 @@ export default function App() {
         setLastIntent(data.intent)
       }
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { id: nextMessageId++, type: 'error', text: err.message || 'Erreur de connexion au serveur.' },
-      ])
+      addMessage({ type: 'error', text: err.message || 'Erreur de connexion au serveur.' })
     } finally {
       setLoading(false)
       inputRef.current?.focus()
     }
+  }
+
+  function handleClearHistory() {
+    if (!window.confirm('Effacer tout l\'historique de conversation ?')) return
+    clearHistory()
+    setDashboardKey(0)
   }
 
   return (
@@ -64,6 +62,7 @@ export default function App() {
           onSubmit={handleSubmit}
           theme={theme}
           onToggleTheme={toggleTheme}
+          onClearHistory={handleClearHistory}
           inputRef={inputRef}
         />
         <DashboardPanel dashboard={dashboard} theme={theme} dashboardKey={dashboardKey} />

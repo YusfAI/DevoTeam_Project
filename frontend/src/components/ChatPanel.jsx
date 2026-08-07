@@ -5,7 +5,7 @@ import TypingIndicator from './TypingIndicator'
 import ThemeToggle from './ThemeToggle'
 import DevoteamLogo from './DevoteamLogo'
 
-export default function ChatPanel({ messages, loading, onSubmit, theme, onToggleTheme, inputRef }) {
+export default function ChatPanel({ messages, loading, onSubmit, theme, onToggleTheme, onClearHistory, inputRef }) {
   const endRef = useRef(null)
 
   useEffect(() => {
@@ -22,7 +22,18 @@ export default function ChatPanel({ messages, loading, onSubmit, theme, onToggle
             <p className="tagline">Dashboard commercial</p>
           </div>
         </div>
-        <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+        <div className="chat-header-actions">
+          <button
+            className="theme-toggle"
+            onClick={onClearHistory}
+            title="Effacer la conversation"
+            aria-label="Effacer la conversation"
+            type="button"
+          >
+            🗑️
+          </button>
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+        </div>
       </div>
       <div className="chat-messages">
         {messages.map((m) => (

@@ -336,6 +336,8 @@ def build_rapport_professionnel():
     add_bullet(doc, "Requêtes de comparaison entre plusieurs valeurs (« compare la France et le Maroc »).")
     add_bullet(doc, "Demande de clarification explicite si la question reste ambiguë, plutôt "
                      "qu'une réponse devinée.")
+    add_bullet(doc, "L'historique de conversation reste disponible après un rechargement de page — "
+                     "une analyse en cours n'est plus perdue par un rafraîchissement accidentel.")
 
     add_h2(doc, "4.2 Visualisation")
     add_bullet(doc, "Huit types de rendu au choix, décidés automatiquement selon la question : "
@@ -362,7 +364,9 @@ def build_rapport_professionnel():
     add_bullet(doc, "Bandeau d'alerte visible directement dans le dashboard, avec le détail "
                      "par opportunité (client, pays, practice, statut, budget, jours restants).")
     add_bullet(doc, "Exclusion automatique des opportunités déjà closes (gagnées, perdues, "
-                     "signées, infructueuses…) pour ne pas polluer l'alerte.")
+                     "signées, infructueuses…) pour ne pas polluer l'alerte — la même règle "
+                     "s'applique désormais à la question « opportunités urgentes » posée "
+                     "directement dans le chat, pour une définition cohérente sur tous les canaux.")
     add_bullet(doc, "Donnée « jours restants » recalculée chaque nuit à partir de la date "
                      "réelle du jour, pour ne jamais afficher un chiffre obsolète.")
 
@@ -370,6 +374,8 @@ def build_rapport_professionnel():
     add_bullet(doc, "Interface habillée aux couleurs et au logo Devoteam.")
     add_bullet(doc, "Micro-interactions et animations (fond animé, transitions, mise en avant "
                      "des nouveaux résultats).")
+    add_bullet(doc, "Mode sombre entièrement lisible : deux défauts de contraste corrigés "
+                     "(en-tête et texte d'alerte) sans rien changer au mode clair déjà validé.")
 
     # --- Conception et architecture ---
     add_h1(doc, "5. Conception et architecture")
@@ -420,7 +426,7 @@ def build_rapport_professionnel():
              "(alertes deadlines, mise à jour des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (91 tests)", "Suite automatisée sans dépendance réseau/DB réelle (mocks), "
+            ["Tests", "pytest (100 tests)", "Suite automatisée sans dépendance réseau/DB réelle (mocks), "
              "garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -439,7 +445,7 @@ def build_rapport_professionnel():
                      "explicite — aucune requête SQL libre.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "91 tests automatisés couvrent la compréhension du langage, la couche SQL, "
+    add_bullet(doc, "100 tests automatisés couvrent la compréhension du langage, la couche SQL, "
                      "la génération des graphiques et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -457,16 +463,14 @@ def build_rapport_professionnel():
     # --- État d'avancement et roadmap ---
     add_h1(doc, "9. État d'avancement et roadmap")
     add_body(doc, "L'application est complète et fonctionnelle de bout en bout, en hébergement local. "
-                   "Quatorze phases de développement ont été livrées, de la mise en place du backend "
-                   "jusqu'aux nouveaux types de graphiques les plus récents.", bold=False)
+                   "Quinze phases de développement ont été livrées, de la mise en place du backend "
+                   "jusqu'aux dernières retouches de finition (mode sombre, historique persistant, "
+                   "rattrapage des alertes).", bold=False)
     add_h2(doc, "Améliorations envisagées (hors périmètre actuel)")
     add_bullet(doc, "Authentification et gestion multi-utilisateurs (restriction par practice/BU).")
-    add_bullet(doc, "Historique de conversation persistant côté navigateur.")
     add_bullet(doc, "Suivi analytique des sessions utilisateur.")
     add_bullet(doc, "Barres empilées/groupées (2 dimensions croisées, ex: budget par pays décomposé "
                      "par statut) — nécessite une évolution du schéma d'intention.")
-    add_bullet(doc, "Rattrapage automatique du scheduler si une exécution planifiée est manquée "
-                     "(serveur arrêté au moment précis du job quotidien).")
 
     # --- Conclusion ---
     add_h1(doc, "10. Conclusion")
@@ -588,7 +592,7 @@ def build_guide_technique():
             ["backend/maintenance.py", "Recalcul quotidien de days_remaining."],
             ["backend/db.py", "Pool de connexions MySQL (DBUtils PooledDB), paresseux."],
             ["frontend/src/", "Application Vite + React (composants, hooks, styles)."],
-            ["tests/", "Suite pytest — 91 tests, aucune dépendance réseau/DB réelle."],
+            ["tests/", "Suite pytest — 100 tests, aucune dépendance réseau/DB réelle."],
             ["data/devoteam_dashboard_mysql.sql", "Dump SQL de référence (schéma + données)."],
             ["Documentation/reports/", "Ce rapport, le guide technique et leur générateur (generate_docs.py)."],
             ["Documentation/planning/", "Brief initial du projet et données sources (hors suivi git du dépôt)."],
@@ -663,6 +667,9 @@ def build_guide_technique():
              "JSON extraite — utile pour l'audit et l'amélioration continue du prompt."],
             ["generated_dashboards", "Cache des spécifications Vega-Lite déjà générées, indexé par le "
              "hash SHA-256 de l'intention — évite de régénérer une spec identique."],
+            ["scheduler_state", "Une ligne par job planifié (job_name, last_run_date) — permet au "
+             "digest email quotidien de savoir s'il a déjà tourné aujourd'hui et de rattraper une "
+             "exécution manquée sans jamais en envoyer deux (section 10.9)."],
         ])
 
     add_h2(doc, "4.4 Accès depuis le backend")
@@ -889,12 +896,43 @@ def build_guide_technique():
         "depuis N jours » plutôt qu'un nombre négatif brut, pour les cas où une deadline "
         "passée reste légitimement visible (ex: une liste non filtrée par date).")
 
+    add_h2(doc, "10.8 Statuts clos exclus des requêtes « urgentes » du chat")
+    add_body(doc,
+        "Signalé par l'utilisateur : « liste des opportunités urgentes » pouvait afficher "
+        "une offre déjà gagnée ou perdue si sa date d'échéance technique tombait dans la "
+        "fenêtre demandée — incohérent avec les alertes email/bannière (section 10.5), qui "
+        "excluent bien ces statuts. Plutôt que de dupliquer la liste EXCLUDED_STATUSES, "
+        "intent_refiner.py::refine_intent() l'importe directement depuis alerts.py et pose "
+        "intent[\"exclude_statuses\"] dès qu'un filtre days_remaining est présent — jamais "
+        "piloté par le LLM, uniquement par ce garde-fou déterministe. db_layer.py traduit "
+        "ce champ en une clause status NOT IN (...), ajoutée à toute requête qui filtre sur "
+        "l'urgence. Une seule définition de « actif » pour tout le projet, jamais deux "
+        "listes de statuts qui pourraient diverger avec le temps.")
+
+    add_h2(doc, "10.9 Rattrapage du scheduler")
+    add_body(doc,
+        "APScheduler ne rattrape pas un job manqué si le processus était entièrement arrêté "
+        "au moment prévu (contrairement à misfire_grace_time, qui ne couvre qu'un léger "
+        "retard sur un processus resté actif). Pour le recalcul de days_remaining, ce n'était "
+        "pas un problème : il est déjà rappelé sans condition à chaque démarrage (section "
+        "10.2), et le recalculer plusieurs fois ne fait jamais de mal. Pour l'email "
+        "quotidien, un rappel sans condition renverrait un doublon si le cron 8h avait déjà "
+        "tourné le jour même.")
+    add_body(doc,
+        "Solution : une table scheduler_state (job_name, last_run_date), auto-créée à la "
+        "demande — aucune migration à relancer sur un déploiement existant. "
+        "run_daily_alert_check_if_needed() vérifie d'abord si le job a déjà tourné "
+        "aujourd'hui ; sinon, elle exécute la vérification puis marque la date. Appelée à "
+        "la fois par le cron 8h ET au démarrage du serveur : un serveur éteint pile à 8h "
+        "rattrape l'envoi dès qu'il redémarre, quelle que soit l'heure, sans jamais "
+        "produire de second email le même jour.")
+
     # --- Frontend ---
     add_h1(doc, "11. Frontend (Vite + React)")
     add_bullet(doc, "Composants principaux : ChatPanel, DashboardPanel, AlertBanner, VegaChart, "
                      "DataTable, StatTile, ThemeToggle, DevoteamLogo.")
-    add_bullet(doc, "Hooks dédiés : useTheme (clair/sombre), useVegaEmbed (rendu Vega-Lite dans "
-                     "le DOM).")
+    add_bullet(doc, "Hooks dédiés : useTheme (clair/sombre), useChatHistory (persistance "
+                     "localStorage), useVegaEmbed (rendu Vega-Lite dans le DOM).")
     add_bullet(doc, "Thème géré par variables CSS (custom properties) — le mode sombre est "
                      "SÉLECTIONNÉ avec ses propres valeurs, pas un simple filtre inversé "
                      "automatique.")
@@ -904,6 +942,38 @@ def build_guide_technique():
     add_bullet(doc, "Astuce React : un compteur dashboardKey, incrémenté à chaque nouvelle "
                      "réponse, est utilisé comme prop key pour forcer le remontage des "
                      "composants et rejouer les animations d'entrée à chaque nouveau résultat.")
+
+    add_h2(doc, "11.1 Historique de conversation persistant (useChatHistory.js)")
+    add_body(doc,
+        "Messages, dashboard affiché et contexte multi-tour (previous_intent) sont "
+        "sérialisés dans localStorage à chaque changement, et restaurés au montage — "
+        "plafonnés à 100 messages pour ne pas faire grossir indéfiniment le stockage. Le "
+        "compteur d'identifiants de message (nextIdRef) est réinitialisé au-delà du plus "
+        "grand id restauré, pour ne jamais entrer en collision avec l'historique repris. "
+        "Toute erreur (quota dépassé, navigation privée, JSON corrompu) est absorbée "
+        "silencieusement : la persistance est un confort, jamais une dépendance dont "
+        "l'absence casserait le chat. Un bouton « Effacer la conversation » (avec "
+        "confirmation) a été ajouté dans le header, puisqu'un historique qui persiste "
+        "indéfiniment a besoin d'une porte de sortie explicite.")
+
+    add_h2(doc, "11.2 Bug trouvé : header illisible en mode sombre")
+    add_body(doc,
+        "Trouvé en relisant le CSS (pas en testant à l'œil — aucun outil de capture "
+        "d'écran disponible dans cet environnement) : le dégradé du header utilisait "
+        "linear-gradient(135deg, var(--brand-primary) 0%, var(--text-primary) 68%). "
+        "--text-primary vaut #0b0b0b (presque noir) en mode clair, mais #ffffff (blanc) "
+        "en mode sombre — et le texte du header, lui, est en blanc fixe (color: #ffffff). "
+        "En mode sombre, le dégradé finissait donc en blanc, sous un texte blanc : "
+        "illisible, tout comme le logo (lui aussi dessiné en blanc).")
+    add_body(doc,
+        "Corrigé avec un nouveau jeton --header-ink, fixé à #0b0b0b et jamais réactif au "
+        "thème — le header porte toujours du texte blanc, donc la fin de son dégradé doit "
+        "toujours rester sombre, quel que soit le thème actif. Un second bug de même "
+        "nature affectait le texte « warning » du bandeau d'alerte "
+        "(color-mix(..., black) littéral, qui suppose un fond clair) : corrigé avec un "
+        "jeton --warning-ink-mix (black en mode clair, white en mode sombre). Aucune "
+        "valeur n'a changé en mode clair dans les deux cas — uniquement des ajouts, "
+        "jamais une modification du rendu déjà validé.")
 
     # --- Sécurité ---
     add_h1(doc, "12. Sécurité")
@@ -918,7 +988,7 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "13. Tests automatisés")
     add_body(doc,
-        "91 tests pytest, sans dépendance réseau ni base de données réelle : le client "
+        "100 tests pytest, sans dépendance réseau ni base de données réelle : le client "
         "Groq et les connexions MySQL sont simulés (monkeypatch) via de faux objets "
         "(fake cursor/connection capturant la requête générée pour l'affirmer dans le "
         "test). Complétés systématiquement par une vérification en conditions réelles "
@@ -928,17 +998,18 @@ def build_guide_technique():
     add_table(doc,
         ["Fichier", "Tests", "Ce qu'il protège"],
         [
-            ["test_intent_refiner.py", "25", "Dates relatives, parseur par mots-clés, affinage d'intention, "
-             "normalisation funnel/heatmap/scatter/days_remaining."],
+            ["test_intent_refiner.py", "27", "Dates relatives, parseur par mots-clés, affinage d'intention, "
+             "normalisation funnel/heatmap/scatter/days_remaining/exclude_statuses."],
             ["test_vega_generator.py", "18", "Cardinalité des graphiques, palette, valeurs NULL, "
              "les 4 nouveaux types de graphiques."],
             ["test_llm_validation.py", "14", "Anti-hallucination : clarification plutôt que valeur devinée, "
              "résolution fuzzy des filtres, chemin rapide vs LLM."],
             ["test_response_builder.py", "13", "Formatage des unités, messages texte déterministes, "
              "cohérence texte/graphique pour funnel et heatmap."],
-            ["test_db_layer.py", "11", "Construction des requêtes SQL, choix de vue, clauses IN/BETWEEN, "
-             "requête 2D du heatmap, chemin brut du scatter."],
-            ["test_alerts.py", "7", "Fenêtre de 7 jours en direct, exclusion des statuts clos, envoi email."],
+            ["test_db_layer.py", "13", "Construction des requêtes SQL, choix de vue, clauses IN/BETWEEN, "
+             "requête 2D du heatmap, chemin brut du scatter, exclusion de statuts."],
+            ["test_alerts.py", "12", "Fenêtre de 7 jours en direct, exclusion des statuts clos, envoi email, "
+             "rattrapage idempotent du scheduler."],
             ["test_maintenance.py", "3", "Recalcul de days_remaining, résilience à une panne DB."],
         ])
 
@@ -990,6 +1061,20 @@ def build_guide_technique():
          "le bug, ET un garde-fou déterministe dans refine_intent() normalise le résultat "
          "quelle que soit son origine — utile si jamais les deux premiers correctifs sont "
          "un jour contournés par une reformulation imprévue."),
+        ("Comment garantis-tu qu'un email d'alerte n'est jamais envoyé deux fois le même jour ?",
+         "Une table scheduler_state (job_name, last_run_date) trace la dernière exécution. "
+         "run_daily_alert_check_if_needed() vérifie cette date avant d'agir, et la met à "
+         "jour après — appelée à la fois par le cron 8h et au démarrage du serveur, donc "
+         "un redémarrage tardif rattrape l'envoi manqué sans risquer un doublon si le cron "
+         "avait déjà tourné plus tôt dans la journée."),
+        ("Comment as-tu trouvé les bugs de contraste en mode sombre sans navigateur ni capture d'écran ?",
+         "En lisant le CSS ligne par ligne plutôt qu'en devinant : chercher chaque endroit "
+         "où une couleur qui change avec le thème (var(--text-primary), un color-mix vers "
+         "un noir/blanc littéral) est combinée avec une couleur de texte fixe. Le header "
+         "avait un texte blanc fixe sur un dégradé qui finissait par --text-primary — "
+         "blanc lui aussi en mode sombre. Un raisonnement statique suffit à repérer ce "
+         "type de bug ; il n'a fallu aucun rendu réel pour le localiser, seulement pour le "
+         "confirmer visuellement ensuite."),
     ]
     for question, answer in qa:
         add_h3(doc, "Q : " + question)
@@ -997,14 +1082,16 @@ def build_guide_technique():
 
     # --- Limites ---
     add_h1(doc, "15. Limites connues")
-    add_bullet(doc, "Le scheduler ne tourne que si le processus backend reste démarré en "
-                     "continu — pas de rattrapage si le job planifié tombe pendant un arrêt.")
-    add_bullet(doc, "Pas de session de chat persistante côté navigateur (rechargement de page "
-                     "= perte de l'historique de conversation).")
     add_bullet(doc, "Le mode « sortie structurée stricte » n'est pas supporté par Groq/Llama "
                      "3.3 (testé et confirmé) — le filet de sécurité Pydantic + liste blanche "
                      "reste donc le mécanisme d'application des règles, plutôt qu'une garantie "
                      "au niveau du schéma du modèle.")
+    add_bullet(doc, "L'historique de conversation persistant (localStorage) est par "
+                     "navigateur/appareil, pas partagé entre postes — nécessiterait un compte "
+                     "utilisateur pour ça.")
+    add_bullet(doc, "Le nuage de points et la carte de chaleur n'ont pas de garde-fou de "
+                     "cardinalité aussi mûr que bar/pie pour des cas extrêmes (dimension à très "
+                     "forte cardinalité en axe du heatmap au-delà du plafond testé).")
 
     out_path = os.path.join(DOC_DIR, "Guide_Technique_DevoTeam_Dashboard.docx")
     doc.save(out_path)

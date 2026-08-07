@@ -14,12 +14,14 @@ planifiées). Hébergement local uniquement.
 ## Fonctionnalités
 
 - Chat en français libre, avec contexte multi-tour, dates relatives et requêtes de
-  comparaison ("compare la France et le Maroc").
+  comparaison ("compare la France et le Maroc") ; l'historique de conversation persiste
+  entre les rechargements de page (localStorage).
 - 8 types de rendu au choix : barres, courbes, aires, camemberts, cartes KPI,
   tableaux, entonnoir de vente et carte de chaleur — voir `PROGRESS.md` pour le détail.
 - Alertes deadlines : email quotidien (Gmail SMTP) + bannière dans le dashboard pour
-  les opportunités actives à échéance ≤ 7 jours ; `days_remaining` recalculée chaque
-  nuit depuis la deadline réelle.
+  les opportunités actives (statuts clos exclus) à échéance ≤ 7 jours ; `days_remaining`
+  recalculée chaque nuit depuis la deadline réelle. Rattrapée automatiquement au
+  redémarrage si le serveur était éteint pile à l'heure planifiée.
 - Thème clair/sombre, palette de couleurs validée pour l'accessibilité (daltonisme).
 - Anti-hallucination : toute métrique/dimension/valeur de filtre non reconnue déclenche
   une demande de clarification plutôt qu'un résultat deviné.

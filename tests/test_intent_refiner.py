@@ -72,6 +72,27 @@ def test_refine_intent_leaves_other_range_filters_untouched():
     assert result["range_filters"]["budget"] == {"op": "<", "value": 100000}
 
 
+def test_refine_intent_excludes_closed_statuses_for_any_days_remaining_query():
+    # Consistent with backend/alerts.py's email digest: a closed deal is never
+    # "urgent", even if its deadline technically falls in the requested window.
+    intent = _base_intent(
+        metric="budget", dimension="", chart_type="table", use_raw_table=True,
+        range_filters={"days_remaining": {"op": "between", "value": [0, 7]}},
+    )
+    result = refine_intent("opportunités urgentes", intent)
+    assert "Offre gagnée" in result["exclude_statuses"]
+    assert "Offre perdue" in result["exclude_statuses"]
+
+
+def test_refine_intent_does_not_set_exclude_statuses_without_a_days_remaining_filter():
+    intent = _base_intent(
+        metric="budget", dimension="", chart_type="table", use_raw_table=True,
+        range_filters={"budget": {"op": "<", "value": 100000}},
+    )
+    result = refine_intent("opportunités sous 100000", intent)
+    assert "exclude_statuses" not in result
+
+
 def test_refine_intent_backfills_filters_without_overriding():
     # LLM already resolved a status filter; the rule-based hint for "practice" should
     # be merged in without touching what the LLM already provided.

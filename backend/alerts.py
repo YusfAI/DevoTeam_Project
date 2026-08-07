@@ -5,6 +5,7 @@ date système courante."""
 import logging
 import os
 import smtplib
+from datetime import date
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -109,3 +110,59 @@ def run_daily_alert_check() -> int:
         logger.exception("Alertes deadline : échec de l'envoi de l'email.")
 
     return len(opportunities)
+
+
+def _ensure_scheduler_state_table(cur) -> None:
+    # Auto-créée à la demande plutôt que via init_tables.py — un déploiement existant
+    # n'a pas besoin de relancer un script de migration pour bénéficier du rattrapage.
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS scheduler_state ("
+        "job_name VARCHAR(50) PRIMARY KEY, last_run_date DATE)"
+    )
+
+
+def _already_ran_today(job_name: str) -> bool:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            _ensure_scheduler_state_table(cur)
+            cur.execute("SELECT last_run_date FROM scheduler_state WHERE job_name = %s", (job_name,))
+            row = cur.fetchone()
+    return bool(row and row["last_run_date"] == date.today())
+
+
+def _mark_ran_today(job_name: str) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            _ensure_scheduler_state_table(cur)
+            cur.execute(
+                "INSERT INTO scheduler_state (job_name, last_run_date) VALUES (%s, %s) "
+                "ON DUPLICATE KEY UPDATE last_run_date = VALUES(last_run_date)",
+                (job_name, date.today()),
+            )
+        conn.commit()
+
+
+def run_daily_alert_check_if_needed() -> int:
+    """Point d'entrée idempotent : à appeler à la fois par le cron 8h ET au démarrage
+    du serveur. Si le digest du jour a déjà été envoyé (ex: le serveur était éteint à
+    8h et redémarre à 10h — le cron a été manqué, cet appel de démarrage rattrape),
+    ne renvoie jamais un deuxième email le même jour."""
+    job_name = "daily_deadline_alert"
+    try:
+        if _already_ran_today(job_name):
+            logger.info("Alertes deadline : déjà vérifiées aujourd'hui, rien à faire.")
+            return 0
+    except Exception:
+        logger.exception(
+            "Alertes deadline : échec de la vérification anti-doublon — on continue "
+            "quand même plutôt que de bloquer l'alerte sur un problème de suivi."
+        )
+
+    count = run_daily_alert_check()
+
+    try:
+        _mark_ran_today(job_name)
+    except Exception:
+        logger.exception("Alertes deadline : échec de l'enregistrement de l'exécution du jour.")
+
+    return count

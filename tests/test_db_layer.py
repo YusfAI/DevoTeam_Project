@@ -149,3 +149,28 @@ def test_scatter_forces_the_raw_per_opportunity_path_and_includes_weighted_amoun
     assert "weighted_amount" in capture["query"]
     assert "win_probability" in capture["query"]
     assert "FROM opportunities" in capture["query"]
+
+
+def test_exclude_statuses_adds_a_not_in_clause(monkeypatch):
+    capture = {}
+    monkeypatch.setattr(db_layer, "get_connection", lambda: _FakeConn(capture))
+
+    intent = {
+        "dimension": "", "metric": "budget", "filters": {}, "range_filters": {},
+        "use_raw_table": True, "exclude_statuses": ["Offre gagnée", "Offre perdue"],
+    }
+    db_layer.build_and_execute_query(intent)
+
+    assert "status NOT IN (%s, %s)" in capture["query"]
+    assert "Offre gagnée" in capture["params"]
+    assert "Offre perdue" in capture["params"]
+
+
+def test_no_exclude_statuses_means_no_extra_clause(monkeypatch):
+    capture = {}
+    monkeypatch.setattr(db_layer, "get_connection", lambda: _FakeConn(capture))
+
+    intent = {"dimension": "", "metric": "budget", "filters": {}, "range_filters": {}, "use_raw_table": True}
+    db_layer.build_and_execute_query(intent)
+
+    assert "NOT IN" not in capture["query"]

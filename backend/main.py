@@ -1,6 +1,7 @@
 import os
 import json
 import hashlib
+import logging
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -16,21 +17,29 @@ from .db_layer import build_and_execute_query
 from .vega_generator import build_vega_spec
 from .response_builder import build_data_response, get_help_message, extract_metric_value, format_metric_value
 from .db import get_connection
-from .alerts import get_upcoming_deadline_opportunities, run_daily_alert_check
+from .alerts import get_upcoming_deadline_opportunities, run_daily_alert_check_if_needed
 from .maintenance import refresh_days_remaining
+
+logger = logging.getLogger(__name__)
 
 # Deux jobs quotidiens : days_remaining est recalculé à minuit (pour que la valeur
 # affichée dans le chat/tableaux soit déjà correcte au réveil), puis l'alerte deadline
 # tourne à 8h (heure serveur) sur la base de ces valeurs fraîches — assez tôt pour que
 # l'équipe commerciale la voie en arrivant, sans dépendre d'un déclenchement manuel.
+# Les deux tournent aussi une fois au démarrage : days_remaining est de toute façon
+# idempotent (le recalculer ne fait jamais de mal), et l'alerte email est protégée
+# par run_daily_alert_check_if_needed() (ne renvoie pas un second email si la
+# vérification du jour a déjà eu lieu) — un serveur resté éteint pile à 8h ou minuit
+# rattrape donc l'exécution manquée dès qu'il redémarre, au lieu d'attendre le lendemain.
 _scheduler = BackgroundScheduler()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    refresh_days_remaining()  # rattrape immédiatement une valeur restée figée depuis l'import/le dernier arrêt
+    refresh_days_remaining()
+    run_daily_alert_check_if_needed()
     _scheduler.add_job(refresh_days_remaining, "cron", hour=0, minute=5, id="daily_days_remaining_refresh")
-    _scheduler.add_job(run_daily_alert_check, "cron", hour=8, minute=0, id="daily_deadline_alert")
+    _scheduler.add_job(run_daily_alert_check_if_needed, "cron", hour=8, minute=0, id="daily_deadline_alert")
     _scheduler.start()
     yield
     _scheduler.shutdown(wait=False)
@@ -119,9 +128,9 @@ async def generate_dashboard(request: ChatRequest):
     except ValueError as e:
         # Expected errors (validation failed, dimension not supported, etc)
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
         # Protect against unhandled internal crashes by returning a 500 error gracefully
-        print(f"Server error: {e}")
+        logger.exception("Erreur interne non gérée dans /dashboard")
         raise HTTPException(status_code=500, detail="Erreur interne du serveur. Veuillez réessayer plus tard.")
 
 

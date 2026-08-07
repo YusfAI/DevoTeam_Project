@@ -6,6 +6,7 @@ from datetime import date
 from typing import Optional
 
 from .schema_and_whitelist import VALID_METRICS, VALID_DIMENSIONS, KNOWN_VALUES
+from .alerts import EXCLUDED_STATUSES
 
 
 def _norm(text: str) -> str:
@@ -332,6 +333,14 @@ def refine_intent(query: str, intent: dict, today: Optional[date] = None) -> dic
             upper = None
         if upper is not None and upper >= 0:
             intent["range_filters"]["days_remaining"] = {"op": "between", "value": [0, days_filter["value"]]}
+
+    # Toute requête filtrant sur days_remaining porte sur l'urgence d'une échéance —
+    # une opportunité déjà close (gagnée/perdue/signée...) n'a plus rien d'urgent,
+    # même si sa deadline technique tombe dans la fenêtre demandée. Même règle que
+    # backend/alerts.py pour les emails de rappel : une seule liste de statuts exclus,
+    # jamais deux définitions différentes de "actif" selon le canal.
+    if "days_remaining" in intent.get("range_filters", {}):
+        intent["exclude_statuses"] = list(EXCLUDED_STATUSES)
 
     if intent.get("metric") == "nb_opportunities":
         intent["aggregation"] = "count"

@@ -152,7 +152,7 @@ body::before {
 
 .alert-days.warning {
   background: color-mix(in srgb, var(--status-warning) 20%, var(--surface-card));
-  color: color-mix(in srgb, var(--status-warning) 70%, black);
+  color: color-mix(in srgb, var(--status-warning) 70%, var(--warning-ink-mix));
 }
 
 .alert-buyer {
@@ -186,7 +186,7 @@ body::before {
 
 .chat-header {
   padding: 18px 20px;
-  background: linear-gradient(135deg, var(--brand-primary) 0%, var(--text-primary) 68%);
+  background: linear-gradient(135deg, var(--brand-primary) 0%, var(--header-ink) 68%);
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -200,6 +200,13 @@ body::before {
   align-items: center;
   gap: 12px;
   min-width: 0;
+}
+
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .chat-header h1 {

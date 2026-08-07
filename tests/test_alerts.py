@@ -1,3 +1,4 @@
+from datetime import date
 from email import message_from_string
 
 from backend import alerts
@@ -164,3 +165,105 @@ def test_excluded_statuses_cover_won_lost_and_dropped_deals():
     for status in ("Offre gagnée", "Offre perdue", "Offre signée", "Infructueux",
                     "NO GO", "Hors scope", "Non shortlisté"):
         assert status in alerts.EXCLUDED_STATUSES
+
+
+# ---------------------------------------------------------------------------
+# Rattrapage du scheduler (run_daily_alert_check_if_needed)
+# ---------------------------------------------------------------------------
+
+class _FakeSchedulerCursor:
+    """Simule scheduler_state comme un dict {job_name: last_run_date} partagé entre
+    connexions successives (get_connection() est appelé une fois par fonction)."""
+
+    def __init__(self, state):
+        self._state = state
+        self._last_result = None
+
+    def execute(self, query, params=None):
+        q = query.strip()
+        if q.startswith("SELECT last_run_date"):
+            job_name = params[0]
+            self._last_result = (
+                {"last_run_date": self._state[job_name]} if job_name in self._state else None
+            )
+        elif q.startswith("INSERT INTO scheduler_state"):
+            job_name, run_date = params
+            self._state[job_name] = run_date
+        # CREATE TABLE IF NOT EXISTS : rien à simuler.
+
+    def fetchone(self):
+        return self._last_result
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _FakeSchedulerConn:
+    def __init__(self, state):
+        self._state = state
+
+    def cursor(self):
+        return _FakeSchedulerCursor(self._state)
+
+    def commit(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_already_ran_today_is_false_with_no_prior_record(monkeypatch):
+    state = {}
+    monkeypatch.setattr(alerts, "get_connection", lambda: _FakeSchedulerConn(state))
+    assert alerts._already_ran_today("daily_deadline_alert") is False
+
+
+def test_mark_ran_today_makes_already_ran_today_true(monkeypatch):
+    state = {}
+    monkeypatch.setattr(alerts, "get_connection", lambda: _FakeSchedulerConn(state))
+    alerts._mark_ran_today("daily_deadline_alert")
+    assert alerts._already_ran_today("daily_deadline_alert") is True
+
+
+def test_already_ran_today_is_false_for_a_stale_previous_day(monkeypatch):
+    state = {"daily_deadline_alert": date(2020, 1, 1)}
+    monkeypatch.setattr(alerts, "get_connection", lambda: _FakeSchedulerConn(state))
+    assert alerts._already_ran_today("daily_deadline_alert") is False
+
+
+def test_run_daily_alert_check_if_needed_skips_a_second_call_same_day(monkeypatch):
+    # This is the catch-up guarantee: whether triggered by the 8h cron or by a late
+    # server startup, the digest is never sent twice for the same calendar day.
+    state = {}
+    monkeypatch.setattr(alerts, "get_connection", lambda: _FakeSchedulerConn(state))
+    calls = []
+    monkeypatch.setattr(alerts, "run_daily_alert_check", lambda: calls.append(1) or 3)
+
+    first = alerts.run_daily_alert_check_if_needed()
+    second = alerts.run_daily_alert_check_if_needed()
+
+    assert first == 3
+    assert second == 0
+    assert len(calls) == 1
+
+
+def test_run_daily_alert_check_if_needed_still_runs_if_the_tracking_check_itself_fails(monkeypatch):
+    # A broken anti-duplicate check must never silently swallow the alert entirely.
+    def _boom(job_name):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(alerts, "_already_ran_today", _boom)
+    monkeypatch.setattr(alerts, "_mark_ran_today", lambda job_name: None)
+    calls = []
+    monkeypatch.setattr(alerts, "run_daily_alert_check", lambda: calls.append(1) or 5)
+
+    result = alerts.run_daily_alert_check_if_needed()
+
+    assert result == 5
+    assert len(calls) == 1
