@@ -42,6 +42,13 @@ _UPSERT_COLUMNS = (
     "weighted_amount",
 )
 
+# Volontairement PAS de suppression automatique : une ligne retirée du Sheet ne
+# supprime jamais l'opportunité correspondante en base. Une synchro automatique,
+# non surveillée (toutes les 15 min + au démarrage) est le mauvais endroit pour une
+# opération destructive et irréversible — une lecture partielle, un mauvais onglet,
+# ou un Sheet vidé par erreur pourrait effacer de vraies données sans que personne
+# ne le voie venir. Ajout/modification seulement.
+
 _client = None
 
 
