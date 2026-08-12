@@ -262,6 +262,24 @@ body::before {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.theme-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.theme-toggle.syncing {
+  animation: syncSpin 0.9s linear infinite;
+}
+
+@keyframes syncSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .chat-messages {
   flex: 1;
   padding: 20px;

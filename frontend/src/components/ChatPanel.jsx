@@ -5,7 +5,9 @@ import TypingIndicator from './TypingIndicator'
 import ThemeToggle from './ThemeToggle'
 import DevoteamLogo from './DevoteamLogo'
 
-export default function ChatPanel({ messages, loading, onSubmit, theme, onToggleTheme, onClearHistory, inputRef }) {
+export default function ChatPanel({
+  messages, loading, onSubmit, theme, onToggleTheme, onClearHistory, onSyncSheets, syncingSheets, inputRef,
+}) {
   const endRef = useRef(null)
 
   useEffect(() => {
@@ -23,6 +25,16 @@ export default function ChatPanel({ messages, loading, onSubmit, theme, onToggle
           </div>
         </div>
         <div className="chat-header-actions">
+          <button
+            className={`theme-toggle${syncingSheets ? ' syncing' : ''}`}
+            onClick={onSyncSheets}
+            disabled={syncingSheets}
+            title="Synchroniser Google Sheets"
+            aria-label="Synchroniser Google Sheets"
+            type="button"
+          >
+            🔄
+          </button>
           <button
             className="theme-toggle"
             onClick={onClearHistory}

@@ -4,7 +4,7 @@ import DashboardPanel from './components/DashboardPanel'
 import AlertBanner from './components/AlertBanner'
 import { useTheme } from './hooks/useTheme'
 import { useChatHistory } from './hooks/useChatHistory'
-import { postDashboardQuery } from './api'
+import { postDashboardQuery, postSheetsSync } from './api'
 
 const WELCOME_MESSAGE = {
   id: 0,
@@ -18,6 +18,7 @@ export default function App() {
   const { messages, addMessage, dashboard, setDashboard, lastIntent, setLastIntent, clearHistory } =
     useChatHistory(WELCOME_MESSAGE)
   const [loading, setLoading] = useState(false)
+  const [syncingSheets, setSyncingSheets] = useState(false)
   const [dashboardKey, setDashboardKey] = useState(0)
   const [theme, toggleTheme] = useTheme()
   const inputRef = useRef(null)
@@ -52,6 +53,28 @@ export default function App() {
     setDashboardKey(0)
   }
 
+  async function handleSyncSheets() {
+    if (syncingSheets) return
+    setSyncingSheets(true)
+    try {
+      const summary = await postSheetsSync()
+      const parts = [
+        `${summary.inserted ?? 0} ajoutée(s)`,
+        `${summary.updated ?? 0} mise(s) à jour`,
+        `${summary.skipped ?? 0} ignorée(s)`,
+      ]
+      let text = `Synchronisation Google Sheets terminée : ${parts.join(', ')}.`
+      if (summary.errors?.length) {
+        text += ` ${summary.errors.length} ligne(s) à corriger — voir les logs serveur pour le détail.`
+      }
+      addMessage({ type: summary.errors?.length ? 'error' : 'system', text })
+    } catch (err) {
+      addMessage({ type: 'error', text: err.message || 'Échec de la synchronisation Google Sheets.' })
+    } finally {
+      setSyncingSheets(false)
+    }
+  }
+
   return (
     <div className="app-shell">
       <AlertBanner />
@@ -63,6 +86,8 @@ export default function App() {
           theme={theme}
           onToggleTheme={toggleTheme}
           onClearHistory={handleClearHistory}
+          onSyncSheets={handleSyncSheets}
+          syncingSheets={syncingSheets}
           inputRef={inputRef}
         />
         <DashboardPanel dashboard={dashboard} theme={theme} dashboardKey={dashboardKey} />

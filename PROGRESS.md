@@ -74,6 +74,8 @@ Un vrai bug trouvé en testant sur les données réelles (pas seulement avec des
 
 Profilage demandé après coup (« est-ce que ça ralentit l'appli ? ») : le coût réel n'est pas les écritures MySQL (360 `UPDATE` séquentiels mesurés à 0.032s au total) mais la résolution du Sheet lui-même (`open_by_key()` + `worksheet()`, 1.6s mesurés) — rejouée à chaque appel de `sync_sheet_to_mysql()` alors que le client `gspread` authentifié, lui, était déjà mis en cache. Corrigé en mettant aussi en cache l'objet `Worksheet` résolu (`_get_worksheet()`) au lieu de le rerésoudre à chaque synchro : un appel répété tombe désormais à 0s au lieu de 1.6s, et une synchro complète passe de ~1.1s à ~0.4s une fois le cache chaud. Les trois tâches de démarrage (recalcul `days_remaining`, vérification d'alerte, synchro Sheets) tournaient aussi de façon bloquante avant `yield` dans `lifespan()` — le serveur n'acceptait aucune requête tant qu'elles n'étaient pas finies. Elles tournent maintenant comme jobs "une fois immédiatement" sur le thread du scheduler, démarré juste après : le serveur répond dès que la boucle est prête au lieu d'attendre jusqu'à ~2s.
 
+Bouton de synchro manuelle ajouté dans l'en-tête du chat (icône 🔄, à côté du bouton d'effacement d'historique) : appelle `POST /sheets/sync` et affiche le résumé (insérées/mises à jour/ignorées) directement comme message dans la conversation, plutôt que de laisser ce retour uniquement dans les logs serveur.
+
 
 ## 📊 Bilan du Produit
 
@@ -93,4 +95,3 @@ L'application est **complète et fonctionnelle, exécutable de bout-en-bout**, h
 - **Session ID Tracking** : Dans le log MySQL `dashboard_requests`, ajouter `session_id` pour faire du vrai product-analytics sur le comportement des utilisateurs.
 - **Mode JSON Schema strict** : non supporté par Groq/`llama-3.3-70b-versatile` (testé en Phase 9, confirmé 400 explicite). Fonctionne nativement avec Claude (validé en Phase 10) si l'app devait un jour migrer à nouveau — le filet de sécurité actuel (Pydantic + whitelist + `IntentUnclear`) reste suffisant en attendant.
 - **Barres empilées/groupées (2 dimensions)** : ex. « budget par pays, décomposé par statut ». Chart type envisagé en Phase 14 mais pas construit — nécessiterait un champ `group_by` dans le schéma d'intention, plus gros chantier que les 4 types livrés (qui réutilisent tous la dimension unique existante).
-- **Panneau d'admin pour la synchro Sheets** : afficher le résumé de la dernière synchro (insérées/mises à jour/erreurs) dans le frontend plutôt que dans les seuls logs serveur.
