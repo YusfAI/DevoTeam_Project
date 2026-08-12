@@ -3,11 +3,12 @@ de modification d'opportunités (plus simple à éditer que la base directement)
 UNIQUE — l'application continue de LIRE depuis MySQL comme avant (chat, graphiques,
 alertes) ; ce module importe seulement les changements du Sheet vers la base.
 
-Champs calculés automatiquement à chaque synchronisation (jamais lus depuis le
-Sheet, même s'ils y figurent en colonne) : deadline_month, deadline_year,
-days_remaining, weighted_amount — dérivés des colonnes "brutes" pour ne jamais
-diverger d'elles (voir backend/maintenance.py pour le même principe sur
-days_remaining).
+Champs calculés automatiquement à chaque synchronisation (jamais LUS depuis le
+Sheet, même s'ils y figurent en colonne, toujours recalculés depuis les colonnes
+"brutes" pour ne jamais en diverger — voir backend/maintenance.py pour le même
+principe sur days_remaining) : deadline_month, deadline_year, days_remaining,
+weighted_amount. Le résultat est réécrit dans ces colonnes après chaque synchro
+(si présentes dans l'en-tête), pour rester visible sans consulter la base.
 """
 import logging
 import os
@@ -41,6 +42,12 @@ _UPSERT_COLUMNS = (
     "budget", "funding_source", "partner", "financial_offer", "win_probability",
     "weighted_amount",
 )
+
+# Réécrites dans le Sheet après chaque synchro (si la colonne existe dans l'en-tête —
+# elle n'est pas obligatoire, voir SHEET_COLUMNS) pour que l'utilisateur voie le
+# résultat du calcul sans consulter la base ; jamais LUES depuis le Sheet (_parse_row
+# les recalcule toujours depuis les colonnes brutes).
+_DERIVED_SHEET_COLUMNS = ("deadline_month", "deadline_year", "days_remaining", "weighted_amount")
 
 # Volontairement PAS de suppression automatique : une ligne retirée du Sheet ne
 # supprime jamais l'opportunité correspondante en base. Une synchro automatique,
@@ -225,6 +232,15 @@ def sync_sheet_to_mysql() -> dict:
         summary["errors"].append(msg)
         return summary
     id_col_index = headers.index("id") + 1  # gspread est indexé à partir de 1
+    derived_col_index = {c: headers.index(c) + 1 for c in _DERIVED_SHEET_COLUMNS if c in headers}
+
+    # Toutes les cellules à réécrire (id des nouvelles lignes + colonnes calculées)
+    # sont accumulées ici et écrites en UN SEUL appel batché à la fin plutôt qu'un
+    # appel réseau par cellule — sur 360 lignes x 4 colonnes calculées, ça évite plus
+    # d'un millier d'allers-retours API (voir le profilage de _get_worksheet(), même
+    # logique : minimiser les appels réseau répétés).
+    pending_cells = []
+    insert_writebacks = {}  # row_number -> new_id, pour cibler l'erreur si le batch échoue
 
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -265,22 +281,41 @@ def sync_sheet_to_mysql() -> dict:
                 else:
                     new_id = _insert_opportunity(cur, row)
                     summary["inserted"] += 1
-                    try:
-                        ws.update_cell(row_number, id_col_index, new_id)
-                    except Exception:
-                        # L'insertion MySQL a déjà réussi ; seule l'écriture retour a échoué.
-                        # Sans elle, cette ligne serait réinsérée au prochain passage —
-                        # signalé bruyamment pour une correction manuelle si besoin.
-                        logger.exception(
-                            "Synchronisation Sheets : id %d inséré mais échec de l'écriture "
-                            "retour dans le Sheet (ligne %d) — risque de doublon au prochain sync.",
-                            new_id, row_number,
-                        )
-                        summary["errors"].append(
-                            f"Ligne {row_number} : insérée (id {new_id}) mais écriture de "
-                            "l'id dans le Sheet a échoué — corrige-la manuellement."
-                        )
+                    insert_writebacks[row_number] = new_id
+                    pending_cells.append(gspread.Cell(row_number, id_col_index, new_id))
+
+                for col_name, col_index in derived_col_index.items():
+                    value = row[col_name]
+                    if value is None:
+                        value = ""
+                    elif col_name == "weighted_amount":
+                        value = round(value, 2)  # cosmétique seulement — la valeur exacte reste en base
+                    pending_cells.append(gspread.Cell(row_number, col_index, value))
         conn.commit()
+
+    if pending_cells:
+        try:
+            ws.update_cells(pending_cells, value_input_option="RAW")
+        except Exception:
+            # Les INSERT/UPDATE MySQL ont déjà réussi ; seule la réécriture dans le
+            # Sheet a échoué. Pour un id manquant, c'est un vrai risque de doublon au
+            # prochain passage (signalé par ligne) — pour les colonnes calculées,
+            # c'est seulement cosmétique (elles seront réécrites au prochain sync).
+            logger.exception(
+                "Synchronisation Sheets : échec de l'écriture retour de %d cellule(s) "
+                "dans le Sheet.", len(pending_cells),
+            )
+            if insert_writebacks:
+                for row_number, new_id in insert_writebacks.items():
+                    summary["errors"].append(
+                        f"Ligne {row_number} : insérée (id {new_id}) mais écriture de "
+                        "l'id dans le Sheet a échoué — corrige-la manuellement."
+                    )
+            else:
+                summary["errors"].append(
+                    "Valeurs calculées non réécrites dans le Sheet (mois/année "
+                    "d'échéance, jours restants, montant pondéré) — voir les logs."
+                )
 
     logger.info(
         "Synchronisation Sheets : %d insérée(s), %d mise(s) à jour, %d ignorée(s).",

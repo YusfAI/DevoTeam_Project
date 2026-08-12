@@ -149,10 +149,13 @@ class _FakeWorksheet:
     def get_all_values(self):
         return self._values
 
-    def update_cell(self, row, col, value):
+    def update_cells(self, cell_list, value_input_option=None):
+        # Le vrai code écrit toutes les cellules (id des nouvelles lignes + colonnes
+        # calculées) en un seul appel batché — voir sync_sheet_to_mysql().
         if self.fail_update:
             raise RuntimeError("network error")
-        self.update_calls.append((row, col, value))
+        for cell in cell_list:
+            self.update_calls.append((cell.row, cell.col, cell.value))
 
 
 class _FakeCursor:
@@ -329,6 +332,52 @@ def test_sync_records_an_error_if_id_writeback_fails_but_keeps_the_insert(monkey
 
     assert summary["inserted"] == 1
     assert summary["errors"]
+
+
+def test_sync_writes_back_derived_columns_when_present_in_header(monkeypatch):
+    # Le Sheet réel a des colonnes en plus de SHEET_COLUMNS pour afficher les
+    # champs calculés — elles ne sont jamais lues (voir _parse_row) mais doivent
+    # être réécrites après chaque synchro pour rester visibles sans consulter la base.
+    headers = SHEET_COLUMNS + ["deadline_month", "deadline_year", "days_remaining", "weighted_amount"]
+    ws = _FakeWorksheet([headers, _row_values(headers, **_valid_row_kwargs(id="7"))])
+    monkeypatch.setattr(sheets_sync, "_get_worksheet", lambda: ws)
+    _patch_db(monkeypatch, known_ids={7})
+
+    summary = sync_sheet_to_mysql()
+
+    assert summary == {"inserted": 0, "updated": 1, "skipped": 0, "errors": []}
+    written = {(row, col): value for row, col, value in ws.update_calls}
+    dm_col = headers.index("deadline_month") + 1
+    dy_col = headers.index("deadline_year") + 1
+    dr_col = headers.index("days_remaining") + 1
+    wa_col = headers.index("weighted_amount") + 1
+    assert written[(2, dm_col)] == "2026-12"
+    assert written[(2, dy_col)] == 2026
+    assert written[(2, dr_col)] == (date(2026, 12, 31) - date.today()).days
+    assert written[(2, wa_col)] == 90000 * 0.6
+
+
+def test_sync_writes_back_derived_columns_as_empty_string_when_null(monkeypatch):
+    headers = SHEET_COLUMNS + ["weighted_amount"]
+    ws = _FakeWorksheet([headers, _row_values(headers, **_valid_row_kwargs(id="7", financial_offer=""))])
+    monkeypatch.setattr(sheets_sync, "_get_worksheet", lambda: ws)
+    _patch_db(monkeypatch, known_ids={7})
+
+    sync_sheet_to_mysql()
+
+    wa_col = headers.index("weighted_amount") + 1
+    written = {(row, col): value for row, col, value in ws.update_calls}
+    assert written[(2, wa_col)] == ""
+
+
+def test_sync_does_not_write_back_derived_columns_absent_from_header(monkeypatch):
+    ws = _FakeWorksheet([SHEET_COLUMNS, _row_values(SHEET_COLUMNS, **_valid_row_kwargs(id="7"))])
+    monkeypatch.setattr(sheets_sync, "_get_worksheet", lambda: ws)
+    _patch_db(monkeypatch, known_ids={7})
+
+    sync_sheet_to_mysql()
+
+    assert ws.update_calls == []  # rien à réécrire : le Sheet n'a pas ces colonnes
 
 
 def test_sync_survives_a_sheet_read_failure(monkeypatch):
