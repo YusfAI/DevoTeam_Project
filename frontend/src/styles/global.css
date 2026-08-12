@@ -322,6 +322,13 @@ body::before {
   border: 1px solid color-mix(in srgb, var(--status-critical) 35%, transparent);
 }
 
+.message.sync {
+  background: color-mix(in srgb, var(--status-good) 12%, var(--surface-card));
+  color: var(--status-good);
+  align-self: flex-start;
+  border: 1px solid color-mix(in srgb, var(--status-good) 35%, transparent);
+}
+
 .typing {
   display: flex;
   gap: 5px;

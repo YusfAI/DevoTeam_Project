@@ -67,7 +67,7 @@ export default function App() {
       if (summary.errors?.length) {
         text += ` ${summary.errors.length} ligne(s) à corriger — voir les logs serveur pour le détail.`
       }
-      addMessage({ type: summary.errors?.length ? 'error' : 'system', text })
+      addMessage({ type: 'sync', text })
     } catch (err) {
       addMessage({ type: 'error', text: err.message || 'Échec de la synchronisation Google Sheets.' })
     } finally {
