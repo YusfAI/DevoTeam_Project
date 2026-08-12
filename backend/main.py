@@ -15,10 +15,15 @@ from .llm import parse_user_query
 from .db_layer import build_and_execute_query
 # pyrefly: ignore [missing-import]
 from .vega_generator import build_vega_spec
+# pyrefly: ignore [missing-import]
 from .response_builder import build_data_response, get_help_message, extract_metric_value, format_metric_value
+# pyrefly: ignore [missing-import]
 from .db import get_connection
+# pyrefly: ignore [missing-import]
 from .alerts import get_upcoming_deadline_opportunities, run_daily_alert_check_if_needed
+# pyrefly: ignore [missing-import]
 from .maintenance import refresh_days_remaining
+# pyrefly: ignore [missing-import]
 from .sheets_sync import sync_sheet_to_mysql
 
 logger = logging.getLogger(__name__)
