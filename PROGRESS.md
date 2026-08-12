@@ -20,6 +20,8 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 13 — Alertes deadlines (email + bannière) et recalcul quotidien de days_remaining
 - [x] Phase 14 — Nouveaux types de graphiques (funnel, scatter, heatmap, area) et correction du bug days_remaining négatif
 - [x] Phase 15 — Finitions : mode sombre lisible, statuts clos exclus des requêtes urgentes, rattrapage du scheduler, historique de conversation persistant, réorganisation du dépôt
+- [x] Phase 16 — Règle métier « offre pondérée » et amélioration du choix automatique de graphique
+- [x] Phase 17 — Synchronisation Google Sheets -> MySQL (ajout/modification d'opportunités depuis un Sheet)
 
 ## 📝 Journaux
 
@@ -64,6 +66,12 @@ Vérifié en conditions réelles (MySQL + Groq) pour les trois : date relative r
 
 Suite `pytest` : 100 tests (était 91).
 
+**Phase 16** : Terminée. « Offre(s)/opportunité(s) pondérée(s) » est désormais un terme métier défini : `win_probability >= 0.8` ET `status = "Offre remise"`, appliqué de façon déterministe dans `refine_intent()` (même filet de sécurité que le bug `days_remaining`) — donc garanti correct même si le LLM l'oublie. Soigneusement distingué de « montant pondéré » (le metric `weighted_amount` déjà existant) via une regex exigeant que « offre »/« opportunité » précède « pondéré » de près, vérifié avec deux exemples contrastés en few-shot. Corrigé au passage un vrai bug de choix de graphique : « évolution »/« tendance » forçait une courbe même sur une dimension non temporelle (ex. « évolution par pays », rien de cohérent à ordonner en X) — ne déclenche plus la courbe que pour un axe temporel. Camembert élargi aux mots-clés « pourcentage »/« proportion ». Prompt LLM réécrit autour du *job* de chaque type de graphique (magnitude/proportion/tendance/liste/corrélation/pipeline/intensité) plutôt qu'une liste de mots-clés plate. Suite `pytest` : 110 tests (était 100).
+
+**Phase 17** : Terminée. Synchronisation Google Sheets -> MySQL (`backend/sheets_sync.py`) : le Sheet devient un formulaire d'ajout/modification d'opportunités, l'application continue de lire depuis MySQL comme avant (sens unique). Authentification par compte de service Google (JSON, accès Éditeur) plutôt qu'une simple clé API, nécessaire pour écrire l'id généré des nouvelles lignes dans le Sheet (sans quoi la synchro suivante les réinsérerait en double). `deadline_month`, `deadline_year`, `days_remaining` et `weighted_amount` sont toujours recalculés depuis les colonnes brutes (`weighted_amount = financial_offer × win_probability`, vérifié empiriquement sur des données réelles), jamais lus depuis le Sheet même s'ils y figurent. Chaque ligne est validée indépendamment (dates, nombres, statuts/practice/opp_type contre la liste blanche) ; une ligne invalide est journalisée et sautée sans bloquer les autres. Tourne toutes les 15 minutes + au démarrage + à la demande (`POST /sheets/sync`).
+
+Un vrai bug trouvé en testant sur les données réelles (pas seulement avec des mocks) : la détection « id existant vs nouveau » se fiait à `cursor.rowcount` après un `UPDATE`, mais PyMySQL renvoie le nombre de lignes *modifiées*, pas *trouvées* — un `UPDATE` qui ne change aucune valeur (le cas normal la première fois, le Sheet étant un export frais de la base) renvoie `rowcount=0` même sur un id qui existe bel et bien, ce qui aurait fait passer 359 lignes sur 360 pour des ids introuvables. Corrigé en pré-chargeant une fois l'ensemble des ids existants (`SELECT id FROM opportunities`) plutôt que de déduire l'existence du résultat de l'`UPDATE`. Vérifié en conditions réelles après correction : 348 lignes mises à jour, 12 sautées à raison — ces 12 ont révélé un vrai problème de qualité de données préexistant en base (des valeurs `opp_type` comme "DP"/"AMI" entrées par erreur dans la colonne `status`, et un statut `"En attente du plan de charge"` absent de la liste blanche), jamais détecté avant faute de validation stricte sur `status` à l'écriture. Suite `pytest` : 140 tests (était 110).
+
 
 ## 📊 Bilan du Produit
 
@@ -74,6 +82,8 @@ L'application est **complète et fonctionnelle, exécutable de bout-en-bout**, h
 - Le bundle frontend (Vega/Vega-Lite/Vega-Embed) dépasse le seuil d'avertissement Vite (~1 Mo minifié) — sans impact réel en usage local, mais un code-splitting (import dynamique de vega-embed) serait la prochaine étape si l'app devait un jour être servie sur un réseau plus lent.
 - Le nuage de points et la carte de chaleur (Phase 14) n'ont pas de garde-fou de cardinalité aussi mûr que bar/pie pour des cas extrêmes (ex: une dimension à très forte cardinalité en axe du heatmap au-delà du plafond testé).
 - L'historique de conversation persistant (Phase 15) est par navigateur/appareil (localStorage), pas partagé entre postes — un vrai compte utilisateur serait nécessaire pour ça.
+- La synchro Google Sheets (Phase 17) retraite chaque ligne à chaque passage (pas de détection de changement/diff) — sans impact réel à 360 lignes toutes les 15 minutes, mais à reconsidérer si le Sheet grossissait beaucoup.
+- 12 opportunités en base ont un `status` invalide déjà présent avant la Phase 17 (jamais détecté faute de validation stricte à l'écriture) — `"DP"`/`"AMI"` semblent être des valeurs `opp_type` entrées par erreur dans `status`, et `"En attente du plan de charge"` n'est pas dans la liste blanche. À corriger manuellement (Sheet ou base) ou à ajouter à `KNOWN_VALUES["status"]` si c'est un statut légitime.
 
 ### Prochaines améliorations possibles
 *(hors scope initial du mandat)*
@@ -81,3 +91,4 @@ L'application est **complète et fonctionnelle, exécutable de bout-en-bout**, h
 - **Session ID Tracking** : Dans le log MySQL `dashboard_requests`, ajouter `session_id` pour faire du vrai product-analytics sur le comportement des utilisateurs.
 - **Mode JSON Schema strict** : non supporté par Groq/`llama-3.3-70b-versatile` (testé en Phase 9, confirmé 400 explicite). Fonctionne nativement avec Claude (validé en Phase 10) si l'app devait un jour migrer à nouveau — le filet de sécurité actuel (Pydantic + whitelist + `IntentUnclear`) reste suffisant en attendant.
 - **Barres empilées/groupées (2 dimensions)** : ex. « budget par pays, décomposé par statut ». Chart type envisagé en Phase 14 mais pas construit — nécessiterait un champ `group_by` dans le schéma d'intention, plus gros chantier que les 4 types livrés (qui réutilisent tous la dimension unique existante).
+- **Panneau d'admin pour la synchro Sheets** : afficher le résumé de la dernière synchro (insérées/mises à jour/erreurs) dans le frontend plutôt que dans les seuls logs serveur.

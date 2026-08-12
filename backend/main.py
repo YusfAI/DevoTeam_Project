@@ -19,6 +19,7 @@ from .response_builder import build_data_response, get_help_message, extract_met
 from .db import get_connection
 from .alerts import get_upcoming_deadline_opportunities, run_daily_alert_check_if_needed
 from .maintenance import refresh_days_remaining
+from .sheets_sync import sync_sheet_to_mysql
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,8 @@ logger = logging.getLogger(__name__)
 # par run_daily_alert_check_if_needed() (ne renvoie pas un second email si la
 # vérification du jour a déjà eu lieu) — un serveur resté éteint pile à 8h ou minuit
 # rattrape donc l'exécution manquée dès qu'il redémarre, au lieu d'attendre le lendemain.
+# La synchronisation Google Sheets tourne aussi toutes les 15 minutes (+ une fois au
+# démarrage) — sens unique Sheet -> MySQL, voir backend/sheets_sync.py.
 _scheduler = BackgroundScheduler()
 
 
@@ -38,8 +41,10 @@ _scheduler = BackgroundScheduler()
 async def lifespan(app: FastAPI):
     refresh_days_remaining()
     run_daily_alert_check_if_needed()
+    sync_sheet_to_mysql()
     _scheduler.add_job(refresh_days_remaining, "cron", hour=0, minute=5, id="daily_days_remaining_refresh")
     _scheduler.add_job(run_daily_alert_check_if_needed, "cron", hour=8, minute=0, id="daily_deadline_alert")
+    _scheduler.add_job(sync_sheet_to_mysql, "interval", minutes=15, id="sheets_sync_periodic")
     _scheduler.start()
     yield
     _scheduler.shutdown(wait=False)
@@ -140,6 +145,14 @@ async def get_deadline_alerts():
     du frontend — mêmes règles : opportunités actives, échéance ≤ 7 jours."""
     opportunities = get_upcoming_deadline_opportunities()
     return {"opportunities": opportunities, "window_days": 7}
+
+
+@app.post("/sheets/sync")
+async def trigger_sheets_sync():
+    """Déclenchement manuel de la synchronisation Google Sheets -> MySQL, en plus du
+    job automatique toutes les 15 minutes — utile pour voir un ajout immédiatement
+    sans attendre le prochain passage planifié."""
+    return sync_sheet_to_mysql()
 
 
 # Doit rester la DERNIÈRE route déclarée : sert le build React (frontend/dist) sur "/"

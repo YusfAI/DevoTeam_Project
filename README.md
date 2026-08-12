@@ -25,6 +25,11 @@ planifiées). Hébergement local uniquement.
 - Thème clair/sombre, palette de couleurs validée pour l'accessibilité (daltonisme).
 - Anti-hallucination : toute métrique/dimension/valeur de filtre non reconnue déclenche
   une demande de clarification plutôt qu'un résultat deviné.
+- Synchronisation Google Sheets → MySQL : ajouter/modifier des opportunités depuis un
+  Sheet plutôt qu'en éditant la base directement. Sens unique (le Sheet ne fait
+  qu'alimenter la base) ; toutes les 15 minutes + au démarrage + sur demande
+  (`POST /sheets/sync`) ; une ligne invalide (statut inconnu, date illisible…) est
+  journalisée et sautée sans bloquer les autres.
 
 ## Prérequis
 
@@ -35,6 +40,8 @@ planifiées). Hébergement local uniquement.
 - Une clé API [Groq](https://console.groq.com/)
 - (Optionnel, pour les alertes email) un compte Gmail avec un
   [mot de passe d'application](https://myaccount.google.com/apppasswords)
+- (Optionnel, pour la synchro Google Sheets) voir "Synchronisation Google Sheets"
+  ci-dessous
 
 ## Installation
 
@@ -53,6 +60,35 @@ python init_tables.py                # crée les tables de log/cache (une seule 
 # Frontend
 cd frontend && npm install
 ```
+
+## Synchronisation Google Sheets (optionnel)
+
+Le Sheet devient un formulaire d'ajout/modification d'opportunités ; l'appli continue
+de lire depuis MySQL comme d'habitude (voir `backend/sheets_sync.py`).
+
+1. [console.cloud.google.com](https://console.cloud.google.com) → un projet → activer
+   **"Google Sheets API"**.
+2. IAM et administration → Comptes de service → créer un compte de service (aucun rôle
+   GCP requis) → onglet "Clés" → Ajouter une clé → JSON → télécharge le fichier.
+3. Place ce fichier dans `credentials/google_service_account.json` (dossier gitignoré —
+   ne le commit jamais).
+4. Ouvre ton Google Sheet → **Partager** → ajoute l'email du compte de service
+   (`....iam.gserviceaccount.com`, visible dans le JSON) en **Éditeur** (pas juste
+   lecteur — la synchro écrit l'id généré des nouvelles lignes dans le Sheet).
+5. Renseigne `GOOGLE_SHEET_ID` (dans l'URL du Sheet) et `GOOGLE_SHEET_TAB` (le nom de
+   l'onglet) dans `.env`.
+6. La première ligne du Sheet doit contenir ces en-têtes exacts (n'importe quel
+   ordre) : `id, country, created_date, deadline, practice, description, buyer,
+   opp_type, status, budget, funding_source, partner, financial_offer,
+   win_probability`. Ligne avec `id` vide = nouvelle opportunité (l'id généré est
+   réécrit dans le Sheet après import) ; `id` renseigné = mise à jour de la ligne
+   MySQL correspondante.
+7. `deadline_month`, `deadline_year`, `days_remaining` et `weighted_amount` sont
+   **toujours recalculés** depuis les colonnes ci-dessus — inutile (et sans effet) de
+   les éditer dans le Sheet.
+8. `practice`, `opp_type` et `status` doivent correspondre exactement aux valeurs
+   whitelistées dans `backend/schema_and_whitelist.py` (insensible à la casse) —
+   sinon la ligne est ignorée et journalisée, sans bloquer les autres.
 
 ## Lancer en développement (hot-reload)
 
@@ -95,14 +131,19 @@ il est dans `.gitignore` et ne doit jamais être commité. Si une ancienne versi
 console.groq.com et révoquez le mot de passe d'application Gmail sur
 myaccount.google.com/apppasswords, plutôt que de compter sur sa suppression du dépôt.
 
+`credentials/` (clé de compte de service Google) est gitignoré au niveau du dossier
+entier — jamais de fichier `.json` de credentials commité, quel que soit son nom.
+
 ## Structure
 
 ```
 backend/              FastAPI, parsing LLM (Groq), couche SQL, génération Vega-Lite,
-                       alertes deadlines (alerts.py) et maintenance (maintenance.py)
+                       alertes deadlines (alerts.py), maintenance (maintenance.py)
+                       et synchro Google Sheets (sheets_sync.py)
 frontend/              Vite + React (build servi par FastAPI en local)
+credentials/           clé de compte de service Google (gitignoré, absent par défaut)
 data/                  dump SQL de référence
-tests/                 suite pytest (mock DB/Groq), 91 tests
+tests/                 suite pytest (mock DB/Groq/Sheets), 140 tests
 Documentation/
   reports/              rapport professionnel + guide technique (.docx) et leur générateur
   planning/             brief initial et données sources du projet

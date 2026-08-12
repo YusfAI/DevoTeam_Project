@@ -1,5 +1,8 @@
 # Secrets
 .env
+credentials/
+*.iam.gserviceaccount.com.json
+devoteam-*.json
 
 # Python
 __pycache__/
