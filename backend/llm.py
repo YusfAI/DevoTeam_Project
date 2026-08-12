@@ -346,6 +346,12 @@ User: "carte de chaleur du budget par pays et practice"
 
 User: "évolution du budget en aire"
 → {"goal":"Évolution du budget","metric":"budget","dimension":"deadline_month","filters":{},"range_filters":{},"chart_type":"area","aggregation":"sum","use_raw_table":false,"is_conversation":false}
+
+User: "liste des offres pondérées"
+→ {"goal":"Offres pondérées","metric":"budget","dimension":"","filters":{"status":"Offre remise"},"range_filters":{"win_probability":{"op":">=","value":0.8}},"chart_type":"table","aggregation":"sum","use_raw_table":true,"is_conversation":false}
+
+User: "montant pondéré par pays"
+→ {"goal":"Montant pondéré par pays","metric":"weighted_amount","dimension":"country","filters":{},"range_filters":{},"chart_type":"bar","aggregation":"sum","use_raw_table":false,"is_conversation":false}
 """
 
     system_prompt = f"""Tu es un parseur d'intentions pour un dashboard commercial DevoTeam.
@@ -370,12 +376,23 @@ COLONNES metric autorisées : {VALID_METRICS}
 
 COLONNES dimension autorisées : {VALID_DIMENSIONS} ("" si total global ou KPI)
 
-chart_type : {VALID_CHART_TYPES}
-  bar = comparaison ; pie = répartition (≤ 6 catégories) ; line = évolution ; area = évolution
-  (accent visuel, même donnée que line) ; kpi_card = un seul chiffre ; table = liste détaillée ;
-  funnel = entonnoir de vente par étape du pipeline (dimension forcée à "status", ne pas t'en soucier) ;
-  scatter = corrélation entre deux mesures (toujours budget vs probabilité de gain — laisse dimension="") ;
-  heatmap = intensité croisée entre une dimension (ex: pays) et practice
+chart_type : {VALID_CHART_TYPES} — choisis selon le JOB de la question, pas selon des mots-clés isolés :
+  - Un seul chiffre demandé, sans dimension (« combien », « quel est », « total ») → kpi_card
+  - Comparer une magnitude entre catégories (« par pays », « par statut »…) → bar (le défaut sûr)
+  - Proportion / part du total explicitement demandée (« répartition », « part de »,
+    « pourcentage », « quelle proportion ») ET la dimension a peu de valeurs (≤ 6) → pie
+    (jamais pie si la question demande juste une comparaison sans notion de proportion — bar reste le défaut)
+  - Tendance dans le temps → line (dimension = deadline_month/deadline_year) ; area = même chose
+    en plus visuel, seulement si "aire"/"area" est explicitement demandé
+  - Liste détaillée d'opportunités individuelles (« liste », « détail », « tableau ») → table,
+    use_raw_table = true
+  - Entonnoir de vente / pipeline par étape → funnel (dimension forcée à "status", ne pas t'en soucier)
+  - Corrélation entre deux mesures numériques (« lien entre X et Y », « est-ce que X influence Y »)
+    → scatter (toujours budget vs probabilité de gain — laisse dimension="", JAMAIS kpi_card pour
+    une question de corrélation : un seul chiffre moyen n'y répond pas)
+  - Intensité croisée entre une dimension (ex: pays) et practice → heatmap
+  N'invente jamais un chart_type "pour faire joli" — s'il n'y a pas de signal clair dans la question,
+  reste sur le défaut (bar si dimension posée, kpi_card sinon).
 
 aggregation : ['sum', 'avg', 'count']
 
@@ -389,6 +406,9 @@ MAPPING FR → filters :
 - "Data" → practice "Data Management"
 - "Risk" → practice "Risk Advisory"
 - "Digital" → practice "Digital Transformation"
+- "offre(s)/opportunité(s) pondérée(s)" (jamais "montant pondéré", qui désigne le metric
+  weighted_amount) → filters.status = "Offre remise" ET range_filters.win_probability =
+  {{"op": ">=", "value": 0.8}}. Définition métier fixe, ne dépend pas du contexte.
 
 Pour COMPARER plusieurs valeurs d'une même colonne (ex: "compare la France et le Maroc"), mets une
 LISTE de valeurs dans filters au lieu d'une seule : {{"country": ["France", "Maroc"]}}.

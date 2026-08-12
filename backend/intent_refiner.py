@@ -14,6 +14,11 @@ def _norm(text: str) -> str:
     return "".join(c for c in text if unicodedata.category(c) != "Mn")
 
 
+# "offre(s)"/"opportunité(s)" doit précéder "pondéré..." de près (0-2 mots entre les
+# deux) — exclut "montant pondéré", qui n'a ni "offre" ni "opportunité" à proximité.
+_WEIGHTED_OFFER_PATTERN = re.compile(r"\b(?:offres?|opportunit\w*)\s+(?:\w+\s+){0,2}ponder")
+
+
 PRACTICE_MAP = {
     "data management": "Data Management",
     "data": "Data Management",
@@ -103,10 +108,14 @@ def _detect_chart_type(q: str, dimension: str) -> str | None:
     # \b requis : "aire" en simple sous-chaîne matcherait "faire"/"affaire"/"nécessaire".
     if re.search(r"\baire\b", q) or "area chart" in q:
         return "area"
-    if any(w in q for w in ("camembert", "repartition", "part de")):
+    if any(w in q for w in ("camembert", "repartition", "part de", "pourcentage", "proportion")):
         return "pie"
     if any(w in q for w in ("evolution", "tendance", "courbe")):
-        return "line"
+        # "évolution"/"tendance" n'implique une courbe que sur un axe temporel — sur une
+        # dimension non temporelle (ex: "évolution par pays", très inhabituel), une courbe
+        # n'a pas de sens (rien à ordonner sur l'axe X) ; on laisse retomber sur "bar".
+        if not dimension or dimension in ("deadline_month", "deadline_year"):
+            return "line"
     if any(w in q for w in ("kpi", "combien", "total", "quel est")) and not dimension:
         return "kpi_card"
     if dimension == "deadline_month":
@@ -291,10 +300,23 @@ def refine_intent(query: str, intent: dict, today: Optional[date] = None) -> dic
         if m_top:
             intent["limit"] = int(m_top.group(1) or m_top.group(2))
 
+    # "offre(s)/opportunité(s) pondérée(s)" est un terme métier défini explicitement :
+    # probabilité de gain >= 80 % ET statut "Offre remise" — jamais "montant pondéré"
+    # (le metric weighted_amount, ex. "montant pondéré par pays"), qui ne doit pas
+    # déclencher ce filtre. D'où l'exigence que "offre"/"opportunité" précède "pondéré"
+    # de près : ça exclut "montant pondéré", où aucun des deux mots n'apparaît avant.
+    # Ce n'est qu'un filtre — le type d'affichage (table/KPI/graphique) reste piloté
+    # normalement par le reste de la question, jamais forcé ici.
+    if _WEIGHTED_OFFER_PATTERN.search(q):
+        intent.setdefault("filters", {})
+        intent["filters"]["status"] = "Offre remise"
+        intent.setdefault("range_filters", {})
+        intent["range_filters"]["win_probability"] = {"op": ">=", "value": 0.8}
+
     dimension = intent.get("dimension", "")
     if dimension == "deadline_month" and intent.get("chart_type") == "bar":
         intent["chart_type"] = "line"
-    if "camembert" in q or "repartition" in q:
+    if any(w in q for w in ("camembert", "repartition", "pourcentage", "proportion")):
         if dimension:
             intent["chart_type"] = "pie"
     if any(w in q for w in ("liste", "lister", "detail")):

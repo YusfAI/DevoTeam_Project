@@ -229,3 +229,78 @@ def test_no_relative_period_phrase_leaves_dates_untouched():
     result = refine_intent("budget par pays", _base_intent(dimension="country"), today=date(2026, 8, 6))
     assert "deadline_month" not in result["filters"]
     assert "deadline_year" not in result["filters"]
+
+
+# --- "Offre pondérée" : win_probability >= 0.8 ET statut "Offre remise" ---
+
+def test_offre_ponderee_applies_the_business_rule_filters():
+    intent = _base_intent(chart_type="table", use_raw_table=True)
+    result = refine_intent("liste des offres pondérées", intent)
+    assert result["filters"]["status"] == "Offre remise"
+    assert result["range_filters"]["win_probability"] == {"op": ">=", "value": 0.8}
+
+
+def test_offres_ponderees_plural_also_matches():
+    intent = _base_intent(chart_type="kpi_card")
+    result = refine_intent("combien d'opportunités pondérées avons-nous ?", intent)
+    assert result["filters"]["status"] == "Offre remise"
+    assert result["range_filters"]["win_probability"] == {"op": ">=", "value": 0.8}
+
+
+def test_offre_ponderee_overrides_a_weaker_llm_guess():
+    # The business definition is authoritative: even if the LLM already set a
+    # different status, "offre pondérée" must still win.
+    intent = _base_intent(chart_type="table", use_raw_table=True, filters={"status": "Lead"})
+    result = refine_intent("liste des offres pondérées", intent)
+    assert result["filters"]["status"] == "Offre remise"
+
+
+def test_offre_ponderee_does_not_force_the_chart_type():
+    # Per spec: the filter always applies, but the display type stays driven by the
+    # rest of the question — never forced to table/kpi_card by this rule alone.
+    intent = _base_intent(chart_type="bar", dimension="country")
+    result = refine_intent("budget des offres pondérées par pays", intent)
+    assert result["chart_type"] == "bar"
+    assert result["filters"]["status"] == "Offre remise"
+
+
+def test_montant_pondere_does_not_trigger_the_weighted_offer_rule():
+    # "montant pondéré" refers to the weighted_amount metric, not the business term —
+    # neither "offre" nor "opportunité" appears near "pondéré" here.
+    intent = _base_intent(metric="weighted_amount", dimension="country")
+    result = refine_intent("montant pondéré par pays", intent)
+    assert "status" not in result.get("filters", {})
+    assert "win_probability" not in result.get("range_filters", {})
+
+
+def test_budget_pondere_alone_does_not_trigger_the_weighted_offer_rule():
+    intent = _base_intent(metric="weighted_amount")
+    result = refine_intent("quel est le budget pondéré total", intent)
+    assert "status" not in result.get("filters", {})
+    assert "win_probability" not in result.get("range_filters", {})
+
+
+# --- Choix du type de graphique ---
+
+def test_evolution_forces_line_only_on_a_temporal_dimension():
+    intent = _base_intent(chart_type="bar", dimension="deadline_month")
+    result = refine_intent("évolution du budget par mois", intent)
+    assert result["chart_type"] == "line"
+
+
+def test_evolution_keyword_alone_does_not_force_line_on_country():
+    result = try_rule_based_parse("évolution du budget par pays")
+    assert result["dimension"] == "country"
+    assert result["chart_type"] != "line"
+
+
+def test_pourcentage_keyword_triggers_pie():
+    result = try_rule_based_parse("quel pourcentage du budget par pays")
+    assert result["dimension"] == "country"
+    assert result["chart_type"] == "pie"
+
+
+def test_proportion_keyword_triggers_pie_via_refine_intent():
+    intent = _base_intent(chart_type="bar", dimension="practice")
+    result = refine_intent("quelle proportion du budget par practice", intent)
+    assert result["chart_type"] == "pie"
