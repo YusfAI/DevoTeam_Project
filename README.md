@@ -59,7 +59,7 @@ cd frontend && npm install
 Deux terminaux :
 
 ```bash
-uvicorn backend.main:app --reload          # API sur http://127.0.0.1:8000
+python -m uvicorn backend.main:app --reload          # API sur http://127.0.0.1:8000
 ```
 
 ```bash
@@ -74,7 +74,7 @@ seule fois, puis ouvre le dashboard dans le navigateur — pratique en raccourci
 
 ```bash
 cd frontend && npm run build               # génère frontend/dist
-cd .. && uvicorn backend.main:app          # sert l'UI ET l'API sur http://127.0.0.1:8000
+cd .. && python -m uvicorn backend.main:app          # sert l'UI ET l'API sur http://127.0.0.1:8000
 ```
 
 ## Tests

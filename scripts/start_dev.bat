@@ -27,7 +27,7 @@ if "%ERRORLEVEL%"=="0" (
 
 REM --- 2. Backend FastAPI (http://127.0.0.1:8000) ---
 echo [Backend] demarrage...
-start "DevoTeam Backend" cmd /k "cd /d ""%PROJECT_ROOT%"" && uvicorn backend.main:app --reload"
+start "DevoTeam Backend" cmd /k "cd /d ""%PROJECT_ROOT%"" && python -m uvicorn backend.main:app --reload"
 
 REM --- 3. Frontend Vite (http://localhost:5173) ---
 echo [Frontend] demarrage...
