@@ -382,7 +382,19 @@ def build_rapport_professionnel():
     add_bullet(doc, "Donnée « jours restants » recalculée chaque nuit à partir de la date "
                      "réelle du jour, pour ne jamais afficher un chiffre obsolète.")
 
-    add_h2(doc, "4.4 Branding et expérience utilisateur")
+    add_h2(doc, "4.4 Synchronisation Google Sheets (nouvelle fonctionnalité)")
+    add_bullet(doc, "Un Google Sheet sert de formulaire d'ajout et de modification d'opportunités — "
+                     "plus simple à éditer au quotidien qu'une base de données directement.")
+    add_bullet(doc, "Synchronisation à sens unique (Sheet vers base) toutes les 15 minutes, au "
+                     "démarrage du serveur, et à la demande — la base reste la seule source lue par "
+                     "le chat, les graphiques et les alertes, jamais le Sheet directement.")
+    add_bullet(doc, "Chaque ligne est validée indépendamment (dates, montants, statuts) ; une ligne "
+                     "invalide est journalisée et sautée, sans jamais bloquer l'import des autres.")
+    add_bullet(doc, "Volontairement sans suppression automatique : retirer une ligne du Sheet ne "
+                     "supprime jamais l'opportunité correspondante en base — un choix de prudence "
+                     "assumé sur une tâche qui tourne sans surveillance humaine.")
+
+    add_h2(doc, "4.5 Branding et expérience utilisateur")
     add_bullet(doc, "Interface habillée aux couleurs et au logo Devoteam.")
     add_bullet(doc, "Micro-interactions et animations (fond animé, transitions, mise en avant "
                      "des nouveaux résultats).")
@@ -438,7 +450,9 @@ def build_rapport_professionnel():
              "(alertes deadlines, mise à jour des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (100 tests)", "Suite automatisée sans dépendance réseau/DB réelle (mocks), "
+            ["Synchro Google Sheets", "Google Sheets API (gspread)", "Permet aux équipes commerciales de "
+             "gérer les opportunités depuis un tableur familier, plutôt qu'en éditant la base directement."],
+            ["Tests", "pytest (140 tests)", "Suite automatisée sans dépendance réseau/DB réelle (mocks), "
              "garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -457,10 +471,13 @@ def build_rapport_professionnel():
                      "explicite — aucune requête SQL libre.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "100 tests automatisés couvrent la compréhension du langage, la couche SQL, "
-                     "la génération des graphiques et le système d'alerte.")
+    add_bullet(doc, "140 tests automatisés couvrent la compréhension du langage, la couche SQL, "
+                     "la génération des graphiques, le système d'alerte et la synchronisation Sheets.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
+    add_bullet(doc, "La clé de compte de service Google (accès au Sheet) est un fichier JSON exclu "
+                     "du dépôt (dossier credentials/ entièrement gitignoré) — jamais commité, quel "
+                     "que soit son nom.")
 
     # --- Preuve de fonctionnement ---
     add_h1(doc, "8. Preuve de fonctionnement — alertes deadlines")
@@ -475,9 +492,9 @@ def build_rapport_professionnel():
     # --- État d'avancement et roadmap ---
     add_h1(doc, "9. État d'avancement et roadmap")
     add_body(doc, "L'application est complète et fonctionnelle de bout en bout, en hébergement local. "
-                   "Quinze phases de développement ont été livrées, de la mise en place du backend "
-                   "jusqu'aux dernières retouches de finition (mode sombre, historique persistant, "
-                   "rattrapage des alertes).", bold=False)
+                   "Dix-sept phases de développement ont été livrées, de la mise en place du backend "
+                   "jusqu'à la synchronisation Google Sheets et l'optimisation de ses performances "
+                   "(dernières phases en date).", bold=False)
     add_h2(doc, "Améliorations envisagées (hors périmètre actuel)")
     add_bullet(doc, "Authentification et gestion multi-utilisateurs (restriction par practice/BU).")
     add_bullet(doc, "Suivi analytique des sessions utilisateur.")
@@ -523,6 +540,7 @@ def build_guide_technique():
         "Génération des graphiques (backend/vega_generator.py)",
         "Réponses textuelles déterministes (backend/response_builder.py)",
         "Alertes deadlines (backend/alerts.py, maintenance.py, scheduler)",
+        "Synchronisation Google Sheets (backend/sheets_sync.py)",
         "Frontend (Vite + React)",
         "Sécurité",
         "Tests automatisés",
@@ -602,9 +620,10 @@ def build_guide_technique():
             ["backend/response_builder.py", "Messages texte déterministes (jamais générés par le LLM)."],
             ["backend/alerts.py", "Requête des opportunités à échéance proche, envoi de l'email d'alerte."],
             ["backend/maintenance.py", "Recalcul quotidien de days_remaining."],
+            ["backend/sheets_sync.py", "Synchronisation Google Sheets -> MySQL (table opportunities uniquement)."],
             ["backend/db.py", "Pool de connexions MySQL (DBUtils PooledDB), paresseux."],
             ["frontend/src/", "Application Vite + React (composants, hooks, styles)."],
-            ["tests/", "Suite pytest — 100 tests, aucune dépendance réseau/DB réelle."],
+            ["tests/", "Suite pytest — 140 tests, aucune dépendance réseau/DB réelle."],
             ["data/devoteam_dashboard_mysql.sql", "Dump SQL de référence (schéma + données)."],
             ["Documentation/reports/", "Ce rapport, le guide technique et leur générateur (generate_docs.py)."],
             ["Documentation/planning/", "Brief initial du projet et données sources (hors suivi git du dépôt)."],
@@ -903,7 +922,7 @@ def build_guide_technique():
     add_body(doc,
         "Le troisième niveau est le plus important pédagogiquement : une instruction de prompt "
         "n'est jamais une garantie (le LLM l'a déjà ignorée une fois pour le scatter, voir "
-        "section 14), donc la correction réellement fiable est celle qui ne dépend pas du "
+        "section 15), donc la correction réellement fiable est celle qui ne dépend pas du "
         "LLM pour se déclencher. Le tableau affiche aussi désormais « Échéance dépassée "
         "depuis N jours » plutôt qu'un nombre négatif brut, pour les cas où une deadline "
         "passée reste légitimement visible (ex: une liste non filtrée par date).")
@@ -939,8 +958,101 @@ def build_guide_technique():
         "rattrape l'envoi dès qu'il redémarre, quelle que soit l'heure, sans jamais "
         "produire de second email le même jour.")
 
+    # --- Google Sheets ---
+    add_h1(doc, "11. Synchronisation Google Sheets -> MySQL")
+    add_body(doc,
+        "backend/sheets_sync.py. Le Sheet devient un formulaire d'ajout/modification "
+        "d'opportunités, plus simple à éditer au quotidien qu'une base de données "
+        "directement — l'application continue de LIRE depuis MySQL comme avant (chat, "
+        "graphiques, alertes) ; ce module importe uniquement les changements du Sheet "
+        "vers la base, jamais l'inverse.")
+
+    add_h2(doc, "11.1 Authentification par compte de service, pas une simple clé API")
+    add_body(doc,
+        "La synchro doit pouvoir ÉCRIRE dans le Sheet (réinjecter l'id MySQL généré pour "
+        "chaque nouvelle ligne, condition de son idempotence — voir 11.3), ce qu'une clé "
+        "API seule ne permet pas (lecture seule). Authentification par compte de service "
+        "Google (fichier JSON, ajouté en Éditeur sur le Sheet cible) via "
+        "gspread.service_account().")
+
+    add_h2(doc, "11.2 Champs toujours recalculés, jamais lus depuis le Sheet")
+    add_body(doc,
+        "deadline_month, deadline_year, days_remaining et weighted_amount sont toujours "
+        "dérivés des colonnes brutes (deadline, financial_offer, win_probability) au "
+        "moment de la synchro, même s'ils figurent en colonne dans le Sheet — même "
+        "principe que days_remaining ailleurs dans le projet (section 10.1) : une donnée "
+        "calculable ne doit jamais dépendre d'une saisie externe qui pourrait diverger.")
+
+    add_h2(doc, "11.3 Idempotence de l'insertion — réécriture de l'id dans le Sheet")
+    add_body(doc,
+        "Une ligne sans id = nouvelle opportunité. Après l'INSERT MySQL, l'id généré "
+        "(cur.lastrowid) est immédiatement réécrit dans la cellule id du Sheet — sans "
+        "quoi la synchro suivante (15 minutes plus tard) réinsérerait la même ligne en "
+        "double, faute de moyen de la reconnaître comme déjà traitée. Si cette "
+        "réécriture échoue (ligne insérée mais Sheet non mis à jour), l'erreur est "
+        "journalisée bruyamment plutôt que silencieusement absorbée — l'insertion "
+        "MySQL, elle, reste acquise.")
+
+    add_h2(doc, "11.4 Validation par ligne, jamais bloquante")
+    add_body(doc,
+        "Chaque ligne est validée indépendamment (dates aux deux formats acceptés, "
+        "nombres avec virgule décimale, probabilité en fraction ou en pourcentage, "
+        "practice/opp_type/status contre la liste blanche déjà utilisée par le chat) — "
+        "une ligne invalide est journalisée et sautée, sans jamais empêcher l'import des "
+        "autres. Les littéraux \"NULL\"/\"N/A\" laissés par l'export CSV -> Sheets sont "
+        "normalisés en valeur vide plutôt que stockés tels quels comme texte.")
+
+    add_h2(doc, "11.5 Bug trouvé en conditions réelles — cursor.rowcount ne veut pas dire ce qu'on croit")
+    add_body(doc,
+        "Premier test en direct (pas seulement avec des mocks) : la synchro rapportait "
+        "1 ligne mise à jour et 359 ignorées pour « id introuvable », alors que ces ids "
+        "existaient bel et bien en base. Cause : la détection « id existant vs nouveau » "
+        "se fiait à cursor.rowcount après un UPDATE — or PyMySQL (sans CLIENT_FOUND_ROWS) "
+        "renvoie le nombre de lignes réellement MODIFIÉES, pas trouvées. Le Sheet étant un "
+        "export frais de la base, la quasi-totalité des UPDATE ne changeaient aucune "
+        "valeur, donc rowcount valait 0 même sur un id existant. Corrigé en préchargeant "
+        "une fois l'ensemble des ids existants (SELECT id FROM opportunities) plutôt que "
+        "de déduire l'existence du résultat de l'UPDATE. Vérifié après correction : 348 "
+        "lignes mises à jour, 12 sautées à raison — révélant un vrai problème de qualité "
+        "de données préexistant (des valeurs opp_type comme \"DP\"/\"AMI\" saisies par "
+        "erreur dans la colonne status).")
+
+    add_h2(doc, "11.6 Décision volontaire : pas de suppression automatique")
+    add_body(doc,
+        "Retirer une ligne du Sheet ne supprime jamais l'opportunité correspondante en "
+        "base. Une synchro automatique et non surveillée, qui tourne indéfiniment toutes "
+        "les 15 minutes, est le mauvais endroit pour une opération destructive et "
+        "irréversible : une lecture partielle, un mauvais onglet ou un Sheet vidé par "
+        "erreur pourrait effacer de vraies données sans que personne ne le voie venir "
+        "avant le prochain passage. Ajout et modification seulement — un choix de "
+        "prudence assumé plutôt qu'un oubli.")
+
+    add_h2(doc, "11.7 Optimisation — mettre en cache la résolution du Sheet, pas seulement le client")
+    add_body(doc,
+        "Profilage demandé après coup, pour vérifier l'absence de régression de "
+        "performance : le coût réel n'était pas les écritures MySQL (360 UPDATE "
+        "séquentiels mesurés à 0.032s au total) mais open_by_key() + worksheet(), deux "
+        "allers-retours réseau vers l'API Google Sheets (1.6s mesurés à eux deux) — "
+        "rejoués à chaque appel de sync_sheet_to_mysql() alors que le client gspread "
+        "authentifié, lui, était déjà mis en cache. Corrigé en mettant aussi en cache "
+        "l'objet Worksheet résolu : un appel répété passe de 1.6s à 0s, et une synchro "
+        "complète de ~1.1s à ~0.4s une fois le cache chaud — un gain qui se répète "
+        "indéfiniment, toutes les 15 minutes. Les trois tâches de démarrage (recalcul "
+        "days_remaining, vérification d'alerte, synchro Sheets) bloquaient aussi le "
+        "démarrage du serveur (exécutées avant que FastAPI n'accepte une seule requête "
+        "HTTP, dans lifespan()) ; elles tournent désormais comme jobs « une fois "
+        "immédiatement » sur le thread du scheduler, sans retarder la disponibilité du "
+        "serveur.")
+
+    add_h2(doc, "11.8 Déclenchement")
+    add_body(doc,
+        "Trois déclencheurs : toutes les 15 minutes (APScheduler, job "
+        "sheets_sync_periodic), une fois au démarrage du serveur, et à la demande via "
+        "POST /sheets/sync — utile pour forcer un import sans attendre le prochain "
+        "cycle.")
+
     # --- Frontend ---
-    add_h1(doc, "11. Frontend (Vite + React)")
+    add_h1(doc, "12. Frontend (Vite + React)")
     add_bullet(doc, "Composants principaux : ChatPanel, DashboardPanel, AlertBanner, VegaChart, "
                      "DataTable, StatTile, ThemeToggle, DevoteamLogo.")
     add_bullet(doc, "Hooks dédiés : useTheme (clair/sombre), useChatHistory (persistance "
@@ -955,7 +1067,7 @@ def build_guide_technique():
                      "réponse, est utilisé comme prop key pour forcer le remontage des "
                      "composants et rejouer les animations d'entrée à chaque nouveau résultat.")
 
-    add_h2(doc, "11.1 Historique de conversation persistant (useChatHistory.js)")
+    add_h2(doc, "12.1 Historique de conversation persistant (useChatHistory.js)")
     add_body(doc,
         "Messages, dashboard affiché et contexte multi-tour (previous_intent) sont "
         "sérialisés dans localStorage à chaque changement, et restaurés au montage — "
@@ -968,7 +1080,7 @@ def build_guide_technique():
         "confirmation) a été ajouté dans le header, puisqu'un historique qui persiste "
         "indéfiniment a besoin d'une porte de sortie explicite.")
 
-    add_h2(doc, "11.2 Bug trouvé : header illisible en mode sombre")
+    add_h2(doc, "12.2 Bug trouvé : header illisible en mode sombre")
     add_body(doc,
         "Trouvé en relisant le CSS (pas en testant à l'œil — aucun outil de capture "
         "d'écran disponible dans cet environnement) : le dégradé du header utilisait "
@@ -988,7 +1100,7 @@ def build_guide_technique():
         "jamais une modification du rendu déjà validé.")
 
     # --- Sécurité ---
-    add_h1(doc, "12. Sécurité")
+    add_h1(doc, "13. Sécurité")
     add_bullet(doc, "Aucune injection SQL possible : le LLM ne produit jamais de SQL, "
                      "uniquement un JSON borné par une liste blanche, converti en requêtes "
                      "paramétrées.")
@@ -996,12 +1108,16 @@ def build_guide_technique():
                      ".env.example documente les variables attendues sans valeurs réelles.")
     add_bullet(doc, "Le mot de passe d'application Gmail est distinct du mot de passe principal "
                      "du compte et révocable indépendamment.")
+    add_bullet(doc, "credentials/ (clé de compte de service Google, section 11.1) est gitignoré "
+                     "au niveau du dossier entier — jamais de fichier JSON de credentials commité, "
+                     "quel que soit son nom.")
 
     # --- Tests ---
-    add_h1(doc, "13. Tests automatisés")
+    add_h1(doc, "14. Tests automatisés")
     add_body(doc,
-        "100 tests pytest, sans dépendance réseau ni base de données réelle : le client "
-        "Groq et les connexions MySQL sont simulés (monkeypatch) via de faux objets "
+        "140 tests pytest, sans dépendance réseau ni base de données réelle : le client "
+        "Groq, les connexions MySQL et le client Google Sheets (gspread) sont simulés "
+        "(monkeypatch) via de faux objets "
         "(fake cursor/connection capturant la requête générée pour l'affirmer dans le "
         "test). Complétés systématiquement par une vérification en conditions réelles "
         "(DB MySQL réelle, appel Groq réel, et compilation par le vrai moteur vega-lite "
@@ -1023,10 +1139,13 @@ def build_guide_technique():
             ["test_alerts.py", "12", "Fenêtre de 7 jours en direct, exclusion des statuts clos, envoi email, "
              "rattrapage idempotent du scheduler."],
             ["test_maintenance.py", "3", "Recalcul de days_remaining, résilience à une panne DB."],
+            ["test_sheets_sync.py", "30", "Parsing/validation par ligne, littéraux NULL, insertion + "
+             "réécriture d'id, détection id existant/inconnu, ligne invalide sautée sans bloquer les "
+             "autres, résilience à une panne de lecture du Sheet."],
         ])
 
     # --- Q&A entretien ---
-    add_h1(doc, "14. Questions d'entretien probables")
+    add_h1(doc, "15. Questions d'entretien probables")
     qa = [
         ("Pourquoi ne pas laisser le LLM écrire du SQL directement ?",
          "Parce qu'un LLM peut halluciner une colonne, une table ou une valeur inexistante. "
@@ -1087,13 +1206,31 @@ def build_guide_technique():
          "blanc lui aussi en mode sombre. Un raisonnement statique suffit à repérer ce "
          "type de bug ; il n'a fallu aucun rendu réel pour le localiser, seulement pour le "
          "confirmer visuellement ensuite."),
+        ("Pourquoi ne pas synchroniser aussi les suppressions (Sheet -> base) ?",
+         "Choix de prudence délibéré, pas un oubli : la synchro tourne toutes les 15 "
+         "minutes sans supervision humaine. Une suppression automatique y est le pire "
+         "endroit possible pour une opération destructive et irréversible — une lecture "
+         "partielle, un mauvais onglet ou un Sheet vidé par erreur effacerait de vraies "
+         "données avant que quiconque ne le remarque. Le risque a été explicitement "
+         "évalué avec le porteur du projet, qui a choisi de garantir seulement l'ajout et "
+         "la modification plutôt que la fonctionnalité complète."),
+        ("Un test avec des mocks peut-il garantir qu'une intégration externe (Google Sheets, MySQL) "
+         "fonctionne réellement ?",
+         "Non — exemple concret rencontré sur ce projet : tous les tests mockés de la "
+         "synchro Sheets passaient, mais le premier essai en conditions réelles rapportait "
+         "359 lignes sur 360 comme « id introuvable » alors qu'elles existaient toutes en "
+         "base. La cause (cursor.rowcount qui compte les lignes modifiées, pas trouvées) "
+         "n'était visible qu'avec de vraies données où la plupart des UPDATE ne changent "
+         "rien. Les mocks avaient simulé le comportement qu'on attendait de rowcount, pas "
+         "son vrai comportement — la leçon : les mocks valident la logique connue, seule "
+         "une vérification en conditions réelles révèle ce qu'on n'avait pas anticipé."),
     ]
     for question, answer in qa:
         add_h3(doc, "Q : " + question)
         add_body(doc, answer)
 
     # --- Limites ---
-    add_h1(doc, "15. Limites connues")
+    add_h1(doc, "16. Limites connues")
     add_bullet(doc, "Le mode « sortie structurée stricte » n'est pas supporté par Groq/Llama "
                      "3.3 (testé et confirmé) — le filet de sécurité Pydantic + liste blanche "
                      "reste donc le mécanisme d'application des règles, plutôt qu'une garantie "
@@ -1104,6 +1241,14 @@ def build_guide_technique():
     add_bullet(doc, "Le nuage de points et la carte de chaleur n'ont pas de garde-fou de "
                      "cardinalité aussi mûr que bar/pie pour des cas extrêmes (dimension à très "
                      "forte cardinalité en axe du heatmap au-delà du plafond testé).")
+    add_bullet(doc, "La synchro Google Sheets ne détecte pas les suppressions (section 11.6, "
+                     "choix délibéré) et retraite chaque ligne à chaque passage plutôt que de "
+                     "ne toucher que les lignes changées — sans impact réel à l'échelle actuelle "
+                     "(360 lignes/15 min), mais à reconsidérer si le Sheet grossissait beaucoup.")
+    add_bullet(doc, "12 opportunités en base ont un status invalide, présent avant même la "
+                     "synchro Sheets et jamais détecté faute de validation stricte à l'écriture "
+                     "d'origine (section 11.5) — à corriger manuellement ou à ajouter à la liste "
+                     "blanche si ce sont des statuts légitimes.")
 
     out_path = os.path.join(DOC_DIR, "Guide_Technique_DevoTeam_Dashboard.docx")
     doc.save(out_path)

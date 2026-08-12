@@ -50,6 +50,7 @@ _UPSERT_COLUMNS = (
 # ne le voie venir. Ajout/modification seulement.
 
 _client = None
+_worksheet = None
 
 
 def _get_client():
@@ -61,12 +62,20 @@ def _get_client():
 
 
 def _get_worksheet():
-    sheet_id = os.getenv("GOOGLE_SHEET_ID")
-    tab_name = os.getenv("GOOGLE_SHEET_TAB", "opportunities")
-    if not sheet_id:
-        raise ValueError("GOOGLE_SHEET_ID manquant dans .env")
-    sh = _get_client().open_by_key(sheet_id)
-    return sh.worksheet(tab_name)
+    # open_by_key() + worksheet() sont chacun un aller-retour réseau vers l'API
+    # Sheets (~1.6s mesuré à eux deux) — le seul sur les quatre du sheet_id/nom
+    # d'onglet fixes pour la durée du process, donc pas besoin de les refaire à
+    # chaque synchro (toutes les 15 min, indéfiniment). Seul get_all_values()/
+    # update_cell() doivent rester des appels frais à chaque fois (données à jour).
+    global _worksheet
+    if _worksheet is None:
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        tab_name = os.getenv("GOOGLE_SHEET_TAB", "opportunities")
+        if not sheet_id:
+            raise ValueError("GOOGLE_SHEET_ID manquant dans .env")
+        sh = _get_client().open_by_key(sheet_id)
+        _worksheet = sh.worksheet(tab_name)
+    return _worksheet
 
 
 class RowError(ValueError):

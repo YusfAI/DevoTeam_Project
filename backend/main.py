@@ -39,9 +39,16 @@ _scheduler = BackgroundScheduler()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    refresh_days_remaining()
-    run_daily_alert_check_if_needed()
-    sync_sheet_to_mysql()
+    # Les 3 tâches de démarrage tournaient auparavant en bloquant ici (synchrone,
+    # avant yield) : le serveur n'acceptait aucune requête HTTP tant qu'elles
+    # n'étaient pas terminées, dont jusqu'à ~1.6s pour la seule connexion à Google
+    # Sheets (sync_sheet_to_mysql -> voir backend/sheets_sync.py). Elles tournent
+    # maintenant comme jobs "une fois, immédiatement" sur le thread du scheduler,
+    # démarré juste après : le serveur répond dès que la boucle est prête, ces
+    # tâches finissent en tâche de fond en quelques secondes.
+    _scheduler.add_job(refresh_days_remaining, id="startup_days_remaining_refresh")
+    _scheduler.add_job(run_daily_alert_check_if_needed, id="startup_deadline_alert")
+    _scheduler.add_job(sync_sheet_to_mysql, id="startup_sheets_sync")
     _scheduler.add_job(refresh_days_remaining, "cron", hour=0, minute=5, id="daily_days_remaining_refresh")
     _scheduler.add_job(run_daily_alert_check_if_needed, "cron", hour=8, minute=0, id="daily_deadline_alert")
     _scheduler.add_job(sync_sheet_to_mysql, "interval", minutes=15, id="sheets_sync_periodic")
