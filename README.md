@@ -145,6 +145,7 @@ credentials/           clé de compte de service Google (gitignoré, absent par 
 data/                  dump SQL de référence
 tests/                 suite pytest (mock DB/Groq/Sheets), 140 tests
 Documentation/
+  WORKFLOW.md            traçage concret d'une question, du prompt au graphique affiché
   reports/              rapport professionnel + guide technique (.docx) et leur générateur
   planning/             brief initial et données sources du projet
 ```
