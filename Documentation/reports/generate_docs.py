@@ -440,8 +440,8 @@ def build_rapport_professionnel():
              "(Pydantic) — cohérent avec l'exigence anti-hallucination."],
             ["Base de données", "MySQL / MariaDB (XAMPP)", "Vues pré-agrégées par dimension, requêtes "
              "paramétrées, adapté au volume et à l'hébergement local."],
-            ["Compréhension du langage", "Google Gemini — gemini-flash-latest", "Sortie JSON structurée, "
-             "faible latence, complétée par une validation stricte côté serveur."],
+            ["Compréhension du langage", "Google Gemini — gemini-flash-lite-latest", "Sortie JSON "
+             "structurée, faible latence, complétée par une validation stricte côté serveur."],
             ["Visualisation", "Vega-Lite / vega-embed", "Grammaire de graphiques déclarative en JSON, génération "
              "automatique fiable, rendu navigateur natif."],
             ["Frontend", "Vite + React", "Interface réactive, thème clair/sombre, build optimisé pour "
@@ -600,13 +600,21 @@ def build_guide_technique():
         "(erreur 404 modèle introuvable, confirmée avec deux clés API différentes — "
         "pas un problème d'accès mais une dépréciation réelle), cassant toute "
         "question ne passant pas par le chemin rapide par mots-clés. Migration vers "
-        "Google Gemini (`gemini-flash-latest` — un alias plutôt qu'une version "
+        "Google Gemini (`gemini-flash-lite-latest` — un alias plutôt qu'une version "
         "épinglée, pour ne pas revivre le même type de panne si Google fait tourner "
         "sa gamme) en gardant volontairement la même architecture (JSON libre + "
         "validation Pydantic + réparation heuristique) plutôt que d'adopter les "
         "sorties structurées strictes de Gemini (vérifiées disponibles à cette "
         "occasion) — changer de fournisseur ET d'architecture en même temps aurait "
-        "ajouté un risque inutile sous pression.")
+        "ajouté un risque inutile sous pression. Deuxième surprise trouvée juste "
+        "après, en conditions réelles : le premier modèle essayé (`gemini-flash-"
+        "latest`) a un quota gratuit de seulement 5 requêtes/minute, épuisé en "
+        "quelques messages de chat — la variante « lite » tient ~16 requêtes/minute "
+        "pour une qualité d'extraction équivalente sur les mêmes tests, puisque "
+        "c'est le schéma + Pydantic qui garantissent la précision, pas la taille du "
+        "modèle. Un quota épuisé (429) et une surcharge transitoire (503, avec deux "
+        "tentatives automatiques avant abandon) reçoivent maintenant chacun un "
+        "message distinct plutôt que la même erreur générique.")
     add_h2(doc, "2.3 Pourquoi APScheduler plutôt qu'une tâche planifiée externe (cron/Task Scheduler)")
     add_body(doc,
         "L'application est un processus unique en local (`uvicorn`). APScheduler "

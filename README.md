@@ -8,7 +8,7 @@ de graphique (Vega-Lite), de carte KPI ou de tableau. Une alerte quotidienne (em
 bannière) prévient aussi des opportunités dont l'échéance approche.
 
 Stack : **FastAPI** (backend) + **MySQL/MariaDB via XAMPP** + **Google Gemini** (LLM,
-`gemini-flash-latest`) + **Vite/React** (frontend) + **APScheduler** (tâches
+`gemini-flash-lite-latest`) + **Vite/React** (frontend) + **APScheduler** (tâches
 planifiées). Hébergement local uniquement.
 
 ## Fonctionnalités
