@@ -6,7 +6,9 @@ import re
 from datetime import date
 from typing import Optional, Union
 
-from groq import Groq, GroqError
+from google import genai
+from google.genai import types as genai_types
+from google.genai.errors import APIError
 from .schema_and_whitelist import (
     VALID_METRICS, VALID_DIMENSIONS, VALID_CHART_TYPES, VALID_FILTERS, KNOWN_VALUES
 )
@@ -81,7 +83,13 @@ class DashboardIntent(BaseModel):
         return v
 
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# "-latest" plutôt qu'une version épinglée (ex: gemini-2.5-flash) : Google déprécie et
+# retire des modèles sans préavis particulier (déjà vécu avec Groq/llama-3.3-70b-versatile,
+# retiré du service entre deux sessions) — un alias "-latest" reste pointé vers un modèle
+# valide même si Google fait tourner sa gamme, au prix de ne pas figer le comportement.
+GEMINI_MODEL = "gemini-flash-latest"
+
+client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
 _DB_CONTEXT_CACHE: Optional[dict] = None
 
@@ -440,21 +448,21 @@ goal, metric, dimension, filters, range_filters, chart_type, aggregation, use_ra
 """
 
     try:
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": query},
-            ],
-            model="llama-3.3-70b-versatile",
-            response_format={"type": "json_object"},
-            temperature=0.0,
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=query,
+            config=genai_types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                response_mime_type="application/json",
+                temperature=0.0,
+            ),
         )
-    except GroqError:
-        logger.exception("Appel Groq en échec pour la requête %r", query)
+    except APIError:
+        logger.exception("Appel Gemini en échec pour la requête %r", query)
         raise ValueError("Service IA temporairement indisponible. Merci de réessayer dans un instant.")
 
-    response_text = chat_completion.choices[0].message.content
-    logger.debug("Réponse brute Groq : %s", response_text)
+    response_text = response.text
+    logger.debug("Réponse brute Gemini : %s", response_text)
 
     try:
         intent_data = json.loads(response_text)

@@ -22,6 +22,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 15 — Finitions : mode sombre lisible, statuts clos exclus des requêtes urgentes, rattrapage du scheduler, historique de conversation persistant, réorganisation du dépôt
 - [x] Phase 16 — Règle métier « offre pondérée » et amélioration du choix automatique de graphique
 - [x] Phase 17 — Synchronisation Google Sheets -> MySQL (ajout/modification d'opportunités depuis un Sheet)
+- [x] Phase 18 — Migration forcée Groq → Google Gemini (`llama-3.3-70b-versatile` retiré du service par Groq)
 
 ## 📝 Journaux
 
@@ -76,6 +77,8 @@ Profilage demandé après coup (« est-ce que ça ralentit l'appli ? ») : le co
 
 Bouton de synchro manuelle ajouté dans l'en-tête du chat (icône 🔄, à côté du bouton d'effacement d'historique) : appelle `POST /sheets/sync` et affiche le résumé (insérées/mises à jour/ignorées) directement comme message dans la conversation, plutôt que de laisser ce retour uniquement dans les logs serveur.
 
+**Phase 18** : Terminée. `llama-3.3-70b-versatile` — le modèle Groq utilisé depuis la Phase 4 (restauré en Phase 11) — a été **retiré du service par Groq** (`404 model_not_found`, confirmé avec deux clés API différentes, donc pas un souci d'accès mais une dépréciation réelle du modèle) : toute question ne passant pas par le chemin rapide par mots-clés échouait avec « Service IA temporairement indisponible ». Migration vers **Google Gemini** (`google-genai`, modèle `gemini-flash-latest` — un alias « -latest » plutôt qu'une version épinglée, justement pour éviter de revivre ce même type de panne si Google fait tourner sa gamme de modèles). Migration volontairement minimale (même architecture qu'avec Groq : JSON libre guidé par le prompt système + validation Pydantic + réparation heuristique `_resolve_metric`/`_resolve_dimension`, inchangés) plutôt que d'adopter les sorties structurées strictes de Gemini (vérifiées disponibles et fonctionnelles à cette occasion — `response_schema` avec des `Literal`/`Union`/listes d'objets imbriqués, à la manière de ce qu'offre Claude — mais changer de fournisseur ET d'architecture en même temps aurait ajouté un risque inutile sous pression). `system_instruction` remplace le message `role: "system"` de Groq (paramètre dédié plutôt qu'un message dans la liste, différence d'API à connaître si une migration future adopte le mode strict). Vérifié en conditions réelles après migration : conversation générale, comparaison à deux pays, filtre « urgentes », et contexte multi-tour fonctionnent tous correctement. Suite `pytest` : 143 tests (inchangée, seuls les mocks de `tests/test_llm_validation.py` ont changé de forme).
+
 
 ## 📊 Bilan du Produit
 
@@ -93,5 +96,5 @@ L'application est **complète et fonctionnelle, exécutable de bout-en-bout**, h
 *(hors scope initial du mandat)*
 - **Auth / Multi-tenancy** : Authentifier l'utilisateur via JWT pour restreindre la visualisation aux seules pratiques de sa BU.
 - **Session ID Tracking** : Dans le log MySQL `dashboard_requests`, ajouter `session_id` pour faire du vrai product-analytics sur le comportement des utilisateurs.
-- **Mode JSON Schema strict** : non supporté par Groq/`llama-3.3-70b-versatile` (testé en Phase 9, confirmé 400 explicite). Fonctionne nativement avec Claude (validé en Phase 10) si l'app devait un jour migrer à nouveau — le filet de sécurité actuel (Pydantic + whitelist + `IntentUnclear`) reste suffisant en attendant.
+- **Mode JSON Schema strict** : non supporté par Groq/`llama-3.3-70b-versatile` (testé en Phase 9). Fonctionne nativement avec Claude (validé en Phase 10) et avec Gemini (vérifié empiriquement en Phase 18 — `Literal`/`Union`/listes d'objets imbriqués tous supportés, un seul vrai piège : un enum ne peut pas contenir la chaîne vide `""`, il faut une valeur sentinelle) — le fournisseur actuel (Gemini) le permettrait donc, mais la Phase 18 a délibérément gardé l'architecture JSON libre + réparation heuristique pour limiter le risque d'une migration faite dans l'urgence. Le filet de sécurité actuel (Pydantic + whitelist + `IntentUnclear`) reste suffisant en attendant une passe dédiée.
 - **Barres empilées/groupées (2 dimensions)** : ex. « budget par pays, décomposé par statut ». Chart type envisagé en Phase 14 mais pas construit — nécessiterait un champ `group_by` dans le schéma d'intention, plus gros chantier que les 4 types livrés (qui réutilisent tous la dimension unique existante).

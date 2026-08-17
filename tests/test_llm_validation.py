@@ -4,27 +4,17 @@ import pytest
 from backend import llm
 
 
-class _FakeMessage:
+class _FakeGeminiResponse:
     def __init__(self, content):
-        self.content = content
+        self.text = content
 
 
-class _FakeChoice:
-    def __init__(self, content):
-        self.message = _FakeMessage(content)
-
-
-class _FakeCompletion:
-    def __init__(self, content):
-        self.choices = [_FakeChoice(content)]
-
-
-def _mock_groq(monkeypatch, payload: dict):
-    """Force the Groq path (bypass the rule-based pre-parser) and stub the API response."""
+def _mock_llm_response(monkeypatch, payload: dict):
+    """Force the Gemini path (bypass the rule-based pre-parser) and stub the API response."""
     monkeypatch.setattr(llm, "try_rule_based_parse", lambda query: None)
     monkeypatch.setattr(
-        llm.client.chat.completions, "create",
-        lambda *a, **kw: _FakeCompletion(json.dumps(payload)),
+        llm.client.models, "generate_content",
+        lambda *a, **kw: _FakeGeminiResponse(json.dumps(payload)),
     )
 
 
@@ -46,7 +36,7 @@ def _base_payload(**overrides):
 
 def test_recoverable_metric_synonym_is_mapped(monkeypatch):
     _mock_db_context(monkeypatch)
-    _mock_groq(monkeypatch, _base_payload(metric="chiffre d'affaires"))
+    _mock_llm_response(monkeypatch, _base_payload(metric="chiffre d'affaires"))
     result = llm.parse_user_query("c'est quoi le chiffre d'affaires ?")
     assert result["metric"] == "budget"
     assert result["is_conversation"] is False
@@ -54,7 +44,7 @@ def test_recoverable_metric_synonym_is_mapped(monkeypatch):
 
 def test_unrecognizable_metric_asks_for_clarification_instead_of_guessing(monkeypatch):
     _mock_db_context(monkeypatch)
-    _mock_groq(monkeypatch, _base_payload(metric="xyz123"))
+    _mock_llm_response(monkeypatch, _base_payload(metric="xyz123"))
     result = llm.parse_user_query("truc bizarre")
     # Must NOT silently fall back to "budget" — must surface a clarification request.
     assert result["is_conversation"] is True
@@ -64,7 +54,7 @@ def test_unrecognizable_metric_asks_for_clarification_instead_of_guessing(monkey
 
 def test_known_country_filter_is_preserved(monkeypatch):
     _mock_db_context(monkeypatch, countries=["France", "Belgique", "Maroc"])
-    _mock_groq(monkeypatch, _base_payload(filters={"country": "France"}))
+    _mock_llm_response(monkeypatch, _base_payload(filters={"country": "France"}))
     result = llm.parse_user_query("montre les revenus en france stp")
     # Regression test for the filter-dropping bug observed in out.txt: a valid,
     # whitelisted filter value must survive end to end.
@@ -73,7 +63,7 @@ def test_known_country_filter_is_preserved(monkeypatch):
 
 def test_unrecognized_country_value_asks_for_clarification(monkeypatch):
     _mock_db_context(monkeypatch, countries=["France", "Belgique", "Maroc"])
-    _mock_groq(monkeypatch, _base_payload(filters={"country": "Atlantis"}))
+    _mock_llm_response(monkeypatch, _base_payload(filters={"country": "Atlantis"}))
     result = llm.parse_user_query("revenus en atlantis")
     assert result["is_conversation"] is True
     assert "Atlantis" in result["clarification"]
@@ -81,7 +71,7 @@ def test_unrecognized_country_value_asks_for_clarification(monkeypatch):
 
 def test_unsupported_filter_key_is_rejected(monkeypatch):
     _mock_db_context(monkeypatch)
-    _mock_groq(monkeypatch, _base_payload(filters={"region": "EMEA"}))
+    _mock_llm_response(monkeypatch, _base_payload(filters={"region": "EMEA"}))
     with pytest.raises(ValueError):
         llm.parse_user_query("budget en EMEA")
 
@@ -92,13 +82,13 @@ def test_rule_based_path_does_not_silently_drop_an_unrecognized_location(monkeyp
     # notion of countries (DB-only data) so it silently produced filters={} — i.e.
     # the response looked like a real answer while quietly ignoring "atlantis".
     # The real try_rule_based_parse runs here (not mocked) so we can verify the
-    # guard actually kicks in; only the Groq call and DB context are stubbed.
+    # guard actually kicks in; only the Gemini call and DB context are stubbed.
     monkeypatch.setattr(llm, "_load_db_context", lambda: {
         "countries": ["France", "Belgique"], "funding_sources": [], "partners": [],
     })
     monkeypatch.setattr(
-        llm.client.chat.completions, "create",
-        lambda *a, **kw: _FakeCompletion(json.dumps(_base_payload(
+        llm.client.models, "generate_content",
+        lambda *a, **kw: _FakeGeminiResponse(json.dumps(_base_payload(
             metric="budget", filters={"country": "Atlantis"}, chart_type="kpi_card",
         ))),
     )
@@ -111,12 +101,12 @@ def test_rule_based_path_does_not_silently_drop_an_unrecognized_location(monkeyp
 
 def test_rule_based_path_still_captures_a_known_country_without_calling_the_llm(monkeypatch):
     def _fail(*a, **kw):
-        raise AssertionError("Groq should not be called when the rule-based path resolves cleanly")
+        raise AssertionError("Gemini should not be called when the rule-based path resolves cleanly")
 
     monkeypatch.setattr(llm, "_load_db_context", lambda: {
         "countries": ["France", "Belgique"], "funding_sources": [], "partners": [],
     })
-    monkeypatch.setattr(llm.client.chat.completions, "create", _fail)
+    monkeypatch.setattr(llm.client.models, "generate_content", _fail)
 
     result = llm.parse_user_query("budget en france")
     assert result["filters"]["country"] == "France"
@@ -126,7 +116,7 @@ def test_rule_based_path_still_captures_a_known_country_without_calling_the_llm(
 
 def test_comparison_filter_list_is_resolved(monkeypatch):
     _mock_db_context(monkeypatch, countries=["France", "Belgique", "Maroc"])
-    _mock_groq(monkeypatch, _base_payload(
+    _mock_llm_response(monkeypatch, _base_payload(
         dimension="country", chart_type="bar", filters={"country": ["France", "Maroc"]},
     ))
     result = llm.parse_user_query("compare le budget entre la france et le maroc")
@@ -135,7 +125,7 @@ def test_comparison_filter_list_is_resolved(monkeypatch):
 
 def test_comparison_filter_with_one_unknown_value_is_rejected(monkeypatch):
     _mock_db_context(monkeypatch, countries=["France", "Belgique", "Maroc"])
-    _mock_groq(monkeypatch, _base_payload(
+    _mock_llm_response(monkeypatch, _base_payload(
         dimension="country", chart_type="bar", filters={"country": ["France", "Atlantis"]},
     ))
     result = llm.parse_user_query("compare la france et atlantis")
@@ -157,11 +147,11 @@ def test_rule_based_path_defers_to_llm_on_comparison_wording(monkeypatch):
 
     def _create(*a, **kw):
         called["yes"] = True
-        return _FakeCompletion(json.dumps(_base_payload(
+        return _FakeGeminiResponse(json.dumps(_base_payload(
             dimension="country", chart_type="bar", filters={"country": ["France", "Maroc"]},
         )))
 
-    monkeypatch.setattr(llm.client.chat.completions, "create", _create)
+    monkeypatch.setattr(llm.client.models, "generate_content", _create)
     llm.parse_user_query("compare le budget France vs Maroc")
     assert called.get("yes") is True
 
@@ -174,18 +164,18 @@ def test_rule_based_path_defers_to_llm_when_multiple_countries_named(monkeypatch
 
     def _create(*a, **kw):
         called["yes"] = True
-        return _FakeCompletion(json.dumps(_base_payload(
+        return _FakeGeminiResponse(json.dumps(_base_payload(
             dimension="country", chart_type="bar", filters={"country": ["France", "Maroc"]},
         )))
 
-    monkeypatch.setattr(llm.client.chat.completions, "create", _create)
+    monkeypatch.setattr(llm.client.models, "generate_content", _create)
     llm.parse_user_query("budget france et maroc")
     assert called.get("yes") is True
 
 
 # --- Contexte multi-tour ---
 
-def test_previous_intent_skips_the_fast_path_and_reaches_groq(monkeypatch):
+def test_previous_intent_skips_the_fast_path_and_reaches_gemini(monkeypatch):
     # Even a query that would normally resolve via the offline fast path ("budget
     # par pays") must go through the LLM once there's conversational context to
     # interpret, since the fast path has no notion of context.
@@ -194,13 +184,13 @@ def test_previous_intent_skips_the_fast_path_and_reaches_groq(monkeypatch):
     })
     captured = {}
 
-    def _create(*, messages, **kw):
-        captured["system_prompt"] = messages[0]["content"]
-        return _FakeCompletion(json.dumps(_base_payload(
+    def _create(*, model, contents, config):
+        captured["system_prompt"] = config.system_instruction
+        return _FakeGeminiResponse(json.dumps(_base_payload(
             dimension="country", chart_type="bar", filters={"practice": "Data Management"},
         )))
 
-    monkeypatch.setattr(llm.client.chat.completions, "create", _create)
+    monkeypatch.setattr(llm.client.models, "generate_content", _create)
     previous = {
         "goal": "Budget par pays — Risk Advisory", "metric": "budget", "dimension": "country",
         "filters": {"practice": "Risk Advisory"}, "chart_type": "bar", "aggregation": "sum",
@@ -215,9 +205,9 @@ def test_previous_intent_skips_the_fast_path_and_reaches_groq(monkeypatch):
 
 def test_no_previous_intent_still_uses_fast_path(monkeypatch):
     def _fail(*a, **kw):
-        raise AssertionError("Groq should not be called when there is no context and the fast path resolves")
+        raise AssertionError("Gemini should not be called when there is no context and the fast path resolves")
 
-    monkeypatch.setattr(llm.client.chat.completions, "create", _fail)
+    monkeypatch.setattr(llm.client.models, "generate_content", _fail)
     result = llm.parse_user_query("budget par pays pour Risk Advisory")
     assert result["filters"]["practice"] == "Risk Advisory"
 
@@ -226,6 +216,6 @@ def test_degraded_db_context_accepts_value_without_blocking(monkeypatch):
     # DB unreachable -> live country list is empty; the app should not block every
     # country-filtered query just because the reference list couldn't be loaded.
     _mock_db_context(monkeypatch, countries=[])
-    _mock_groq(monkeypatch, _base_payload(filters={"country": "France"}))
+    _mock_llm_response(monkeypatch, _base_payload(filters={"country": "France"}))
     result = llm.parse_user_query("revenus en france")
     assert result["filters"] == {"country": "France"}

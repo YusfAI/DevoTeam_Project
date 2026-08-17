@@ -440,8 +440,8 @@ def build_rapport_professionnel():
              "(Pydantic) — cohérent avec l'exigence anti-hallucination."],
             ["Base de données", "MySQL / MariaDB (XAMPP)", "Vues pré-agrégées par dimension, requêtes "
              "paramétrées, adapté au volume et à l'hébergement local."],
-            ["Compréhension du langage", "Groq — Llama 3.3 70B", "Sortie JSON structurée, faible latence, "
-             "complétée par une validation stricte côté serveur."],
+            ["Compréhension du langage", "Google Gemini — gemini-flash-latest", "Sortie JSON structurée, "
+             "faible latence, complétée par une validation stricte côté serveur."],
             ["Visualisation", "Vega-Lite / vega-embed", "Grammaire de graphiques déclarative en JSON, génération "
              "automatique fiable, rendu navigateur natif."],
             ["Frontend", "Vite + React", "Interface réactive, thème clair/sombre, build optimisé pour "
@@ -452,7 +452,7 @@ def build_rapport_professionnel():
              "sans infrastructure d'envoi supplémentaire à maintenir."],
             ["Synchro Google Sheets", "Google Sheets API (gspread)", "Permet aux équipes commerciales de "
              "gérer les opportunités depuis un tableur familier, plutôt qu'en éditant la base directement."],
-            ["Tests", "pytest (140 tests)", "Suite automatisée sans dépendance réseau/DB réelle (mocks), "
+            ["Tests", "pytest (143 tests)", "Suite automatisée sans dépendance réseau/DB réelle (mocks), "
              "garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -471,7 +471,7 @@ def build_rapport_professionnel():
                      "explicite — aucune requête SQL libre.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "140 tests automatisés couvrent la compréhension du langage, la couche SQL, "
+    add_bullet(doc, "143 tests automatisés couvrent la compréhension du langage, la couche SQL, "
                      "la génération des graphiques, le système d'alerte et la synchronisation Sheets.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -561,7 +561,7 @@ def build_guide_technique():
         "   │  POST /dashboard { query, previous_intent }\n"
         "   ▼\n"
         "backend/llm.py :: parse_user_query()\n"
-        "   │  parseur rapide (mots-clés) OU appel Groq + validation Pydantic\n"
+        "   │  parseur rapide (mots-clés) OU appel Gemini + validation Pydantic\n"
         "   │  résolution des filtres (fuzzy match) contre les données réelles\n"
         "   ▼  intent = {metric, dimension, filters, chart_type, aggregation, ...}\n"
         "backend/db_layer.py :: build_and_execute_query(intent)\n"
@@ -589,14 +589,24 @@ def build_guide_technique():
         "(DBUtils PooledDB) adapté à ce moteur. Le schéma reste simple (une table "
         "principale `opportunities` + des vues), donc le coût de complexité "
         "supplémentaire par rapport à SQLite reste faible.")
-    add_h2(doc, "2.2 Pourquoi Groq (Llama 3.3) plutôt qu'un modèle propriétaire")
+    add_h2(doc, "2.2 Groq → Google Gemini (migration forcée en cours de projet)")
     add_body(doc,
-        "Le mandat du projet imposait un modèle open source à faible latence. Groq "
-        "sert Llama 3.3 70B avec un `response_format: json_object` qui garantit une "
-        "sortie JSON syntaxiquement valide. Limite connue et documentée : ce mode ne "
-        "garantit pas le respect d'un schéma strict (contrairement à un mode "
-        "« structured outputs » complet) — d'où l'importance de la couche de "
-        "validation Pydantic + liste blanche placée juste après (section 6).")
+        "Le mandat initial imposait un modèle open source à faible latence : Groq "
+        "servait Llama 3.3 70B avec un `response_format: json_object` garantissant "
+        "une sortie JSON syntaxiquement valide, mais pas le respect d'un schéma "
+        "strict (contrairement à un mode « structured outputs » complet) — d'où "
+        "l'importance de la couche de validation Pydantic + liste blanche placée "
+        "juste après (section 6). Ce modèle a depuis été retiré du service par Groq "
+        "(erreur 404 modèle introuvable, confirmée avec deux clés API différentes — "
+        "pas un problème d'accès mais une dépréciation réelle), cassant toute "
+        "question ne passant pas par le chemin rapide par mots-clés. Migration vers "
+        "Google Gemini (`gemini-flash-latest` — un alias plutôt qu'une version "
+        "épinglée, pour ne pas revivre le même type de panne si Google fait tourner "
+        "sa gamme) en gardant volontairement la même architecture (JSON libre + "
+        "validation Pydantic + réparation heuristique) plutôt que d'adopter les "
+        "sorties structurées strictes de Gemini (vérifiées disponibles à cette "
+        "occasion) — changer de fournisseur ET d'architecture en même temps aurait "
+        "ajouté un risque inutile sous pression.")
     add_h2(doc, "2.3 Pourquoi APScheduler plutôt qu'une tâche planifiée externe (cron/Task Scheduler)")
     add_body(doc,
         "L'application est un processus unique en local (`uvicorn`). APScheduler "
@@ -623,7 +633,7 @@ def build_guide_technique():
             ["backend/sheets_sync.py", "Synchronisation Google Sheets -> MySQL (table opportunities uniquement)."],
             ["backend/db.py", "Pool de connexions MySQL (DBUtils PooledDB), paresseux."],
             ["frontend/src/", "Application Vite + React (composants, hooks, styles)."],
-            ["tests/", "Suite pytest — 140 tests, aucune dépendance réseau/DB réelle."],
+            ["tests/", "Suite pytest — 143 tests, aucune dépendance réseau/DB réelle."],
             ["data/devoteam_dashboard_mysql.sql", "Dump SQL de référence (schéma + données)."],
             ["Documentation/reports/", "Ce rapport, le guide technique et leur générateur (generate_docs.py)."],
             ["Documentation/planning/", "Brief initial du projet et données sources (hors suivi git du dépôt)."],
@@ -733,7 +743,7 @@ def build_guide_technique():
         "s'il n'y a pas de contexte de conversation précédent, et seulement après "
         "passage par _augment_rule_based_result(), qui refuse de lui faire confiance "
         "dès qu'une comparaison ou plusieurs pays sont mentionnés (retour à None → "
-        "bascule vers le LLM). Dans tous les autres cas, l'appel Groq (llm.py) prend "
+        "bascule vers le LLM). Dans tous les autres cas, l'appel Gemini (llm.py) prend "
         "le relais, avec le contexte multi-tour injecté dans le prompt système.")
     add_h2(doc, "6.2 Validation stricte — DashboardIntent (Pydantic)")
     add_body(doc,
@@ -1115,18 +1125,18 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "14. Tests automatisés")
     add_body(doc,
-        "140 tests pytest, sans dépendance réseau ni base de données réelle : le client "
-        "Groq, les connexions MySQL et le client Google Sheets (gspread) sont simulés "
+        "143 tests pytest, sans dépendance réseau ni base de données réelle : le client "
+        "Gemini, les connexions MySQL et le client Google Sheets (gspread) sont simulés "
         "(monkeypatch) via de faux objets "
         "(fake cursor/connection capturant la requête générée pour l'affirmer dans le "
         "test). Complétés systématiquement par une vérification en conditions réelles "
-        "(DB MySQL réelle, appel Groq réel, et compilation par le vrai moteur vega-lite "
+        "(DB MySQL réelle, appel Gemini réel, et compilation par le vrai moteur vega-lite "
         "en Node.js) — les tests protègent contre les régressions, la vérification réelle "
         "est ce qui a révélé les deux bugs texte/graphique de la section 8.3.")
     add_table(doc,
         ["Fichier", "Tests", "Ce qu'il protège"],
         [
-            ["test_intent_refiner.py", "27", "Dates relatives, parseur par mots-clés, affinage d'intention, "
+            ["test_intent_refiner.py", "37", "Dates relatives, parseur par mots-clés, affinage d'intention, "
              "normalisation funnel/heatmap/scatter/days_remaining/exclude_statuses."],
             ["test_vega_generator.py", "18", "Cardinalité des graphiques, palette, valeurs NULL, "
              "les 4 nouveaux types de graphiques."],
@@ -1139,9 +1149,9 @@ def build_guide_technique():
             ["test_alerts.py", "12", "Fenêtre de 7 jours en direct, exclusion des statuts clos, envoi email, "
              "rattrapage idempotent du scheduler."],
             ["test_maintenance.py", "3", "Recalcul de days_remaining, résilience à une panne DB."],
-            ["test_sheets_sync.py", "30", "Parsing/validation par ligne, littéraux NULL, insertion + "
-             "réécriture d'id, détection id existant/inconnu, ligne invalide sautée sans bloquer les "
-             "autres, résilience à une panne de lecture du Sheet."],
+            ["test_sheets_sync.py", "33", "Parsing/validation par ligne, littéraux NULL, insertion + "
+             "réécriture d'id et des colonnes calculées, détection id existant/inconnu, ligne invalide "
+             "sautée sans bloquer les autres, résilience à une panne de lecture du Sheet."],
         ])
 
     # --- Q&A entretien ---
@@ -1231,10 +1241,12 @@ def build_guide_technique():
 
     # --- Limites ---
     add_h1(doc, "16. Limites connues")
-    add_bullet(doc, "Le mode « sortie structurée stricte » n'est pas supporté par Groq/Llama "
-                     "3.3 (testé et confirmé) — le filet de sécurité Pydantic + liste blanche "
-                     "reste donc le mécanisme d'application des règles, plutôt qu'une garantie "
-                     "au niveau du schéma du modèle.")
+    add_bullet(doc, "Google Gemini (fournisseur actuel depuis la migration forcée, section 2.2) "
+                     "supporte en fait les sorties structurées strictes (vérifié empiriquement), "
+                     "mais l'app garde volontairement l'architecture JSON libre héritée de Groq "
+                     "— le filet de sécurité Pydantic + liste blanche reste donc le mécanisme "
+                     "d'application des règles, plutôt qu'une garantie au niveau du schéma du "
+                     "modèle. Adopter le mode strict resterait une amélioration possible.")
     add_bullet(doc, "L'historique de conversation persistant (localStorage) est par "
                      "navigateur/appareil, pas partagé entre postes — nécessiterait un compte "
                      "utilisateur pour ça.")

@@ -4,7 +4,7 @@ pymysql
 python-dotenv
 dbutils
 pydantic
-groq
+google-genai
 aiofiles
 apscheduler
 gspread

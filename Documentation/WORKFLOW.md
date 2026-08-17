@@ -9,7 +9,7 @@ affiché. Exemple utilisé : **« budget total par pays pour Risk Advisory »**.
 Chat (frontend)
   → POST /dashboard { query, previous_intent }
   → backend/llm.py :: parse_user_query()
-      → chemin rapide (mots-clés) OU appel Groq + validation Pydantic
+      → chemin rapide (mots-clés) OU appel Gemini + validation Pydantic
       → résolution des filtres contre les vraies valeurs de la base
   → backend/intent_refiner.py :: refine_intent()
       → dates relatives, garde-fous déterministes (days_remaining, funnel...)
@@ -31,7 +31,7 @@ POST /dashboard
 
 **2. Compréhension** (`backend/llm.py`). Pas de contexte précédent, une seule practice
 citée : le chemin rapide par mots-clés (`intent_refiner.py::try_rule_based_parse`)
-peut suffire ; sinon Groq reçoit un prompt système avec les vraies valeurs de la base
+peut suffire ; sinon Gemini reçoit un prompt système avec les vraies valeurs de la base
 (practices/pays/statuts connus, date du jour) et renvoie un JSON structuré :
 ```json
 {"metric": "budget", "dimension": "country",
