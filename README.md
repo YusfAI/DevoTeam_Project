@@ -3,13 +3,15 @@
 Dashboard commercial conversationnel : l'utilisateur pose une question en langage
 naturel dans un chat (ex. *"montre-moi le budget par pays pour Risk Advisory"*), un
 LLM (Google Gemini) extrait une intention structurée et validée, celle-ci est
-traduite en requête SQL paramétrée sur MySQL, et le résultat est affiché sous forme
-de graphique (Vega-Lite), de carte KPI ou de tableau. Une alerte quotidienne (email +
-bannière) prévient aussi des opportunités dont l'échéance approche.
+traduite en requête (pandas) sur les données chargées depuis Google Sheets, et le
+résultat est affiché sous forme de graphique (Vega-Lite), de carte KPI ou de
+tableau. Une alerte quotidienne (email + bannière) prévient aussi des opportunités
+dont l'échéance approche.
 
-Stack : **FastAPI** (backend) + **MySQL/MariaDB via XAMPP** + **Google Gemini** (LLM,
-`gemini-flash-lite-latest`) + **Vite/React** (frontend) + **APScheduler** (tâches
-planifiées). Hébergement local uniquement.
+Stack : **FastAPI** (backend) + **Google Sheets + pandas** (source de données,
+chargée en mémoire) + **Google Gemini** (LLM, `gemini-flash-lite-latest`) +
+**Vite/React** (frontend) + **APScheduler** (tâches planifiées). Hébergement local
+uniquement, sans base de données à installer.
 
 ## Fonctionnalités
 
@@ -25,23 +27,22 @@ planifiées). Hébergement local uniquement.
 - Thème clair/sombre, palette de couleurs validée pour l'accessibilité (daltonisme).
 - Anti-hallucination : toute métrique/dimension/valeur de filtre non reconnue déclenche
   une demande de clarification plutôt qu'un résultat deviné.
-- Synchronisation Google Sheets → MySQL : ajouter/modifier des opportunités depuis un
-  Sheet plutôt qu'en éditant la base directement. Sens unique (le Sheet ne fait
-  qu'alimenter la base) ; toutes les 15 minutes + au démarrage + sur demande
-  (`POST /sheets/sync`) ; une ligne invalide (statut inconnu, date illisible…) est
-  journalisée et sautée sans bloquer les autres.
+- Google Sheets comme source de données unique : l'application lit directement le
+  Sheet (via pandas), en mémoire, rafraîchi toutes les 15 minutes + au démarrage +
+  sur demande (`POST /sheets/sync`). Le Sheet sert aussi de formulaire d'ajout/
+  modification d'opportunités — plus simple à éditer qu'une base de données. Une
+  ligne invalide (statut inconnu, date illisible…) est journalisée et sautée sans
+  bloquer les autres.
 
 ## Prérequis
 
 - Python 3.11+
 - Node.js 18+ / npm
-- [XAMPP](https://www.apachefriends.org/) avec MySQL démarré, base `devoteam_dashboard`
-  déjà importée (voir `data/devoteam_dashboard_mysql.sql`)
 - Une clé API [Google AI Studio](https://aistudio.google.com/apikey)
+- Un compte de service Google avec accès au Sheet source (voir "Google Sheets"
+  ci-dessous — obligatoire, l'application ne fonctionne pas sans données)
 - (Optionnel, pour les alertes email) un compte Gmail avec un
   [mot de passe d'application](https://myaccount.google.com/apppasswords)
-- (Optionnel, pour la synchro Google Sheets) voir "Synchronisation Google Sheets"
-  ci-dessous
 
 ## Installation
 
@@ -50,21 +51,17 @@ planifiées). Hébergement local uniquement.
 pip install -r requirements.txt      # ou requirements-dev.txt pour lancer les tests
 
 # Config
-cp .env.example .env                 # remplir GOOGLE_API_KEY (les valeurs DB par défaut
-                                      # correspondent à XAMPP : root, sans mot de passe)
-                                      # + GMAIL_SENDER/GMAIL_APP_PASSWORD/ALERT_RECIPIENT_EMAIL
-                                      # si tu veux activer les alertes email (sinon elles sont
+cp .env.example .env                 # remplir GOOGLE_API_KEY, GOOGLE_SHEET_ID (voir
+                                      # "Google Sheets" ci-dessous) + GMAIL_SENDER/
+                                      # GMAIL_APP_PASSWORD/ALERT_RECIPIENT_EMAIL si tu
+                                      # veux activer les alertes email (sinon elles sont
                                       # simplement ignorées avec un avertissement dans les logs)
-python init_tables.py                # crée les tables de log/cache (une seule fois)
 
 # Frontend
 cd frontend && npm install
 ```
 
-## Synchronisation Google Sheets (optionnel)
-
-Le Sheet devient un formulaire d'ajout/modification d'opportunités ; l'appli continue
-de lire depuis MySQL comme d'habitude (voir `backend/sheets_sync.py`).
+## Google Sheets (source de données)
 
 1. [console.cloud.google.com](https://console.cloud.google.com) → un projet → activer
    **"Google Sheets API"**.
@@ -74,15 +71,14 @@ de lire depuis MySQL comme d'habitude (voir `backend/sheets_sync.py`).
    ne le commit jamais).
 4. Ouvre ton Google Sheet → **Partager** → ajoute l'email du compte de service
    (`....iam.gserviceaccount.com`, visible dans le JSON) en **Éditeur** (pas juste
-   lecteur — la synchro écrit l'id généré des nouvelles lignes dans le Sheet).
+   lecteur — l'application réécrit l'id généré des nouvelles lignes dans le Sheet).
 5. Renseigne `GOOGLE_SHEET_ID` (dans l'URL du Sheet) et `GOOGLE_SHEET_TAB` (le nom de
    l'onglet) dans `.env`.
 6. La première ligne du Sheet doit contenir ces en-têtes exacts (n'importe quel
    ordre) : `id, country, created_date, deadline, practice, description, buyer,
    opp_type, status, budget, funding_source, partner, financial_offer,
-   win_probability`. Ligne avec `id` vide = nouvelle opportunité (l'id généré est
-   réécrit dans le Sheet après import) ; `id` renseigné = mise à jour de la ligne
-   MySQL correspondante.
+   win_probability`. Ligne avec `id` vide = nouvelle opportunité (un id est généré et
+   réécrit dans le Sheet au chargement suivant).
 7. `deadline_month`, `deadline_year`, `days_remaining` et `weighted_amount` sont
    **toujours recalculés** depuis les colonnes ci-dessus — inutile (et sans effet) de
    les éditer dans le Sheet.
@@ -90,21 +86,48 @@ de lire depuis MySQL comme d'habitude (voir `backend/sheets_sync.py`).
    whitelistées dans `backend/schema_and_whitelist.py` (insensible à la casse) —
    sinon la ligne est ignorée et journalisée, sans bloquer les autres.
 
+## Dashboards « as code » (Bruin DAC)
+
+La vue d'ensemble affichée à l'ouverture n'est pas codée en dur dans le frontend :
+c'est un dashboard **versionné en YAML** (`dac/dashboards/accueil.yml`), rendu par
+[Bruin DAC](https://getbruin.com/docs/dac/) — 21 types de graphiques, filtres
+interactifs, grille 12 colonnes. L'UI React l'affiche en iframe (port 8321).
+
+Installation (une seule fois, dans Git Bash sous Windows) :
+
+```bash
+curl -LsSf https://getbruin.com/install/dac | sh   # installe bruin + dac dans ~/.local/bin
+```
+
+DAC interroge un fichier **DuckDB** (`dac/data/devoteam.db`) qui est une simple
+projection en lecture seule du DataFrame de l'application, réécrite à chaque
+rafraîchissement depuis le Google Sheet (`backend/duckdb_export.py`) — les données
+affichées sont donc toujours les mêmes que celles du chat.
+
+```bash
+cd dac && dac validate --dir .   # vérifie la structure des dashboards
+cd dac && dac check --dir .      # exécute réellement chaque requête widget
+```
+
 ## Lancer en développement (hot-reload)
 
-Deux terminaux :
+Trois terminaux (ou `scripts/start_dev.bat` sous Windows, qui lance les trois) :
 
 ```bash
 python -m uvicorn backend.main:app --reload          # API sur http://127.0.0.1:8000
 ```
 
 ```bash
+cd dac && dac serve --dir . --port 8321    # dashboards DAC sur http://localhost:8321
+```
+
+```bash
 cd frontend && npm run dev                 # UI sur http://127.0.0.1:5173 (proxy /dashboard -> :8000)
 ```
 
-**Windows** : `scripts/start_dev.bat` démarre MySQL (XAMPP), l'API et le frontend en une
-seule fois, puis ouvre le dashboard dans le navigateur — pratique en raccourci bureau
-(icône fournie : `scripts/devoteam.ico`). Ne pas fermer les fenêtres de terminal qu'il ouvre.
+**Windows** : `scripts/start_dev.bat` démarre l'API et le frontend en une seule fois,
+puis ouvre le dashboard dans le navigateur — pratique en raccourci bureau (icône
+fournie : `scripts/devoteam.ico`). Ne pas fermer les fenêtres de terminal qu'il ouvre.
 
 ## Lancer en local "prod" (un seul processus)
 
@@ -120,8 +143,8 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-La suite ne nécessite ni MySQL ni clé Google AI Studio réelle (le client Gemini et la
-connexion DB sont mockés dans les tests qui en ont besoin).
+La suite ne nécessite ni Google Sheet ni clé Google AI Studio réelle (le client
+Gemini et la lecture du Sheet sont mockés dans les tests qui en ont besoin).
 
 ## Sécurité
 
@@ -137,13 +160,16 @@ dossier entier — jamais de fichier `.json` de credentials commité, quel que s
 ## Structure
 
 ```
-backend/              FastAPI, parsing LLM (Gemini), couche SQL, génération Vega-Lite,
-                       alertes deadlines (alerts.py), maintenance (maintenance.py)
-                       et synchro Google Sheets (sheets_sync.py)
+backend/              FastAPI, parsing LLM (Gemini), couche de requêtage pandas
+                       (db_layer.py), génération Vega-Lite, alertes deadlines
+                       (alerts.py), chargement des données Sheets (data_store.py)
+                       et projection DuckDB pour DAC (duckdb_export.py)
+dac/                   dashboards "as code" (YAML) + connexion Bruin (.bruin.yml)
 frontend/              Vite + React (build servi par FastAPI en local)
 credentials/           clé de compte de service Google (gitignoré, absent par défaut)
-data/                  dump SQL de référence
-tests/                 suite pytest (mock DB/Gemini/Sheets), 143 tests
+data/                  scheduler_state.json (état local, gitignoré) ; dump SQL
+                       historique (data/devoteam_dashboard_mysql.sql, plus utilisé)
+tests/                 suite pytest (mock Gemini/Sheets), 132 tests
 Documentation/
   WORKFLOW.md            traçage concret d'une question, du prompt au graphique affiché
   reports/              rapport professionnel + guide technique (.docx) et leur générateur

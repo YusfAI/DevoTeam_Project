@@ -10,24 +10,13 @@ echo   DevoTeam Dashboard - Demarrage
 echo ============================================
 echo.
 
-REM --- 1. MySQL (XAMPP) ---
-tasklist /FI "IMAGENAME eq mysqld.exe" 2>NUL | find /I "mysqld.exe" >NUL
-if "%ERRORLEVEL%"=="0" (
-    echo [MySQL] deja demarre.
-) else (
-    if exist "C:\xampp\XAampp\mysql_start.bat" (
-        echo [MySQL] demarrage via XAMPP...
-        start "XAMPP MySQL" "C:\xampp\XAampp\mysql_start.bat"
-        timeout /t 3 /nobreak >NUL
-    ) else (
-        echo [MySQL] introuvable a l'emplacement attendu.
-        echo         Demarre-le manuellement via le panneau de controle XAMPP.
-    )
-)
-
-REM --- 2. Backend FastAPI (http://127.0.0.1:8000) ---
+REM --- 1. Backend FastAPI (http://127.0.0.1:8000) ---
 echo [Backend] demarrage...
 start "DevoTeam Backend" cmd /k "cd /d ""%PROJECT_ROOT%"" && python -m uvicorn backend.main:app --reload"
+
+REM --- 2. Dashboards Bruin DAC (http://localhost:8321), affiches en iframe par l'UI ---
+echo [DAC] demarrage...
+start "DevoTeam DAC" cmd /k "cd /d ""%PROJECT_ROOT%\dac"" && ""%USERPROFILE%\.local\bin\dac.exe"" serve --dir . --port 8321"
 
 REM --- 3. Frontend Vite (http://localhost:5173) ---
 echo [Frontend] demarrage...

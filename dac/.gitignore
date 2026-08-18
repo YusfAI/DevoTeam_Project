@@ -1,0 +1,12 @@
+# DAC génère ce fichier en excluant .bruin.yml par défaut, car ce fichier contient
+# d'ordinaire de VRAIS identifiants de connexion (Snowflake, BigQuery, Postgres…).
+#
+# Ici il est volontairement versionné (exclusion retirée) : notre .bruin.yml ne
+# contient aucun secret — uniquement un chemin relatif vers un fichier DuckDB local
+# en lecture seule, régénéré depuis le Google Sheet. Sans lui, un clone du dépôt ne
+# saurait pas où lire les données.
+#
+# ⚠️ Si une connexion à une vraie base avec identifiants est ajoutée un jour,
+# remettre « .bruin.yml » ci-dessous AVANT de committer.
+
+logs/queries

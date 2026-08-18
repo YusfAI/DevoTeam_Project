@@ -59,8 +59,8 @@ export default function App() {
     try {
       const summary = await postSheetsSync()
       const parts = [
-        `${summary.inserted ?? 0} ajoutée(s)`,
-        `${summary.updated ?? 0} mise(s) à jour`,
+        `${summary.total_rows ?? 0} ligne(s) chargée(s)`,
+        `${summary.new_ids_assigned ?? 0} nouvel(le)(s)`,
         `${summary.skipped ?? 0} ignorée(s)`,
       ]
       let text = `Synchronisation Google Sheets terminée : ${parts.join(', ')}.`

@@ -102,8 +102,6 @@ _GEMINI_RETRY_DELAY_SECONDS = 1.5
 
 client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
-_DB_CONTEXT_CACHE: Optional[dict] = None
-
 
 class IntentUnclear(ValueError):
     """Levée quand une valeur du LLM ne peut pas être rattachée en confiance à une valeur connue.
@@ -225,29 +223,23 @@ def _resolve_filter_value(key: str, value, db_ctx: dict):
 
 
 def _load_db_context() -> dict:
-    global _DB_CONTEXT_CACHE
-    if _DB_CONTEXT_CACHE is not None:
-        return _DB_CONTEXT_CACHE
+    # Pas de cache ici (contrairement à avant, où c'était une vraie requête réseau
+    # MySQL qu'on ne voulait pas refaire à chaque appel) : le DataFrame lui-même est
+    # déjà mis en cache et rafraîchi périodiquement par data_store.py, donc dériver
+    # ces listes à chaque appel est instantané (opération en mémoire) et reste
+    # toujours à jour avec le dernier chargement du Sheet, sans jamais devenir périmé.
     try:
-        from .db import get_connection
-        ctx = {}
-        with get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT DISTINCT country FROM opportunities ORDER BY country")
-                ctx["countries"] = [r["country"] for r in cur.fetchall()]
-                cur.execute(
-                    "SELECT DISTINCT funding_source FROM opportunities "
-                    "WHERE funding_source IS NOT NULL ORDER BY funding_source"
-                )
-                ctx["funding_sources"] = [r["funding_source"] for r in cur.fetchall()]
-                cur.execute(
-                    "SELECT DISTINCT partner FROM opportunities WHERE partner IS NOT NULL ORDER BY partner"
-                )
-                ctx["partners"] = [r["partner"] for r in cur.fetchall()]
-        _DB_CONTEXT_CACHE = ctx
-        return ctx
+        from .data_store import get_dataframe
+        df = get_dataframe()
+        if df is None or df.empty:
+            return {"countries": [], "funding_sources": [], "partners": []}
+        return {
+            "countries": sorted(df["country"].dropna().unique().tolist()),
+            "funding_sources": sorted(df["funding_source"].dropna().unique().tolist()),
+            "partners": sorted(df["partner"].dropna().unique().tolist()),
+        }
     except Exception:
-        logger.warning("Contexte DB indisponible, poursuite sans listes de référence.", exc_info=True)
+        logger.warning("Contexte des données indisponible, poursuite sans listes de référence.", exc_info=True)
         return {"countries": [], "funding_sources": [], "partners": []}
 
 

@@ -18,45 +18,35 @@ from .vega_generator import build_vega_spec
 # pyrefly: ignore [missing-import]
 from .response_builder import build_data_response, get_help_message, extract_metric_value, format_metric_value
 # pyrefly: ignore [missing-import]
-from .db import get_connection
-# pyrefly: ignore [missing-import]
 from .alerts import get_upcoming_deadline_opportunities, run_daily_alert_check_if_needed
 # pyrefly: ignore [missing-import]
-from .maintenance import refresh_days_remaining
+from .data_store import get_dataframe, refresh_dataframe
 # pyrefly: ignore [missing-import]
-from .sheets_sync import sync_sheet_to_mysql
+from .duckdb_export import export_dataframe
 
 logger = logging.getLogger(__name__)
 
-# Deux jobs quotidiens : days_remaining est recalculé à minuit (pour que la valeur
-# affichée dans le chat/tableaux soit déjà correcte au réveil), puis l'alerte deadline
-# tourne à 8h (heure serveur) sur la base de ces valeurs fraîches — assez tôt pour que
-# l'équipe commerciale la voie en arrivant, sans dépendre d'un déclenchement manuel.
-# Les deux tournent aussi une fois au démarrage : days_remaining est de toute façon
-# idempotent (le recalculer ne fait jamais de mal), et l'alerte email est protégée
-# par run_daily_alert_check_if_needed() (ne renvoie pas un second email si la
-# vérification du jour a déjà eu lieu) — un serveur resté éteint pile à 8h ou minuit
-# rattrape donc l'exécution manquée dès qu'il redémarre, au lieu d'attendre le lendemain.
-# La synchronisation Google Sheets tourne aussi toutes les 15 minutes (+ une fois au
-# démarrage) — sens unique Sheet -> MySQL, voir backend/sheets_sync.py.
+# Le DataFrame (backend/data_store.py) est rafraîchi depuis le Sheet toutes les 15
+# minutes, et l'alerte deadline tourne à 8h (heure serveur) sur des données déjà
+# fraîches. Les deux tournent aussi une fois au démarrage : le rafraîchissement est
+# de toute façon idempotent, et l'alerte email est protégée par
+# run_daily_alert_check_if_needed() (ne renvoie pas un second email si la
+# vérification du jour a déjà eu lieu) — un serveur resté éteint pile à 8h rattrape
+# donc l'exécution manquée dès qu'il redémarre, au lieu d'attendre le lendemain.
 _scheduler = BackgroundScheduler()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Les 3 tâches de démarrage tournaient auparavant en bloquant ici (synchrone,
+    # Ces tâches de démarrage tournaient auparavant en bloquant ici (synchrone,
     # avant yield) : le serveur n'acceptait aucune requête HTTP tant qu'elles
-    # n'étaient pas terminées, dont jusqu'à ~1.6s pour la seule connexion à Google
-    # Sheets (sync_sheet_to_mysql -> voir backend/sheets_sync.py). Elles tournent
-    # maintenant comme jobs "une fois, immédiatement" sur le thread du scheduler,
-    # démarré juste après : le serveur répond dès que la boucle est prête, ces
-    # tâches finissent en tâche de fond en quelques secondes.
-    _scheduler.add_job(refresh_days_remaining, id="startup_days_remaining_refresh")
+    # n'étaient pas terminées. Elles tournent maintenant comme jobs "une fois,
+    # immédiatement" sur le thread du scheduler, démarré juste après : le serveur
+    # répond dès que la boucle est prête, ces tâches finissent en tâche de fond.
+    _scheduler.add_job(_refresh_data_and_invalidate_cache, id="startup_data_refresh")
     _scheduler.add_job(run_daily_alert_check_if_needed, id="startup_deadline_alert")
-    _scheduler.add_job(sync_sheet_to_mysql, id="startup_sheets_sync")
-    _scheduler.add_job(refresh_days_remaining, "cron", hour=0, minute=5, id="daily_days_remaining_refresh")
+    _scheduler.add_job(_refresh_data_and_invalidate_cache, "interval", minutes=15, id="data_refresh_periodic")
     _scheduler.add_job(run_daily_alert_check_if_needed, "cron", hour=8, minute=0, id="daily_deadline_alert")
-    _scheduler.add_job(sync_sheet_to_mysql, "interval", minutes=15, id="sheets_sync_periodic")
     _scheduler.start()
     yield
     _scheduler.shutdown(wait=False)
@@ -71,29 +61,32 @@ class ChatRequest(BaseModel):
     query: str
     previous_intent: dict | None = None
 
+# Cache des specs déjà générées (clé = hash de l'intention) — en mémoire plutôt
+# qu'en base : régénérer une spec depuis le DataFrame déjà en mémoire est rapide
+# (plus de round-trip SQL à éviter), donc le bénéfice d'un cache persistant entre
+# redémarrages est marginal. Vidé à chaque rafraîchissement du DataFrame (voir
+# _refresh_data_and_invalidate_cache) puisque les données sous-jacentes ont pu
+# changer entre-temps — une spec calculée sur l'ancien contenu serait fausse.
+_dashboard_cache: dict[str, dict] = {}
+
+
 def get_cached_dashboard(intent_hash: str):
-    with get_connection() as conn:
-         with conn.cursor() as cur:
-             cur.execute("SELECT vega_spec FROM generated_dashboards WHERE intent_hash = %s", (intent_hash,))
-             row = cur.fetchone()
-             if row:
-                 # Handle MySQL JSON which might return as dict or string
-                 return json.loads(row['vega_spec']) if isinstance(row['vega_spec'], str) else row['vega_spec']
-    return None
+    return _dashboard_cache.get(intent_hash)
 
 def save_to_cache(intent_hash: str, vega_spec: dict):
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-             cur.execute("INSERT IGNORE INTO generated_dashboards (intent_hash, vega_spec) VALUES (%s, %s)",
-                         (intent_hash, json.dumps(vega_spec)))
-        conn.commit()
+    _dashboard_cache[intent_hash] = vega_spec
 
 def log_request(prompt: str, intent: dict):
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-             cur.execute("INSERT INTO dashboard_requests (prompt, intent_json) VALUES (%s, %s)",
-                         (prompt, json.dumps(intent)))
-        conn.commit()
+    logger.info("Requête dashboard : %r -> %s", prompt, json.dumps(intent, ensure_ascii=False))
+
+def _refresh_data_and_invalidate_cache() -> dict:
+    summary = refresh_dataframe()
+    _dashboard_cache.clear()
+    # Projection DuckDB pour les dashboards DAC (voir backend/duckdb_export.py) —
+    # jamais bloquante : un échec d'export laisse l'application pleinement
+    # fonctionnelle, seuls les dashboards DAC restent sur le cycle précédent.
+    summary["duckdb_exported"] = export_dataframe(get_dataframe())
+    return summary
 
 
 @app.post("/dashboard")
@@ -161,10 +154,10 @@ async def get_deadline_alerts():
 
 @app.post("/sheets/sync")
 async def trigger_sheets_sync():
-    """Déclenchement manuel de la synchronisation Google Sheets -> MySQL, en plus du
-    job automatique toutes les 15 minutes — utile pour voir un ajout immédiatement
-    sans attendre le prochain passage planifié."""
-    return sync_sheet_to_mysql()
+    """Rafraîchissement manuel des données depuis le Google Sheet, en plus du job
+    automatique toutes les 15 minutes — utile pour voir un ajout/une modification
+    immédiatement sans attendre le prochain passage planifié."""
+    return _refresh_data_and_invalidate_cache()
 
 
 # Doit rester la DERNIÈRE route déclarée : sert le build React (frontend/dist) sur "/"

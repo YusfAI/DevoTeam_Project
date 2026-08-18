@@ -1,0 +1,17 @@
+# Connexion utilisée par les dashboards DAC (dac/dashboards/*.yml).
+# Le fichier DuckDB est une PROJECTION en lecture seule du DataFrame de
+# l'application, réécrite à chaque rafraîchissement des données depuis le Google
+# Sheet (voir backend/duckdb_export.py) — il n'est jamais édité à la main et n'est
+# pas versionné (voir .gitignore).
+#
+# read_only: true est indispensable ici : DuckDB autorise plusieurs lecteurs OU un
+# seul écrivain. Sans ce réglage, DAC prendrait un verrou exclusif et empêcherait
+# l'application de rafraîchir les données.
+default_environment: default
+environments:
+    default:
+        connections:
+            duckdb:
+                - name: devoteam_duckdb
+                  path: ./data/devoteam.db
+                  read_only: true

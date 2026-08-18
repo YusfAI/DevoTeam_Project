@@ -1,35 +1,14 @@
 """
 Contrat de données pour le générateur de dashboards.
 Ce fichier est la SOURCE UNIQUE DE VÉRITÉ pour :
-  - les colonnes/tables que le LLM a le droit d'utiliser (whitelist)
-  - le mapping entre noms métier (FR, ce que l'utilisateur tape) et noms techniques MySQL
+  - les colonnes/dimensions/métriques que le LLM a le droit d'utiliser (whitelist)
+  - les valeurs catégorielles réelles connues (pour la résolution fuzzy des filtres)
 
-Base de données : MySQL / MariaDB (base "devoteam_dashboard").
-Connexion recommandée : PyMySQL ou SQLAlchemy avec l'URL
-    mysql+pymysql://dashboard_user:<password>@<host>:3306/devoteam_dashboard
-
-Toute requête SQL générée par la couche LLM doit être validée contre ALLOWED_TABLES
-avant exécution. Ne jamais exécuter de SQL brut non validé.
+Source de données : Google Sheet chargé en mémoire via pandas (voir
+backend/data_store.py) — plus de base de données ni de schéma SQL à valider ; les
+colonnes du DataFrame sont fixes (DATA_COLUMNS dans data_store.py) et
+correspondent directement aux dimensions/métriques listées ci-dessous.
 """
-
-# ---- Tables et vues autorisées (whitelist stricte) ----
-ALLOWED_TABLES = {
-    "opportunities": {
-        "columns": [
-            "id", "country", "created_date", "deadline", "deadline_month",
-            "deadline_year", "days_remaining", "practice", "description",
-            "buyer", "opp_type", "status", "budget", "funding_source",
-            "partner", "financial_offer", "win_probability", "weighted_amount",
-        ],
-        "type": "table",
-    },
-    "v_by_country": {"columns": ["country", "nb_opportunities", "total_budget", "total_offer", "total_weighted"], "type": "view"},
-    "v_by_practice": {"columns": ["practice", "nb_opportunities", "total_budget", "total_offer", "total_weighted"], "type": "view"},
-    "v_by_status": {"columns": ["status", "nb_opportunities", "total_budget", "total_offer"], "type": "view"},
-    "v_by_month": {"columns": ["deadline_month", "nb_opportunities", "total_budget", "total_offer", "total_weighted"], "type": "view"},
-    "v_by_funding_source": {"columns": ["funding_source", "nb_opportunities", "total_budget"], "type": "view"},
-    "v_by_country_practice": {"columns": ["country", "practice", "nb_opportunities", "total_budget", "total_weighted"], "type": "view"},
-}
 
 # ---- Dimensions et métriques valides pour le JSON intermédiaire ----
 # Ce sont les seules valeurs que le LLM peut mettre dans "metric" / "dimension" / "filters"

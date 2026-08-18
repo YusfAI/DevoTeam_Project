@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import VegaChart from './VegaChart'
 import StatTile from './StatTile'
 import DataTable from './DataTable'
-import DevoteamLogo from './DevoteamLogo'
+import { OVERVIEW_DASHBOARD_NAME, dacDashboardUrl } from '../dac'
 
 export default function DashboardPanel({ dashboard, theme, dashboardKey }) {
   const hasChart = Boolean(dashboard?.vega_spec)
@@ -14,12 +14,24 @@ export default function DashboardPanel({ dashboard, theme, dashboardKey }) {
     setView(hasChart ? 'chart' : 'table')
   }, [dashboard, hasChart])
 
-  const title = dashboard?.goal || 'Analyse des opportunités'
-  const subtitle = dashboard
-    ? 'Données extraites de la base commerciale'
-    : 'Visualisation interactive générée à la volée'
+  // Tant qu'aucune question n'a été posée, on affiche la vue d'ensemble DAC
+  // (dac/dashboards/accueil.yml) plutôt qu'un placeholder vide. Une réponse du chat
+  // reprend la main sur le panneau ; le bouton « Vue d'ensemble » y ramène.
+  const [showOverview, setShowOverview] = useState(true)
+  useEffect(() => {
+    if (dashboard) setShowOverview(false)
+  }, [dashboardKey, dashboard])
 
-  const centered = !dashboard || isKpi
+  const overviewVisible = !dashboard || showOverview
+
+  const title = overviewVisible
+    ? 'Vue d’ensemble commerciale'
+    : dashboard?.goal || 'Analyse des opportunités'
+  const subtitle = overviewVisible
+    ? 'Dashboard versionné (Bruin DAC) — filtres interactifs, données à jour'
+    : 'Données extraites du portefeuille d’opportunités'
+
+  const centered = !overviewVisible && isKpi
 
   return (
     <div className="dashboard-panel">
@@ -28,35 +40,56 @@ export default function DashboardPanel({ dashboard, theme, dashboardKey }) {
           <h2>{title}</h2>
           <p>{subtitle}</p>
         </div>
-        {hasChart && hasTable && dashboard.table_rows.length > 0 && (
-          <div className="view-toggle">
-            <button
-              type="button"
-              className={view === 'chart' ? 'active' : ''}
-              onClick={() => setView('chart')}
-            >
-              Graphique
-            </button>
-            <button
-              type="button"
-              className={view === 'table' ? 'active' : ''}
-              onClick={() => setView('table')}
-            >
-              Tableau
-            </button>
-          </div>
-        )}
+        <div className="dashboard-header-actions">
+          {dashboard && (
+            <div className="view-toggle">
+              <button
+                type="button"
+                className={overviewVisible ? 'active' : ''}
+                onClick={() => setShowOverview(true)}
+              >
+                Vue d’ensemble
+              </button>
+              <button
+                type="button"
+                className={!overviewVisible ? 'active' : ''}
+                onClick={() => setShowOverview(false)}
+              >
+                Résultat
+              </button>
+            </div>
+          )}
+          {!overviewVisible && hasChart && hasTable && dashboard.table_rows.length > 0 && (
+            <div className="view-toggle">
+              <button
+                type="button"
+                className={view === 'chart' ? 'active' : ''}
+                onClick={() => setView('chart')}
+              >
+                Graphique
+              </button>
+              <button
+                type="button"
+                className={view === 'table' ? 'active' : ''}
+                onClick={() => setView('table')}
+              >
+                Tableau
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className={`dashboard-body${centered ? '' : ' align-top'}`}>
-        {!dashboard && (
-          <div className="dashboard-placeholder">
-            <DevoteamLogo size={72} className="placeholder-mark" />
-            <p>Posez une question dans le chat pour générer un graphique.</p>
-          </div>
+        {overviewVisible && (
+          <iframe
+            className="dac-frame"
+            src={dacDashboardUrl(OVERVIEW_DASHBOARD_NAME)}
+            title="Vue d’ensemble commerciale"
+          />
         )}
 
-        {dashboard && isKpi && (
+        {!overviewVisible && isKpi && (
           <StatTile
             key={dashboardKey}
             label={dashboard.kpi_label || 'Résultat'}
@@ -65,13 +98,13 @@ export default function DashboardPanel({ dashboard, theme, dashboardKey }) {
           />
         )}
 
-        {dashboard && !isKpi && hasChart && view === 'chart' && (
+        {!overviewVisible && !isKpi && hasChart && view === 'chart' && (
           <div key={dashboardKey} className="dashboard-fade-in fill">
             <VegaChart spec={dashboard.vega_spec} theme={theme} />
           </div>
         )}
 
-        {dashboard && !isKpi && ((hasChart && view === 'table') || (!hasChart && hasTable)) && (
+        {!overviewVisible && !isKpi && ((hasChart && view === 'table') || (!hasChart && hasTable)) && (
           <div key={`${dashboardKey}-table`} className="dashboard-fade-in fill">
             <DataTable rows={dashboard.table_rows} />
           </div>

@@ -23,3 +23,12 @@ Thumbs.db
 # Misc
 out.txt
 *.log
+
+# État local du scheduler (anti-doublon des alertes email) — régénéré au besoin
+data/scheduler_state.json
+
+# Projection DuckDB pour les dashboards DAC — régénérée à chaque rafraîchissement
+# depuis le Google Sheet (backend/duckdb_export.py), jamais éditée à la main
+dac/data/*.db
+
+logs/queries

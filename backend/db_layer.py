@@ -1,221 +1,172 @@
-from .db import get_connection
-from .schema_and_whitelist import ALLOWED_TABLES
+"""Construit et exécute une requête sur le DataFrame en mémoire (backend/data_store.py)
+à partir d'une intention validée. Remplace l'ancienne couche SQL/MySQL — même
+contrat d'entrée (intent dict) et de sortie (list[dict]) qu'avant, donc
+response_builder.py et le générateur de graphiques n'ont pas besoin de changer.
 
-INT_COLS = {"deadline_year", "days_remaining"}
+Simplification par rapport à la version MySQL : plus de vues pré-agrégées à
+choisir ni de repli "la vue ne supporte pas ce filtre" — pandas groupe
+uniformément sur le DataFrame complet quelle que soit la combinaison
+filtre/dimension/métrique.
+"""
+import datetime
+
+import pandas as pd
+
+from .data_store import get_dataframe
+
+INT_COLS = {"deadline_year", "days_remaining", "id"}
 FLOAT_COLS = {"budget", "financial_offer", "weighted_amount", "win_probability"}
 VALID_OPS = {"<", ">", "<=", ">=", "=", "between"}
 
-METRIC_EXPR = {
-    "budget": "SUM(budget)",
-    "financial_offer": "SUM(financial_offer)",
-    "weighted_amount": "SUM(weighted_amount)",
-    "nb_opportunities": "COUNT(*)",
-    "win_probability": "AVG(win_probability)",
+# Une valeur de metric détermine SA PROPRE agrégation, indépendamment du champ
+# "aggregation" de l'intention (déjà le comportement de l'ancienne couche SQL —
+# budget est toujours sommé, win_probability toujours moyenné, etc.).
+METRIC_AGG = {
+    "budget": ("budget", "sum"),
+    "financial_offer": ("financial_offer", "sum"),
+    "weighted_amount": ("weighted_amount", "sum"),
+    "nb_opportunities": (None, "count"),
+    "win_probability": ("win_probability", "mean"),
 }
 
-# Vue pré-agrégée à utiliser pour chaque dimension (seules les vues qui existent réellement
-# en base). Une dimension sans vue dédiée (deadline_year, opp_type) retombe explicitement
-# sur "opportunities", ce qui déclenche le calcul groupé à la volée (use_grouped) plutôt que
-# de fabriquer un nom de vue inexistant.
-_DIMENSION_VIEWS = {
-    "country": "v_by_country",
-    "practice": "v_by_practice",
-    "status": "v_by_status",
-    "deadline_month": "v_by_month",
-    "funding_source": "v_by_funding_source",
-}
-
-# Alias de colonne metric -> colonne agrégée telle que stockée dans les vues.
-_VIEW_METRIC_ALIASES = {
-    "budget": "total_budget",
-    "financial_offer": "total_offer",
-    "weighted_amount": "total_weighted",
-}
+RAW_TABLE_COLUMNS = [
+    "country", "practice", "status", "buyer", "budget",
+    "financial_offer", "win_probability", "weighted_amount", "days_remaining", "deadline",
+]
 
 
-def _compute_target_table(dimension: str, filters: dict, use_raw: bool = False) -> str:
-    if use_raw or not dimension:
-        return "opportunities"
-    if dimension == "country" and "practice" in filters:
-        return "v_by_country_practice"
-    if dimension == "practice" and "country" in filters:
-        return "v_by_country_practice"
-    return _DIMENSION_VIEWS.get(dimension, "opportunities")
+def _cast(col: str, val):
+    if col in INT_COLS:
+        return int(val)
+    if col in FLOAT_COLS:
+        return float(val)
+    return val
 
 
-def _view_supports_filters(view: str, filter_keys: set) -> bool:
-    if view == "opportunities":
-        return True
-    if view not in ALLOWED_TABLES:
-        return False
-    allowed = set(ALLOWED_TABLES[view]["columns"])
-    return filter_keys.issubset(allowed)
+def _apply_filters(df: pd.DataFrame, filters: dict, range_filters: dict, exclude_statuses: list) -> pd.DataFrame:
+    mask = pd.Series(True, index=df.index)
+
+    for col, val in filters.items():
+        if col not in df.columns:
+            continue
+        if isinstance(val, (list, tuple)):
+            mask &= df[col].isin([_cast(col, v) for v in val])
+        else:
+            mask &= df[col] == _cast(col, val)
+
+    if exclude_statuses and "status" in df.columns:
+        mask &= ~df["status"].isin(exclude_statuses)
+
+    for col, rule in range_filters.items():
+        if col not in df.columns:
+            continue
+        op = rule.get("op", "<")
+        value = rule.get("value")
+        if op not in VALID_OPS:
+            continue
+        if op == "between":
+            if not isinstance(value, (list, tuple)) or len(value) != 2:
+                continue
+            lo, hi = _cast(col, value[0]), _cast(col, value[1])
+            mask &= df[col].between(lo, hi)
+        elif op == "<":
+            mask &= df[col] < _cast(col, value)
+        elif op == ">":
+            mask &= df[col] > _cast(col, value)
+        elif op == "<=":
+            mask &= df[col] <= _cast(col, value)
+        elif op == ">=":
+            mask &= df[col] >= _cast(col, value)
+        elif op == "=":
+            mask &= df[col] == _cast(col, value)
+
+    return df[mask]
+
+
+def _agg_metric(grouped, metric: str):
+    col, how = METRIC_AGG.get(metric, ("budget", "sum"))
+    if how == "count":
+        return grouped.size()
+    return grouped[col].agg(how)
+
+
+def _to_records(df: pd.DataFrame) -> list:
+    """Convertit un DataFrame en list[dict] JSON-compatible : NaN -> None, dates
+    -> ISO — même contrat de sortie que l'ancienne couche SQL/pymysql (list[dict],
+    dates en ISO 8601, valeurs manquantes en None)."""
+    records = df.where(pd.notnull(df), None).to_dict("records")
+    for r in records:
+        for key, val in list(r.items()):
+            if isinstance(val, (datetime.date, datetime.datetime, pd.Timestamp)):
+                r[key] = val.isoformat() if hasattr(val, "isoformat") else str(val)
+            elif isinstance(val, float) and pd.isna(val):
+                r[key] = None
+    return records
 
 
 def build_and_execute_query(intent: dict) -> list:
-    import datetime
+    df = get_dataframe()
+    if df is None or df.empty:
+        return []
 
     dimension = intent.get("dimension", "")
     metric = intent.get("metric", "budget")
     filters = intent.get("filters", {})
     range_filters = intent.get("range_filters", {})
     chart_type = intent.get("chart_type", "")
-    # Le scatter a besoin de plusieurs mesures par opportunité (budget, probabilité de
-    # gain, montant pondéré) — jamais une seule mesure agrégée par dimension, donc il
-    # emprunte le même chemin "lignes brutes" que use_raw_table/range_filters.
-    use_raw = intent.get("use_raw_table", False) or bool(range_filters) or chart_type == "scatter"
+    exclude_statuses = intent.get("exclude_statuses") or []
     limit = int(intent.get("limit") or 0)
 
-    params = []
-    conditions = []
-    exclude_statuses = intent.get("exclude_statuses") or []
+    # Le scatter a besoin de plusieurs mesures par opportunité (budget, probabilité
+    # de gain, montant pondéré) — jamais une seule mesure agrégée par dimension,
+    # donc il emprunte le même chemin "lignes brutes" que use_raw_table/range_filters.
+    use_raw = intent.get("use_raw_table", False) or bool(range_filters) or chart_type == "scatter"
 
-    def _cast(col: str, val):
-        if col in INT_COLS:
-            return int(val)
-        if col in FLOAT_COLS:
-            return float(val)
-        return val
+    filtered = _apply_filters(df, filters, range_filters, exclude_statuses)
 
-    def add_conditions(allowed_cols: set):
-        nonlocal params, conditions
-        for k, v in filters.items():
-            if k in allowed_cols or allowed_cols is None:
-                if isinstance(v, (list, tuple)):
-                    # Filtre de comparaison ("compare France vs Maroc") -> IN (...)
-                    placeholders = ", ".join(["%s"] * len(v))
-                    conditions.append(f"{k} IN ({placeholders})")
-                    params.extend(_cast(k, item) for item in v)
-                else:
-                    conditions.append(f"{k} = %s")
-                    params.append(_cast(k, v))
-        # Exclusion des statuts clos (ex: liste "opportunités urgentes") — jamais
-        # piloté par le LLM, posé en amont par intent_refiner.py::refine_intent().
-        if exclude_statuses and (allowed_cols is None or "status" in allowed_cols):
-            placeholders = ", ".join(["%s"] * len(exclude_statuses))
-            conditions.append(f"status NOT IN ({placeholders})")
-            params.extend(exclude_statuses)
-        for col, rule in range_filters.items():
-            op = rule.get("op", "<")
-            value = rule.get("value")
-            if op not in VALID_OPS:
-                continue
-            if allowed_cols is not None and col not in allowed_cols:
-                continue
-            if op == "between":
-                if not isinstance(value, (list, tuple)) or len(value) != 2:
-                    continue
-                conditions.append(f"{col} BETWEEN %s AND %s")
-                params.append(_cast(col, value[0]))
-                params.append(_cast(col, value[1]))
-            else:
-                conditions.append(f"{col} {op} %s")
-                params.append(_cast(col, value))
-
-    # Une carte de chaleur croise TOUJOURS deux dimensions (la dimension demandée ×
-    # practice, ou × country si la dimension demandée est déjà practice) — aucune vue
-    # pré-agrégée existante ne couvre ce croisement pour une dimension arbitraire, donc
-    # un GROUP BY à deux colonnes dédié est nécessaire, indépendant du reste de la fonction.
     if chart_type == "heatmap" and dimension:
         secondary = "country" if dimension == "practice" else "practice"
-        expr = METRIC_EXPR.get(metric, "SUM(budget)")
-        query = f"SELECT {dimension}, {secondary}, {expr} AS {metric} FROM opportunities"
-        add_conditions(set(ALLOWED_TABLES["opportunities"]["columns"]))
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-        query += f" GROUP BY {dimension}, {secondary}"
-
-        with get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(query, tuple(params))
-                results = cur.fetchall()
-        for r in results:
-            for key, val in list(r.items()):
-                if isinstance(val, (datetime.date, datetime.datetime)):
-                    r[key] = val.isoformat()
-        return results
-
-    target_table = _compute_target_table(dimension, filters, use_raw)
-    filter_keys = set(filters.keys()) | set(range_filters.keys())
-
-    select_metric = _VIEW_METRIC_ALIASES.get(metric, metric) if target_table != "opportunities" else metric
-    metric_available = target_table == "opportunities" or (
-        target_table in ALLOWED_TABLES and select_metric in ALLOWED_TABLES[target_table]["columns"]
-    )
-
-    # Le calcul groupé à la volée (GROUP BY sur la table brute) sert de filet de sécurité
-    # dès que la vue pré-agrégée ne peut pas répondre à la demande — filtre non supporté,
-    # métrique absente de la vue, ou dimension sans vue dédiée. Les données restent
-    # exactes dans tous les cas, seul le chemin de calcul change.
-    use_grouped = use_raw is False and (
-        target_table not in ALLOWED_TABLES
-        or not _view_supports_filters(target_table, filter_keys)
-        or not metric_available
-        or (dimension and target_table == "opportunities")
-    )
+        grouped = filtered.groupby([dimension, secondary])
+        values = _agg_metric(grouped, metric)
+        result = values.reset_index(name=metric)
+        return _to_records(result)
 
     if use_raw:
-        query = (
-            "SELECT country, practice, status, buyer, budget, "
-            "financial_offer, win_probability, weighted_amount, days_remaining, deadline "
-            "FROM opportunities"
-        )
-        add_conditions(set(ALLOWED_TABLES["opportunities"]["columns"]))
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-        query += " ORDER BY days_remaining ASC"
+        result = filtered[RAW_TABLE_COLUMNS].sort_values("days_remaining", ascending=True)
         if limit > 0:
-            query += f" LIMIT {limit}"
+            result = result.head(limit)
+        return _to_records(result)
 
-    elif use_grouped and dimension:
-        expr = METRIC_EXPR.get(metric, "SUM(budget)")
-        query = (
-            f"SELECT {dimension}, {expr} AS {metric}, "
-            f"COUNT(*) AS nb_opportunities, SUM(budget) AS budget "
-            f"FROM opportunities"
-        )
-        add_conditions(set(ALLOWED_TABLES["opportunities"]["columns"]))
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-        query += f" GROUP BY {dimension}"
-        if dimension == "deadline_month":
-            query += f" ORDER BY {dimension} ASC"
+    if not dimension:
+        col, how = METRIC_AGG.get(metric, ("budget", "sum"))
+        if how == "count":
+            value = len(filtered)
+        elif filtered.empty:
+            value = None
         else:
-            query += f" ORDER BY {metric} DESC"
-        if limit > 0:
-            query += f" LIMIT {limit}"
-
-    elif not dimension:
-        expr = METRIC_EXPR.get(metric, "SUM(budget)")
+            value = filtered[col].agg(how)
         alias = metric if metric != "nb_opportunities" else "nb_opportunities"
-        query = f"SELECT {expr} AS {alias} FROM opportunities"
-        add_conditions(set(ALLOWED_TABLES["opportunities"]["columns"]))
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
+        return _to_records(pd.DataFrame([{alias: value}]))
 
+    grouped = filtered.groupby(dimension)
+    metric_values = _agg_metric(grouped, metric)
+    nb_opportunities = grouped.size()
+
+    # Colonnes construites une par une (pas un seul dict littéral) : quand
+    # metric == "budget", une clé "budget" littérale entrerait en collision avec la
+    # clé metric et écraserait silencieusement la valeur voulue.
+    result = pd.DataFrame({dimension: metric_values.index})
+    result[metric] = metric_values.values
+    result["nb_opportunities"] = nb_opportunities.reindex(metric_values.index).values
+    if "budget" not in result.columns:
+        result["budget"] = grouped["budget"].agg("sum").reindex(metric_values.index).values
+
+    if dimension == "deadline_month":
+        result = result.sort_values(dimension, ascending=True)
     else:
-        query = f"SELECT * FROM {target_table}"
-        add_conditions(set(ALLOWED_TABLES[target_table]["columns"]))
-        if conditions:
-            query += " WHERE " + " AND ".join(conditions)
-        if dimension == "deadline_month":
-            query += f" ORDER BY {dimension} ASC"
-        else:
-            query += f" ORDER BY {select_metric} DESC"
-        if limit > 0:
-            query += f" LIMIT {limit}"
+        result = result.sort_values(metric, ascending=False, na_position="last")
 
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(query, tuple(params))
-            results = cur.fetchall()
+    if limit > 0:
+        result = result.head(limit)
 
-    for r in results:
-        if not use_grouped and select_metric != metric and select_metric in r:
-            r[metric] = r[select_metric]
-            del r[select_metric]
-        for key, val in list(r.items()):
-            if isinstance(val, (datetime.date, datetime.datetime)):
-                r[key] = val.isoformat()
-
-    return results
+    return _to_records(result)

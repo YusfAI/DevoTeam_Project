@@ -1,10 +1,10 @@
 fastapi
 uvicorn
-pymysql
 python-dotenv
-dbutils
 pydantic
 google-genai
 aiofiles
 apscheduler
 gspread
+pandas
+duckdb

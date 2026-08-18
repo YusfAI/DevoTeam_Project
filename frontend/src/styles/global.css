@@ -460,6 +460,13 @@ body::before {
   font-size: 0.9rem;
 }
 
+.dashboard-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .view-toggle {
   display: flex;
   border: 1px solid var(--border);
@@ -549,6 +556,18 @@ body::before {
 .vega-container {
   width: 100%;
   height: 100%;
+}
+
+/* Dashboard Bruin DAC servi en iframe (port 8321). Le padding du conteneur est
+   annulé par une marge négative : DAC gère sa propre mise en page (grille 12
+   colonnes), on lui laisse toute la surface plutôt que d'empiler deux cadres. */
+.dac-frame {
+  width: calc(100% + 44px);
+  height: calc(100% + 44px);
+  margin: -22px;
+  border: 0;
+  border-radius: 14px;
+  display: block;
 }
 
 .dashboard-fade-in {

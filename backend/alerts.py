@@ -1,15 +1,17 @@
 """Alertes deadline : opportunités actives dont l'échéance tombe dans les prochains
-jours. Calculé en direct via DATEDIFF(deadline, CURDATE()) — jamais depuis la colonne
-days_remaining, qui est une valeur figée à l'import des données et non relative à la
-date système courante."""
+jours. days_remaining est recalculé à chaque chargement du DataFrame (voir
+data_store.py) directement depuis deadline — jamais une valeur qui pourrait
+dater d'un chargement précédent."""
+import json
 import logging
 import os
 import smtplib
 from datetime import date
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from pathlib import Path
 
-from .db import get_connection
+from .data_store import get_dataframe
 from .response_builder import format_metric_value
 
 logger = logging.getLogger(__name__)
@@ -26,23 +28,29 @@ EXCLUDED_STATUSES = [
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587
 
+# Anti-doublon de l'alerte quotidienne (voir run_daily_alert_check_if_needed) —
+# un petit fichier JSON local plutôt qu'une table MySQL, puisqu'il n'y a plus de
+# base de données. Même sémantique : une ligne (date de dernière exécution) par job.
+_SCHEDULER_STATE_PATH = Path(__file__).resolve().parent.parent / "data" / "scheduler_state.json"
+
 
 def get_upcoming_deadline_opportunities(days: int = ALERT_WINDOW_DAYS) -> list:
     """Opportunités actives dont la deadline tombe entre aujourd'hui et +days jours
     (bornes incluses), triées par urgence croissante."""
-    placeholders = ", ".join(["%s"] * len(EXCLUDED_STATUSES))
-    sql = f"""
-        SELECT id, country, practice, buyer, status, deadline, budget,
-               DATEDIFF(deadline, CURDATE()) AS days_left
-        FROM opportunities
-        WHERE DATEDIFF(deadline, CURDATE()) BETWEEN 0 AND %s
-          AND status NOT IN ({placeholders})
-        ORDER BY days_left ASC
-    """
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, (days, *EXCLUDED_STATUSES))
-            return cur.fetchall()
+    df = get_dataframe()
+    if df is None or df.empty:
+        return []
+
+    mask = df["days_remaining"].between(0, days) & ~df["status"].isin(EXCLUDED_STATUSES)
+    result = df.loc[mask, ["id", "country", "practice", "buyer", "status", "deadline", "budget", "days_remaining"]]
+    result = result.sort_values("days_remaining", ascending=True)
+    result = result.rename(columns={"days_remaining": "days_left"})
+
+    records = result.where(result.notnull(), None).to_dict("records")
+    for r in records:
+        if hasattr(r["deadline"], "isoformat"):
+            r["deadline"] = r["deadline"].isoformat()
+    return records
 
 
 def _build_email_body(opportunities: list) -> str:
@@ -96,7 +104,7 @@ def run_daily_alert_check() -> int:
     try:
         opportunities = get_upcoming_deadline_opportunities()
     except Exception:
-        logger.exception("Alertes deadline : échec de la requête DB, vérification annulée.")
+        logger.exception("Alertes deadline : échec de la lecture des données, vérification annulée.")
         return 0
 
     if not opportunities:
@@ -112,34 +120,29 @@ def run_daily_alert_check() -> int:
     return len(opportunities)
 
 
-def _ensure_scheduler_state_table(cur) -> None:
-    # Auto-créée à la demande plutôt que via init_tables.py — un déploiement existant
-    # n'a pas besoin de relancer un script de migration pour bénéficier du rattrapage.
-    cur.execute(
-        "CREATE TABLE IF NOT EXISTS scheduler_state ("
-        "job_name VARCHAR(50) PRIMARY KEY, last_run_date DATE)"
-    )
+def _read_scheduler_state() -> dict:
+    try:
+        with open(_SCHEDULER_STATE_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _write_scheduler_state(state: dict) -> None:
+    _SCHEDULER_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(_SCHEDULER_STATE_PATH, "w", encoding="utf-8") as f:
+        json.dump(state, f)
 
 
 def _already_ran_today(job_name: str) -> bool:
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            _ensure_scheduler_state_table(cur)
-            cur.execute("SELECT last_run_date FROM scheduler_state WHERE job_name = %s", (job_name,))
-            row = cur.fetchone()
-    return bool(row and row["last_run_date"] == date.today())
+    state = _read_scheduler_state()
+    return state.get(job_name) == date.today().isoformat()
 
 
 def _mark_ran_today(job_name: str) -> None:
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            _ensure_scheduler_state_table(cur)
-            cur.execute(
-                "INSERT INTO scheduler_state (job_name, last_run_date) VALUES (%s, %s) "
-                "ON DUPLICATE KEY UPDATE last_run_date = VALUES(last_run_date)",
-                (job_name, date.today()),
-            )
-        conn.commit()
+    state = _read_scheduler_state()
+    state[job_name] = date.today().isoformat()
+    _write_scheduler_state(state)
 
 
 def run_daily_alert_check_if_needed() -> int:
