@@ -30,7 +30,10 @@ export default function App() {
     try {
       const data = await postDashboardQuery(text, lastIntent)
       addMessage({ type: 'system', text: data.ai_message || 'Voici le résultat de votre demande :' })
-      if (data.kpi_value !== undefined || data.vega_spec || data.table_rows) {
+      // dac_dashboard porte le dashboard multi-widgets généré pour cette question ;
+      // les autres champs restent testés pour qu'une réponse sans dashboard DAC
+      // (génération en échec) continue d'être prise en compte.
+      if (data.dac_dashboard || data.kpi_value !== undefined || data.vega_spec || data.table_rows) {
         setDashboard(data)
         setDashboardKey((k) => k + 1)
       }
@@ -90,7 +93,7 @@ export default function App() {
           syncingSheets={syncingSheets}
           inputRef={inputRef}
         />
-        <DashboardPanel dashboard={dashboard} theme={theme} dashboardKey={dashboardKey} />
+        <DashboardPanel dashboard={dashboard} dashboardKey={dashboardKey} />
       </div>
     </div>
   )

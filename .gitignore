@@ -31,4 +31,9 @@ data/scheduler_state.json
 # depuis le Google Sheet (backend/duckdb_export.py), jamais éditée à la main
 dac/data/*.db
 
+# Dashboard généré à chaque question du chat (backend/dac_composer.py) : artefact
+# éphémère réécrit en permanence, sans intérêt en revue — contrairement aux
+# dashboards écrits à la main (dac/dashboards/accueil.yml), eux versionnés.
+dac/dashboards/_analyse.yml
+
 logs/queries

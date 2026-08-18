@@ -23,6 +23,8 @@ from .alerts import get_upcoming_deadline_opportunities, run_daily_alert_check_i
 from .data_store import get_dataframe, refresh_dataframe
 # pyrefly: ignore [missing-import]
 from .duckdb_export import export_dataframe
+# pyrefly: ignore [missing-import]
+from .dac_composer import write_generated_dashboard
 
 logger = logging.getLogger(__name__)
 
@@ -105,35 +107,45 @@ async def generate_dashboard(request: ChatRequest):
         ai_message = build_data_response(intent, data)
         goal = intent.get("goal", "")
 
+        # Dashboard multi-widgets répondant à la question (backend/dac_composer.py),
+        # affiché en iframe par le frontend. Jamais bloquant : si la génération ou
+        # l'écriture échoue, on renvoie quand même la réponse classique (message +
+        # graphique unique) plutôt que de faire échouer toute la requête.
+        try:
+            dac_dashboard = write_generated_dashboard(request.query, intent)
+        except Exception:
+            logger.exception("Génération du dashboard DAC en échec pour %r", request.query)
+            dac_dashboard = None
+
+        base = {"cached": False, "ai_message": ai_message, "goal": goal,
+                "intent": intent, "dac_dashboard": dac_dashboard}
+
         is_table = intent.get("use_raw_table") or bool(intent.get("range_filters")) or intent.get("chart_type") == "table"
 
         if is_table:
-            return {"vega_spec": None, "table_rows": data, "cached": False, "ai_message": ai_message, "goal": goal, "intent": intent}
+            return {**base, "vega_spec": None, "table_rows": data}
 
         if intent.get("chart_type") == "kpi_card":
             metric = intent.get("metric", "budget")
             kpi_value = extract_metric_value(data[0], metric) if data else None
             return {
+                **base,
                 "vega_spec": None,
                 "kpi_value": kpi_value,
                 "kpi_value_formatted": format_metric_value(kpi_value, metric),
                 "kpi_label": goal,
-                "cached": False,
-                "ai_message": ai_message,
-                "goal": goal,
-                "intent": intent,
             }
 
         intent_hash = hashlib.sha256(json.dumps(intent, sort_keys=True).encode('utf-8')).hexdigest()
         cached_spec = get_cached_dashboard(intent_hash)
 
         if cached_spec:
-            return {"vega_spec": cached_spec, "table_rows": data, "cached": True, "ai_message": ai_message, "goal": goal, "intent": intent}
+            return {**base, "cached": True, "vega_spec": cached_spec, "table_rows": data}
 
         spec = build_vega_spec(intent, data)
         save_to_cache(intent_hash, spec)
 
-        return {"vega_spec": spec, "table_rows": data, "cached": False, "ai_message": ai_message, "goal": goal, "intent": intent}
+        return {**base, "vega_spec": spec, "table_rows": data}
 
     except ValueError as e:
         # Expected errors (validation failed, dimension not supported, etc)

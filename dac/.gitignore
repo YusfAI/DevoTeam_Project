@@ -10,3 +10,5 @@
 # remettre « .bruin.yml » ci-dessous AVANT de committer.
 
 logs/queries
+
+.bruin.yml
