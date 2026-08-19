@@ -1,0 +1,50 @@
+# Thème Devoteam pour les dashboards DAC.
+#
+# Il existe parce que la zone dashboard, servie en iframe par DAC, gardait
+# l'apparence par défaut de l'outil : l'application avait donc deux identités
+# visuelles côte à côte. Les jetons ci-dessous reprennent EXACTEMENT ceux de
+# frontend/src/styles/tokens.css — toute modification doit être répercutée des deux
+# côtés, sinon l'écart réapparaît.
+#
+# Appliqué au lancement : dac serve --dir . --template themes/devoteam.yml
+# (voir scripts/start_dev.bat).
+#
+# « extends » hérite des jetons non redéfinis du thème intégré, ce qui évite d'avoir
+# à réénumérer ceux dont la valeur par défaut convient.
+name: devoteam
+extends: bruin
+
+tokens:
+  # --- Surfaces et texte : mêmes valeurs que le chat, pour une continuité visuelle ---
+  background: "#f9f9f7"      # --surface-page
+  surface: "#fcfcfb"         # --surface-card
+  surface-hover: "#f2f2ef"
+  border: "#e1e0d9"          # --gridline (valeur opaque : un rgba semi-transparent
+                              # se comporterait mal sur les fonds superposés de DAC)
+  text-primary: "#0b0b0b"
+  text-secondary: "#52514e"
+  text-muted: "#898781"
+
+  # --- Corail Devoteam, repris du logo ---
+  accent: "#f2405a"          # --brand-primary
+  accent-hover: "#d42a45"    # --brand-primary-strong
+  accent-subtle: "rgba(242, 64, 90, 0.08)"
+
+  # --- États : mêmes teintes que les badges d'alerte du chat ---
+  success: "#0ca30c"
+  warning: "#fab219"
+  error: "#d03b3b"
+
+  # --- Palette de graphiques ---
+  # Ce sont les huit teintes --series-1..8 de l'application, dont l'ordre a été validé
+  # pour rester distinguable en vision daltonienne. Les reprendre ici plutôt que de
+  # laisser la palette par défaut garantit que le même pays garde la même couleur
+  # qu'il apparaisse dans un dashboard DAC ou ailleurs.
+  chart-1: "#2a78d6"
+  chart-2: "#eb6834"
+  chart-3: "#1baf7a"
+  chart-4: "#eda100"
+  chart-5: "#e87ba4"
+  chart-6: "#008300"
+  chart-7: "#4a3aa7"
+  chart-8: "#e34948"

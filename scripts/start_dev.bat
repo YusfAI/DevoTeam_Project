@@ -46,7 +46,7 @@ if "%RUNNING%"=="1" (
     echo [DAC]      deja demarre - reutilise.
 ) else (
     echo [DAC]      demarrage...
-    start "DevoTeam DAC" cmd /k "set ""PATH=%PATH%"" && cd /d ""%PROJECT_ROOT%\dac"" && ""%BRUIN_BIN%\dac.exe"" serve --dir . --port 8321"
+    start "DevoTeam DAC" cmd /k "set ""PATH=%PATH%"" && cd /d ""%PROJECT_ROOT%\dac"" && ""%BRUIN_BIN%\dac.exe"" serve --dir . --port 8321 --template themes/devoteam.yml"
 )
 
 REM --- 3. Frontend Vite (http://localhost:5173) ---

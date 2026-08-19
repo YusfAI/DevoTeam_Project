@@ -130,6 +130,12 @@ cd dac && dac validate --dir .   # vérifie la structure des dashboards
 cd dac && dac check --dir .      # exécute réellement chaque requête widget
 ```
 
+Les dashboards portent l'identité Devoteam via `dac/themes/devoteam.yml`, passé au
+serveur avec `--template`. Ce fichier reprend les mêmes jetons que
+`frontend/src/styles/tokens.css`, palette de graphiques comprise (validée pour la
+vision daltonienne) : **toute modification de couleur doit être faite des deux
+côtés**, sinon le chat et les dashboards divergent visuellement.
+
 ## Lancer en développement (hot-reload)
 
 Trois terminaux (ou `scripts/start_dev.bat` sous Windows, qui lance les trois) :
@@ -139,7 +145,8 @@ python -m uvicorn backend.main:app --reload          # API sur http://127.0.0.1:
 ```
 
 ```bash
-cd dac && dac serve --dir . --port 8321    # dashboards DAC sur http://localhost:8321
+cd dac && dac serve --dir . --port 8321 --template themes/devoteam.yml
+                                           # dashboards DAC sur http://localhost:8321
                                            # (PATH doit contenir ~/.local/bin — voir ci-dessus)
 ```
 
