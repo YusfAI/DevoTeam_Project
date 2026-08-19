@@ -110,3 +110,49 @@ def test_heatmap_message_sums_by_dimension_not_by_grid_cell():
     message = build_data_response(intent, data)
     assert "230" in message  # 100 + 50 + 80
     assert "2 pays" in message
+
+
+# ---------------------------------------------------------------------------
+# Note de concentration — dire ce qui est notable, pas seulement le classement
+# ---------------------------------------------------------------------------
+
+from backend.response_builder import _concentration_note
+
+
+def test_concentration_is_flagged_when_a_few_values_hold_the_total():
+    rows = [("A", 50.0), ("B", 30.0), ("C", 15.0), ("D", 3.0), ("E", 2.0)]
+    note = _concentration_note(rows, 100.0, "pays")
+    assert "95 %" in note
+
+
+def test_balanced_distribution_gets_no_note():
+    # Commenter une répartition ordinaire noierait l'information utile.
+    rows = [("A", 20.0)] * 5
+    assert _concentration_note(rows, 100.0, "pays") == ""
+
+
+def test_too_few_values_gets_no_note():
+    # Sur trois catégories, « les 3 premières font 100 % » n'apprend rien.
+    rows = [("A", 60.0), ("B", 30.0), ("C", 10.0)]
+    assert _concentration_note(rows, 100.0, "practice") == ""
+
+
+def test_zero_total_is_not_divided_by():
+    assert _concentration_note([("A", 0.0)] * 6, 0.0, "pays") == ""
+
+
+def test_uniform_spread_is_never_called_concentration_whatever_the_count():
+    # Régression : le seuil fixe de 60 % qualifiait de « concentration » une
+    # répartition parfaitement égale sur 5 catégories (3/5 = 60 % par construction).
+    for n in (5, 6, 8, 12, 21):
+        rows = [(f"V{i}", 100.0 / n) for i in range(n)]
+        assert _concentration_note(rows, 100.0, "pays") == "", f"faux positif à n={n}"
+
+
+def test_plural_does_not_double_an_existing_s():
+    # « pays » est invariable : le suffixer donnait « payss ».
+    rows = [("A", 90.0)] + [(f"V{i}", 1.0) for i in range(10)]
+    assert "payss" not in _concentration_note(rows, 100.0, "pays")
+    assert "pays" in _concentration_note(rows, 100.0, "pays")
+    # Un label normal reste accordé.
+    assert "practices" in _concentration_note(rows, 100.0, "practice")

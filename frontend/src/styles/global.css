@@ -329,6 +329,60 @@ body::before {
   border: 1px solid color-mix(in srgb, var(--status-good) 35%, transparent);
 }
 
+/* ---------- Questions d'amorce ---------- */
+
+.chat-suggestions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  animation: fadeIn 0.35s ease;
+}
+
+.chat-suggestions-label {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.chat-suggestion {
+  text-align: left;
+  background: var(--surface-page);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.chat-suggestion:hover {
+  border-color: var(--brand-primary);
+  color: var(--text-primary);
+  transform: translateX(2px);
+}
+
+/* Lien de rappel sous une réponse ayant produit un tableau de bord. */
+.message-replay {
+  display: block;
+  margin-top: 10px;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--brand-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.message-replay:hover {
+  text-decoration: underline;
+}
+
 .typing {
   display: flex;
   gap: 5px;

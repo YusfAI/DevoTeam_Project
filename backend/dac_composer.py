@@ -11,6 +11,7 @@ partagent toujours les mêmes filtres que la question, donc leur pertinence est
 déductible sans modèle ; et un appel supplémentaire par question consommerait le
 quota gratuit Gemini (~16 requêtes/minute) pour un gain nul en qualité.
 """
+import hashlib
 import logging
 import re
 from pathlib import Path
@@ -44,10 +45,37 @@ _LiteralDumper.add_representer(str, _represent_str)
 
 DASHBOARDS_DIR = Path(__file__).resolve().parent.parent / "dac" / "dashboards"
 
-# Fichier unique réécrit à chaque question : le nom AFFICHÉ change (c'est lui qui
-# sert de route à DAC), mais garder un seul fichier évite d'accumuler des centaines
-# de dashboards jetables dans le dépôt.
-GENERATED_FILENAME = "_analyse.yml"
+# Un fichier par question, nommé d'après un condensé de son titre. Un fichier unique
+# réécrit à chaque fois était plus simple, mais rendait tout retour en arrière
+# impossible : poser une deuxième question effaçait le dashboard de la première,
+# alors que l'utilisateur veut souvent comparer ses réponses successives.
+GENERATED_PREFIX = "_analyse_"
+
+# Plafond du nombre de dashboards générés conservés : au-delà, les plus anciens sont
+# supprimés. Sans ce ménage, chaque question laisserait un fichier derrière elle.
+MAX_GENERATED_DASHBOARDS = 12
+
+
+def _generated_filename(name: str) -> str:
+    digest = hashlib.sha1(name.encode("utf-8")).hexdigest()[:10]
+    return f"{GENERATED_PREFIX}{digest}.yml"
+
+
+def _prune_generated(keep: str) -> None:
+    """Ne garde que les MAX_GENERATED_DASHBOARDS fichiers générés les plus récents.
+    `keep` est toujours conservé : c'est celui qu'on vient d'écrire."""
+    try:
+        fichiers = sorted(
+            (f for f in DASHBOARDS_DIR.glob(f"{GENERATED_PREFIX}*.yml") if f.name != keep),
+            key=lambda f: f.stat().st_mtime,
+            reverse=True,
+        )
+        for vieux in fichiers[MAX_GENERATED_DASHBOARDS - 1:]:
+            vieux.unlink()
+    except Exception:
+        # Le ménage est un confort : son échec ne doit jamais empêcher l'affichage
+        # du dashboard qui vient d'être généré.
+        logger.warning("Nettoyage des dashboards générés impossible.", exc_info=True)
 
 CONNECTION = "devoteam_duckdb"
 
@@ -569,7 +597,8 @@ def write_generated_dashboard(query: str, intent: dict) -> str:
     }
 
     DASHBOARDS_DIR.mkdir(parents=True, exist_ok=True)
-    path = DASHBOARDS_DIR / GENERATED_FILENAME
+    filename = _generated_filename(name)
+    path = DASHBOARDS_DIR / filename
     # allow_unicode : les titres et valeurs sont en français (accents) et doivent
     # rester lisibles dans le YAML versionné, pas être échappés en \uXXXX.
     path.write_text(
@@ -577,5 +606,6 @@ def write_generated_dashboard(query: str, intent: dict) -> str:
                    sort_keys=False, width=120),
         encoding="utf-8",
     )
+    _prune_generated(keep=filename)
     logger.info("Dashboard DAC généré : %r (%d widgets)", name, len(widgets))
     return name

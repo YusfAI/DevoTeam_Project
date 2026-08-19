@@ -33,8 +33,11 @@ export default function DashboardPanel({ dashboard, dashboardKey }) {
   // Le premier affichage d'un widget déclenche un démarrage à froid du moteur de
   // requête (une douzaine de secondes) : sans ce voile, l'utilisateur fait face à un
   // cadre blanc qu'il interprète comme une panne.
+  // Réinitialisé sur dashboardKey ET sur l'URL : reposer la même question régénère
+  // le dashboard sans changer son nom, donc l'URL seule ne suffirait pas à détecter
+  // qu'un nouveau chargement commence.
   const [frameLoaded, setFrameLoaded] = useState(false)
-  useEffect(() => { setFrameLoaded(false) }, [frameUrl])
+  useEffect(() => { setFrameLoaded(false) }, [frameUrl, dashboardKey])
 
   const title = overviewVisible ? 'Vue d’ensemble commerciale' : dashboard?.goal || 'Analyse'
   const subtitle = overviewVisible

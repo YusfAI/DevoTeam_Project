@@ -69,6 +69,33 @@ def _top_entries(rows_with_values: list, metric: str, n: int = 3) -> str:
     return " | ".join(parts)
 
 
+def _concentration_note(rows_with_values: list, total: float, dim_label: str) -> str:
+    """Signale une concentration forte du total sur quelques valeurs.
+
+    Le classement seul énumère des chiffres ; il ne dit pas si le portefeuille est
+    réparti ou tenu par une poignée de lignes — or c'est cette information-là qui
+    change une décision commerciale.
+
+    Le seuil se compare à ce que donnerait une répartition UNIFORME (3/n), et non à
+    une valeur fixe : sur cinq catégories, un partage parfaitement égal produit déjà
+    60 % pour le top 3 : annoncer une « concentration » dans ce cas serait faux. On
+    n'alerte donc qu'au-delà d'un tiers de plus que l'uniforme, et jamais sous 60 %.
+    """
+    n = len(rows_with_values)
+    if total <= 0 or n < 5:
+        return ""
+    top3 = sum(v for _, v in sorted(rows_with_values, key=lambda x: x[1], reverse=True)[:3])
+    part = top3 / total
+    seuil = max(0.6, (3 / n) * 1.3)
+    if part < seuil:
+        return ""
+    # « pays » est déjà pluriel : y ajouter un « s » donnait « payss ». Même cas pour
+    # tout label finissant par s, x ou z, invariables au pluriel en français.
+    pluriel = dim_label if dim_label[-1:].lower() in ("s", "x", "z") else f"{dim_label}s"
+    return (f" À noter : les 3 premiers {pluriel} concentrent "
+            f"{part * 100:.0f} % du total.")
+
+
 def build_data_response(intent: dict, data: list) -> str:
     metric = intent.get("metric", "budget")
     dimension = intent.get("dimension", "")
@@ -168,7 +195,7 @@ def build_data_response(intent: dict, data: list) -> str:
         return (
             f"{prefix}{metric_label.capitalize()} par {dim_label}{filter_desc}{limit_note}. "
             f"Total : {format_metric_value(total, metric)} sur {len(rows_with_values)} {dim_label}(s). "
-            f"Classement : {top_line}."
+            f"Classement : {top_line}.{_concentration_note(rows_with_values, total, dim_label)}"
         )
 
     val = extract_metric_value(data[0], metric)

@@ -127,7 +127,7 @@ def test_written_dashboard_is_valid_yaml_with_the_expected_shape(tmp_path, monke
     name = write_generated_dashboard("budget par pays pour Risk Advisory",
                                       _intent(filters={"practice": "Risk Advisory"}))
 
-    written = (tmp_path / dac_composer.GENERATED_FILENAME).read_text(encoding="utf-8")
+    written = (tmp_path / dac_composer._generated_filename(name)).read_text(encoding="utf-8")
     parsed = yaml.safe_load(written)
 
     assert parsed["name"] == name
@@ -140,9 +140,9 @@ def test_sql_is_written_as_a_readable_literal_block(tmp_path, monkeypatch):
     # L'intérêt d'un dashboard « as code » est d'être relu en revue : le SQL doit
     # rester lisible tel quel, pas replié en style quoté par PyYAML.
     monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path)
-    write_generated_dashboard("budget par pays", _intent())
+    name = write_generated_dashboard("budget par pays", _intent())
 
-    written = (tmp_path / dac_composer.GENERATED_FILENAME).read_text(encoding="utf-8")
+    written = (tmp_path / dac_composer._generated_filename(name)).read_text(encoding="utf-8")
     assert "sql: |" in written
 
 
@@ -273,3 +273,33 @@ def test_no_two_widgets_share_the_same_dimension():
     widgets = compose_widgets(_intent(chart_type="table", use_raw_table=True, dimension=""))
     axes = [w["x"]["field"] for w in widgets if w.get("x")]
     assert len(axes) == len(set(axes)), f"dimension dupliquée : {axes}"
+
+
+def test_each_question_keeps_its_own_dashboard_file(tmp_path, monkeypatch):
+    # Régression : un fichier unique réécrit à chaque fois effaçait le dashboard de
+    # la question précédente, rendant tout retour en arrière impossible.
+    monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path)
+    un = write_generated_dashboard("budget par pays", _intent())
+    deux = write_generated_dashboard("budget par practice", _intent(dimension="practice"))
+
+    assert un != deux
+    assert (tmp_path / dac_composer._generated_filename(un)).exists()
+    assert (tmp_path / dac_composer._generated_filename(deux)).exists()
+
+
+def test_old_generated_dashboards_are_pruned(tmp_path, monkeypatch):
+    # Sans ménage, chaque question laisserait un fichier derrière elle indéfiniment.
+    monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path)
+    monkeypatch.setattr(dac_composer, "MAX_GENERATED_DASHBOARDS", 3)
+    for i in range(6):
+        write_generated_dashboard(f"question numero {i}", _intent())
+
+    restants = list(tmp_path.glob(f"{dac_composer.GENERATED_PREFIX}*.yml"))
+    assert len(restants) == 3
+
+
+def test_asking_the_same_question_twice_reuses_one_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path)
+    write_generated_dashboard("budget par pays", _intent())
+    write_generated_dashboard("budget par pays", _intent())
+    assert len(list(tmp_path.glob(f"{dac_composer.GENERATED_PREFIX}*.yml"))) == 1

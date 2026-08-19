@@ -29,7 +29,13 @@ export default function App() {
 
     try {
       const data = await postDashboardQuery(text, lastIntent)
-      addMessage({ type: 'system', text: data.ai_message || 'Voici le résultat de votre demande :' })
+      // Le nom du dashboard est attaché au message : cliquer une réponse passée y
+      // ramène, au lieu de n'avoir accès qu'au tout dernier résultat.
+      addMessage({
+        type: 'system',
+        text: data.ai_message || 'Voici le résultat de votre demande :',
+        dashboardName: data.dac_dashboard || null,
+      })
       // dac_dashboard porte le dashboard multi-widgets généré pour cette question.
       // Une réponse de clarification n'en a pas : on garde alors le dashboard
       // précédent à l'écran plutôt que de le vider pour un tour sans résultat.
@@ -48,6 +54,11 @@ export default function App() {
       setLoading(false)
       inputRef.current?.focus()
     }
+  }
+
+  function handleOpenDashboard(name) {
+    setDashboard({ dac_dashboard: name, goal: name })
+    setDashboardKey((k) => k + 1)
   }
 
   function handleClearHistory() {
@@ -85,6 +96,7 @@ export default function App() {
         <ChatPanel
           messages={messages}
           loading={loading}
+          onOpenDashboard={handleOpenDashboard}
           onSubmit={handleSubmit}
           theme={theme}
           onToggleTheme={toggleTheme}
