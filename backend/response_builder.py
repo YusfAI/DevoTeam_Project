@@ -1,7 +1,7 @@
 """Build user-facing messages strictly from query results (no LLM hallucination)."""
 
 from .labels import METRIC_LABELS, DIMENSION_LABELS, FILTER_LABELS
-from .vega_generator import FUNNEL_STAGE_ORDER, _cap_heatmap_rows
+from .business_rules import FUNNEL_STAGE_ORDER, cap_heatmap_rows
 
 
 def get_help_message() -> str:
@@ -122,7 +122,7 @@ def build_data_response(intent: dict, data: list) -> str:
         # même plafond est appliqué ici pour que le texte décrive ce qui est réellement
         # affiché, jamais une donnée plus large que le graphique.
         dim_label = DIMENSION_LABELS.get(dimension, dimension)
-        capped, _ = _cap_heatmap_rows(data, dimension, metric)
+        capped, _ = cap_heatmap_rows(data, dimension, metric)
         totals: dict = {}
         for row in capped:
             key = row.get(dimension)

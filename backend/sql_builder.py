@@ -12,7 +12,7 @@ plutôt qu'une opération pandas. Les deux doivent rester d'accord — c'est vé
 par les tests (même filtre => même total).
 """
 from .schema_and_whitelist import VALID_DIMENSIONS, VALID_FILTERS, VALID_METRICS
-from .vega_generator import FUNNEL_STAGE_ORDER
+from .business_rules import FUNNEL_STAGE_ORDER
 
 TABLE = "opportunities"
 

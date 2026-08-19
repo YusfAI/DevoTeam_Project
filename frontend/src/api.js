@@ -1,3 +1,12 @@
+export async function getHealth() {
+  // Volontairement sans gestion d'erreur bruyante : si le backend lui-même ne répond
+  // pas, l'appelant traite ça comme « indisponible » plutôt que de faire remonter une
+  // exception dans l'interface.
+  const response = await fetch('/health')
+  if (!response.ok) throw new Error('Health check indisponible')
+  return response.json()
+}
+
 export async function postSheetsSync() {
   const response = await fetch('/sheets/sync', { method: 'POST' })
 

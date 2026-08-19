@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { OVERVIEW_DASHBOARD_NAME, dacDashboardUrl } from '../dac'
+import { getHealth } from '../api'
+import DevoteamLogo from './DevoteamLogo'
 
 export default function DashboardPanel({ dashboard, dashboardKey }) {
   // Nom du dashboard DAC généré pour la dernière question (backend/dac_composer.py).
@@ -14,6 +16,25 @@ export default function DashboardPanel({ dashboard, dashboardKey }) {
 
   const overviewVisible = !generatedName || showOverview
   const currentName = overviewVisible ? OVERVIEW_DASHBOARD_NAME : generatedName
+  const frameUrl = dacDashboardUrl(currentName)
+
+  // État du serveur de dashboards. null = vérification en cours ; false = injoignable,
+  // auquel cas on affiche une consigne au lieu d'une iframe vide et muette — une
+  // panne de DAC était jusqu'ici indiscernable d'une absence de données.
+  const [dacStatus, setDacStatus] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    getHealth()
+      .then((h) => { if (!cancelled) setDacStatus(h.dac) })
+      .catch(() => { if (!cancelled) setDacStatus({ ok: false, aide: 'Le serveur ne répond pas.' }) })
+    return () => { cancelled = true }
+  }, [dashboardKey])
+
+  // Le premier affichage d'un widget déclenche un démarrage à froid du moteur de
+  // requête (une douzaine de secondes) : sans ce voile, l'utilisateur fait face à un
+  // cadre blanc qu'il interprète comme une panne.
+  const [frameLoaded, setFrameLoaded] = useState(false)
+  useEffect(() => { setFrameLoaded(false) }, [frameUrl])
 
   const title = overviewVisible ? 'Vue d’ensemble commerciale' : dashboard?.goal || 'Analyse'
   const subtitle = overviewVisible
@@ -50,15 +71,37 @@ export default function DashboardPanel({ dashboard, dashboardKey }) {
       </div>
 
       <div className="dashboard-body align-top">
-        {/* key = dashboardKey : force le remontage de l'iframe à chaque nouvelle
-            réponse, pour que DAC recharge le dashboard même si son nom est
-            identique (question reposée après un rafraîchissement des données). */}
-        <iframe
-          key={`${currentName}-${overviewVisible ? 'overview' : dashboardKey}`}
-          className="dac-frame"
-          src={dacDashboardUrl(currentName)}
-          title={currentName}
-        />
+        {dacStatus && !dacStatus.ok ? (
+          <div className="dashboard-unavailable">
+            <DevoteamLogo size={56} className="placeholder-mark" />
+            <h3>Serveur de dashboards injoignable</h3>
+            <p>{dacStatus.aide}</p>
+            <button type="button" onClick={() => window.location.reload()}>
+              Réessayer
+            </button>
+          </div>
+        ) : (
+          <>
+            {!frameLoaded && (
+              <div className="dac-skeleton" aria-hidden="true">
+                <div className="dac-skeleton-row">
+                  <span /><span /><span /><span />
+                </div>
+                <div className="dac-skeleton-row tall">
+                  <span /><span />
+                </div>
+                <div className="dac-skeleton-caption">Préparation du tableau de bord…</div>
+              </div>
+            )}
+            <iframe
+              key={`${currentName}-${overviewVisible ? 'overview' : dashboardKey}`}
+              className={`dac-frame${frameLoaded ? '' : ' loading'}`}
+              src={frameUrl}
+              title={currentName}
+              onLoad={() => setFrameLoaded(true)}
+            />
+          </>
+        )}
       </div>
     </div>
   )
