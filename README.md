@@ -199,17 +199,20 @@ backend/
   duckdb_export.py       projection du DataFrame vers DuckDB (pour DAC)
   alerts.py              alertes deadlines (email + endpoint)
   response_builder.py    messages texte déterministes
-  vega_generator.py      héritage Vega-Lite, plus utilisé par l'UI (voir PROGRESS.md)
+  business_rules.py      règles métier indépendantes de l'affichage (ordre du pipeline)
+  data_quality.py        rapport des lignes rejetées et des valeurs manquantes
 dac/
   .bruin.yml             connexion DuckDB (aucun secret, versionnée volontairement)
+  themes/devoteam.yml    thème aux couleurs de l'application (palette CVD comprise)
   dashboards/accueil.yml vue d'ensemble écrite à la main, versionnée
-  dashboards/_analyse.yml dashboard généré par question (gitignoré, éphémère)
+  dashboards/qualite.yml  dashboard de qualité des données, versionné
+  dashboards/_analyse_*.yml dashboards générés par question (gitignorés)
   data/devoteam.db       projection DuckDB (gitignorée, régénérée)
 frontend/              Vite + React (build servi par FastAPI en local)
 credentials/           clé de compte de service Google (gitignoré, absent par défaut)
 data/                  scheduler_state.json (état local, gitignoré) ; dump SQL
                        historique de l'ancienne base MySQL, conservé pour référence
-tests/                 suite pytest (mock Gemini/Sheets), 152 tests
+tests/                 suite pytest (mock Gemini/Sheets), 158 tests
 Documentation/
   WORKFLOW.md            traçage concret d'une question, du prompt au dashboard affiché
   reports/              rapport professionnel + guide technique (.docx) et leur générateur

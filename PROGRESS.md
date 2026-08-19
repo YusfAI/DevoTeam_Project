@@ -26,6 +26,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 19 — Suppression de MySQL : le Google Sheet devient la source unique, chargée en mémoire via pandas
 - [x] Phase 20 — Bruin DAC : dashboards « as code » (YAML versionné) remplaçant le rendu Vega-Lite
 - [x] Phase 21 — Un dashboard multi-widgets généré à partir de chaque question du chat
+- [x] Phase 22 — Chantier de finition : justesse des chiffres, contexte, qualité des données, fiabilité perçue et identité visuelle
 
 ## 📝 Journaux
 
@@ -98,6 +99,24 @@ DAC ne sachant interroger que des connexions SQL, un pont a été nécessaire : 
 Décision d'architecture centrale : **le LLM n'écrit jamais le SQL**. Il continue de ne produire qu'une intention validée contre la liste blanche ; `backend/sql_builder.py` la traduit en SQL DuckDB et `dac_composer.py` l'emballe en widgets. La garantie anti-hallucination du projet reste donc intacte — sans perte réelle, puisque les 18 colonnes fixes du Sheet sont déjà entièrement décrites par la liste blanche. Les widgets complémentaires sont choisis par des **règles déterministes** plutôt que par un second appel LLM : leur pertinence se déduit de l'intention principale, et un appel de plus par question épuiserait le quota gratuit Gemini (~16 requêtes/minute) sans rien apporter.
 
 Deux défauts trouvés en exécutant plutôt qu'en supposant : le widget complémentaire pouvait reprendre une dimension **déjà figée par un filtre** (demander « Risk Advisory » puis grouper par practice donnait un graphique à une seule barre) — il évite désormais toute dimension épinglée ; et PyYAML repliait le SQL en style quoté, ce qui ruinait l'intérêt même du « dashboard as code » — un dumper en bloc littéral le garde relisible en revue. Validation croisée : le nombre d'opportunités urgentes (5) concorde entre les trois chemins indépendants (chat pandas, dashboard généré, vue d'ensemble écrite à la main). Suite `pytest` : 152 tests (20 nouveaux).
+
+**Phase 22** : Terminée. Chantier de finition en quatre lots, précédé d'un audit des chiffres réellement affichés.
+
+*Justesse.* Trois erreurs trouvées en interrogeant les données, pas en relisant le code. Le graphique « budget par pays » perdait **6,58 M€ en silence** : un `LIMIT 12` sec faisait disparaître 9 pays sur 21, et le total du KPI ne correspondait plus à la somme des barres — régression introduite lors du passage à DAC, l'ancien code Vega regroupant la traîne dans « Autres ». Le regroupement est rétabli, l'écart ramené à zéro. Surtout, **l'entonnoir n'en avait jamais été un** : `status` est l'état *courant* d'une opportunité, donc compter par statut ne décroît pas, et diviser deux comptages voisins produisait des « taux de conversion » jusqu'à **800 %**. La reconstruction correcte cumule depuis la fin (« ayant atteint au moins cette étape ») — l'entonnoir décroît enfin (185 → 56) et les taux tiennent entre 82 % et 93 %, désignant Lead → Opportunité détectée comme l'étape la plus coûteuse. Enfin le KPI « montant pondéré » sommait 51 % du portefeuille en se présentant comme un total.
+
+*Pertinence.* Tous les dashboards partageaient le même squelette, au point d'afficher un entonnoir de vente sous une courbe d'évolution. La composition dépend désormais du type de question (temporelle, pipeline, répartition, détail, corrélation, comparaison), le choix camembert/barres suit la cardinalité **réelle après filtrage** (fini les camemberts à 16 parts), et deux widgets ne partagent plus jamais le même axe.
+
+*Contexte et comparaison.* Un chiffre absolu n'ayant pas de point de comparaison, chaque dashboard porte désormais la part du portefeuille interrogé (France + Maroc = 4,6 %) ou la moyenne par opportunité. Les comparaisons sont un archétype à part entière : au-delà des totaux, une décomposition empilée montre **d'où vient l'écart** — ici Digital Transformation (2,45 M€ contre 0,89 M€), alors que le Maroc devance la France en Risk Advisory.
+
+*Qualité des données.* Les lignes rejetées n'allaient que dans les logs — une donnée écartée en silence est un chiffre faux qui s'ignore. Un rapport (`GET /data/quality` + dashboard dédié) les regroupe par cause et les diagnostique : il reconnaît que « AMI » et « DP » sont des valeurs valides d'`opp_type` saisies dans la colonne `status`, par opposition à « En attente du plan de charge », simplement absent de la liste blanche et relevant d'une décision métier. Il ne corrige rien volontairement.
+
+*Fiabilité perçue.* Une panne du serveur de dashboards était indiscernable d'une absence de données : cadre blanc, aucun message — exactement ce qui s'est produit quand `bruin` n'était pas dans le PATH. Le frontend ne pouvant pas sonder le port 8321 (politique d'origine ; l'iframe, elle, y échappe, d'où le silence), un `GET /health` le fait côté serveur et l'interface affiche une consigne actionnable. Un squelette animé couvre les ~12 s de démarrage à froid.
+
+*Dette et identité.* Vega-Lite entièrement retiré — `vega_generator.py` hébergeait toutefois des règles métier (ordre du pipeline, plafond de heatmap) déplacées dans `business_rules.py`, ce qui a permis de supprimer le module sans emporter la logique. Le bundle JS ne bouge pas (Vega était déjà éliminé par le tree-shaking) ; le gain porte sur 3 dépendances npm et 6 fichiers. Enfin, une limite que j'avais documentée comme fatale s'est révélée fausse : `dac serve` accepte `--template`, et un thème (`dac/themes/devoteam.yml`) applique aux dashboards les jetons de l'application, **palette de graphiques validée pour la vision daltonienne comprise**. Restent inchangeables au clic clair/sombre, le template étant fixé au lancement du serveur.
+
+*UX.* Chaque question conserve son propre dashboard (12 gardés) : cliquer une réponse passée y ramène, là où poser une deuxième question détruisait la première. Quatre questions d'amorce cliquables, et une réponse qui signale ce qui est notable (« les 3 premiers pays concentrent 67 % du total ») — avec un seuil relatif à une répartition uniforme, un seuil fixe qualifiant de concentration un partage parfaitement égal sur cinq catégories.
+
+Suite `pytest` : 158 tests (était 143), dont plusieurs exécutent du vrai SQL sur des données synthétiques pour que les cas à 800 % et la troncature muette restent attrapés.
 
 ## 📊 Bilan du Produit
 

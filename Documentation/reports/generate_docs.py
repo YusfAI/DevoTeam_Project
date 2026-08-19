@@ -490,7 +490,7 @@ def build_rapport_professionnel():
              "(alertes deadlines, rafraîchissement des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (152 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
+            ["Tests", "pytest (158 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
              "(mocks), garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -509,7 +509,7 @@ def build_rapport_professionnel():
                      "explicite — il n'écrit jamais lui-même de requête.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "152 tests automatisés couvrent la compréhension du langage, le requêtage des "
+    add_bullet(doc, "158 tests automatisés couvrent la compréhension du langage, le requêtage des "
                      "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -755,7 +755,8 @@ def build_guide_technique():
             ["backend/duckdb_export.py", "Projection du DataFrame vers le fichier DuckDB interrogé par DAC."],
             ["backend/response_builder.py", "Messages texte déterministes (jamais générés par le LLM)."],
             ["backend/alerts.py", "Opportunités à échéance proche, envoi de l'email d'alerte."],
-            ["backend/vega_generator.py", "Héritage Vega-Lite — plus utilisé par l'interface (voir section 16)."],
+            ["backend/business_rules.py", "Règles métier indépendantes de l'affichage (ordre du pipeline)."],
+            ["backend/data_quality.py", "Rapport des lignes rejetées et des valeurs manquantes."],
             ["dac/.bruin.yml", "Connexion DuckDB de DAC (aucun identifiant, versionnée volontairement)."],
             ["dac/dashboards/accueil.yml", "Vue d'ensemble écrite à la main, versionnée et relue en revue."],
             ["dac/dashboards/_analyse.yml", "Tableau de bord généré par question (éphémère, hors suivi git)."],
@@ -1237,7 +1238,7 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "14. Tests automatisés")
     add_body(doc,
-        "152 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
+        "158 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
         "et le client Google Sheets (gspread) sont simulés (monkeypatch), et les données "
         "sont un petit DataFrame construit dans le test. La suite tourne donc hors ligne, "
         "en quelques secondes.")
@@ -1402,14 +1403,12 @@ def build_guide_technique():
                      "frontend) au lieu d'un seul. scripts/start_dev.bat les lance ensemble, mais "
                      "un tableau de bord vide dans l'iframe signifie presque toujours que le "
                      "serveur DAC n'est pas démarré.")
-    add_bullet(doc, "La zone tableau de bord utilise l'apparence de DAC, pas le thème Devoteam : "
-                     "DAC sert sa propre interface web, impossible à rendre comme un composant "
-                     "React, donc les jetons de couleur et le mode sombre du projet ne s'y "
-                     "appliquent pas. Le chat, lui, garde le branding complet.")
-    add_bullet(doc, "Le module Vega-Lite n'est plus utilisé par l'interface depuis le passage à "
-                     "DAC, mais reste dans le dépôt (backend/vega_generator.py et le composant "
-                     "React associé) — un nettoyage dédié reste à faire, il allègerait aussi "
-                     "sensiblement le bundle frontend.")
+    add_bullet(doc, "Le mode sombre ne s'applique pas à la zone tableau de bord. L'identité "
+                     "Devoteam, elle, y est appliquée par un thème dédié (couleurs et palette de "
+                     "graphiques reprises de l'application), mais ce thème est un paramètre du "
+                     "serveur de tableaux de bord, fixé à son lancement : il ne peut donc pas "
+                     "suivre le bouton clair/sombre du navigateur, qui ne concerne que le chat.")
+
     add_bullet(doc, "La toute première requête d'un widget prend environ 12 secondes (démarrage à "
                      "froid du moteur de requête), puis ~400 ms. Sensible uniquement au premier "
                      "chargement après démarrage.")
@@ -1540,7 +1539,7 @@ def build_presentation_script():
     add_h1(doc, "Les chiffres à retenir")
     add_bullet(doc, "1 question = 1 tableau de bord complet, généré automatiquement.")
     add_bullet(doc, "9 types de visualisations choisis automatiquement selon la question.")
-    add_bullet(doc, "152 tests automatisés, aucune dépendance à des données réelles.")
+    add_bullet(doc, "158 tests automatisés, aucune dépendance à des données réelles.")
     add_bullet(doc, "21 phases de développement livrées, de bout en bout, en autonomie.")
     add_bullet(doc, "0 base de données à administrer — le Google Sheet est la source de vérité.")
     add_bullet(doc, "0 hallucination tolérée : donnée non fiable = question posée en retour, jamais un chiffre inventé.")
