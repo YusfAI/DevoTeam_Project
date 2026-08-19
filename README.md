@@ -105,6 +105,21 @@ Installation (une seule fois, dans Git Bash sous Windows) :
 curl -LsSf https://getbruin.com/install/dac | sh   # installe bruin + dac dans ~/.local/bin
 ```
 
+⚠️ **L'installeur n'ajoute pas `~/.local/bin` au PATH système.** C'est indispensable :
+`dac` délègue l'exécution du SQL à `bruin`, qu'il cherche dans le PATH. Sans ça, DAC
+démarre normalement mais chaque widget affiche
+`bruin query failed: executable file not found in %PATH%`.
+
+`scripts/start_dev.bat` s'en charge automatiquement. Pour lancer `dac` à la main,
+ajoute le dossier au PATH de ton terminal :
+
+```bash
+export PATH="$PATH:$HOME/.local/bin"     # Git Bash
+```
+```powershell
+$env:PATH += ";$env:USERPROFILE\.local\bin"   # PowerShell
+```
+
 DAC interroge un fichier **DuckDB** (`dac/data/devoteam.db`) qui est une simple
 projection en lecture seule du DataFrame de l'application, réécrite à chaque
 rafraîchissement depuis le Google Sheet (`backend/duckdb_export.py`) — les données
@@ -125,6 +140,7 @@ python -m uvicorn backend.main:app --reload          # API sur http://127.0.0.1:
 
 ```bash
 cd dac && dac serve --dir . --port 8321    # dashboards DAC sur http://localhost:8321
+                                           # (PATH doit contenir ~/.local/bin — voir ci-dessus)
 ```
 
 ```bash
