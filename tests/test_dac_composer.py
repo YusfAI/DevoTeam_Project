@@ -54,9 +54,10 @@ def test_kpi_intent_without_dimension_selects_a_single_value():
 
 
 def test_funnel_orders_by_pipeline_stage_not_by_value():
-    # Un entonnoir trié par volume ne raconterait rien du parcours réel.
+    # Un entonnoir trié par volume ne raconterait rien du parcours réel : l'ordre
+    # vient du rang de l'étape dans le pipeline (voir sql_builder.funnel_sql).
     sql = build_sql(_intent(dimension="status", chart_type="funnel"))
-    assert "ORDER BY etape" in sql
+    assert "ORDER BY rang" in sql
     assert "'Offre perdue'" not in sql  # statut de sortie, jamais une étape
 
 
@@ -157,3 +158,118 @@ def test_very_long_question_is_truncated(tmp_path, monkeypatch):
     monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path)
     name = write_generated_dashboard("budget " * 60, _intent())
     assert len(name) <= 75
+
+
+# ---------------------------------------------------------------------------
+# Justesse des chiffres — vérifiée en exécutant le SQL sur des données de test,
+# pas seulement en inspectant la chaîne générée.
+# ---------------------------------------------------------------------------
+
+import duckdb
+
+from backend.dac_composer import _question_archetype, compose_widgets
+from backend.sql_builder import funnel_sql
+
+
+def _db_with(rows):
+    """Base DuckDB en mémoire contenant une table opportunities minimale."""
+    con = duckdb.connect(":memory:")
+    con.execute(
+        "CREATE TABLE opportunities (country VARCHAR, practice VARCHAR, status VARCHAR, "
+        "budget DOUBLE, win_probability DOUBLE, weighted_amount DOUBLE, "
+        "financial_offer DOUBLE, days_remaining INTEGER, deadline DATE, buyer VARCHAR)"
+    )
+    for r in rows:
+        con.execute(
+            "INSERT INTO opportunities VALUES (?, ?, ?, ?, NULL, NULL, NULL, 5, DATE '2026-12-31', 'ACME')",
+            [r.get("country", "France"), r.get("practice", "Risk Advisory"),
+             r.get("status", "Lead"), r.get("budget", 1000.0)],
+        )
+    return con
+
+
+def test_funnel_is_cumulative_so_it_actually_decreases():
+    # status est un état COURANT : compter les opportunités par statut ne décroît pas
+    # forcément. Ici l'étape finale contient plus de lignes que la précédente — un
+    # comptage brut dessinerait un "entonnoir" qui s'élargit.
+    con = _db_with(
+        [{"status": "Offre remise"}] * 7 + [{"status": "Offre gagnée"}] * 56
+    )
+    rows = con.execute(funnel_sql({"filters": {}, "range_filters": {}})).fetchall()
+    valeurs = [n for _, n in rows]
+    assert valeurs == sorted(valeurs, reverse=True), f"entonnoir non décroissant : {rows}"
+    con.close()
+
+
+def test_conversion_rate_never_exceeds_one_hundred_percent():
+    # Régression : diviser deux comptages d'états courants donnait 56/7 = 800 %.
+    # Le cumul « ayant atteint au moins cette étape » borne le taux à 100 %.
+    con = _db_with(
+        [{"status": "Offre remise"}] * 7 + [{"status": "Offre gagnée"}] * 56
+    )
+    rows = con.execute(funnel_sql({"filters": {}, "range_filters": {}}, conversion=True)).fetchall()
+    taux = [t for _, t in rows if t is not None]
+    assert taux, "aucun taux calculé"
+    assert all(t <= 1.0 for t in taux), f"taux au-delà de 100 % : {rows}"
+    con.close()
+
+
+def test_capped_chart_still_totals_the_full_amount():
+    # Régression : un LIMIT sec faisait disparaître les catégories en trop, et le
+    # total du KPI ne correspondait plus à la somme des barres (6,58 M€ d'écart).
+    rows = [{"country": f"Pays{i}", "budget": float(100 - i)} for i in range(20)]
+    con = _db_with(rows)
+    sql = build_sql(_intent(dimension="country", metric="budget", chart_type="bar"))
+    affiche = sum(v for _, v, *_ in con.execute(sql).fetchall())
+    total = con.execute("SELECT SUM(budget) FROM opportunities").fetchone()[0]
+    assert affiche == total, f"{total - affiche} perdu silencieusement"
+    con.close()
+
+
+def test_capped_chart_groups_the_tail_under_autres():
+    rows = [{"country": f"Pays{i}", "budget": float(100 - i)} for i in range(20)]
+    con = _db_with(rows)
+    labels = [r[0] for r in con.execute(build_sql(_intent(dimension="country"))).fetchall()]
+    assert "Autres" in labels
+    assert labels[-1] == "Autres", "« Autres » doit être en dernier, pas classé par valeur"
+    con.close()
+
+
+def test_user_requested_top_n_is_truncated_not_bucketed():
+    # « top 5 » veut dire cinq lignes : y ajouter « Autres » trahirait la demande.
+    rows = [{"country": f"Pays{i}", "budget": float(100 - i)} for i in range(20)]
+    con = _db_with(rows)
+    labels = [r[0] for r in con.execute(build_sql(_intent(dimension="country", limit=5))).fetchall()]
+    assert len(labels) == 5
+    assert "Autres" not in labels
+    con.close()
+
+
+# ---------------------------------------------------------------------------
+# Pertinence : la composition dépend du type de question
+# ---------------------------------------------------------------------------
+
+def test_temporal_question_gets_no_funnel():
+    # Un entonnoir de vente sous une courbe d'évolution ne répond à rien.
+    widgets = compose_widgets(_intent(dimension="deadline_month", chart_type="line"))
+    assert all(w.get("chart") != "funnel" for w in widgets)
+
+
+def test_pipeline_question_gets_conversion_rates():
+    widgets = compose_widgets(_intent(dimension="status", chart_type="funnel"))
+    assert any("Taux de passage" in w["name"] for w in widgets)
+
+
+def test_each_archetype_is_recognised():
+    assert _question_archetype(_intent(dimension="deadline_month", chart_type="line")) == "temporal"
+    assert _question_archetype(_intent(dimension="status", chart_type="funnel")) == "pipeline"
+    assert _question_archetype(_intent(chart_type="scatter")) == "correlation"
+    assert _question_archetype(_intent(chart_type="table", use_raw_table=True)) == "detail"
+    assert _question_archetype(_intent(dimension="country", chart_type="bar")) == "breakdown"
+
+
+def test_no_two_widgets_share_the_same_dimension():
+    # Deux graphiques sur le même axe disent la même chose deux fois.
+    widgets = compose_widgets(_intent(chart_type="table", use_raw_table=True, dimension=""))
+    axes = [w["x"]["field"] for w in widgets if w.get("x")]
+    assert len(axes) == len(set(axes)), f"dimension dupliquée : {axes}"

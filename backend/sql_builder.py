@@ -31,6 +31,68 @@ RAW_COLUMNS = [
 
 VALID_OPS = {"<", ">", "<=", ">=", "=", "between"}
 
+# Au-delà, un graphique catégoriel devient illisible. La traîne est regroupée dans
+# « Autres » (voir build_sql) et non supprimée, pour que le total reste vérifiable.
+MAX_CATEGORIES = 12
+
+
+def funnel_sql(intent: dict, cumulative: bool = True, conversion: bool = False) -> str:
+    """SQL de l'entonnoir de vente, reconstruit depuis un INSTANTANÉ de statuts.
+
+    Point clé : `status` est l'état COURANT d'une opportunité, pas son historique —
+    chaque opportunité n'apparaît que dans un seul statut. Compter les opportunités
+    par statut ne produit donc pas un entonnoir : rien ne garantit que les volumes
+    décroissent, et diviser deux comptages voisins donnait des « taux de conversion »
+    supérieurs à 100 % (jusqu'à 800 % mesurés), c'est-à-dire dénués de sens.
+
+    La reconstruction correcte s'appuie sur une propriété du pipeline : une
+    opportunité arrivée à « Offre gagnée » a nécessairement franchi toutes les étapes
+    précédentes. On cumule donc depuis la fin — « nombre ayant ATTEINT au moins cette
+    étape » — ce qui décroît par construction et redonne un vrai entonnoir. Le taux
+    de passage devient alors le rapport de deux cumuls consécutifs, borné à 100 %.
+
+    Les statuts de SORTIE (perdu, NO GO, infructueux…) restent exclus : ce sont des
+    sorties du pipeline, pas des étapes que chaque opportunité traverse.
+    """
+    where = _where_clause(intent)
+    cases = "\n".join(
+        f"    WHEN {_literal('status', stage)} THEN {i + 1}"
+        for i, stage in enumerate(FUNNEL_STAGE_ORDER)
+    )
+    stages = ", ".join(_literal("status", s) for s in FUNNEL_STAGE_ORDER)
+
+    base = (
+        f"WITH etapes AS (\n"
+        f"  SELECT status, COUNT(*) AS nb,\n"
+        f"    CASE status\n{cases}\n    END AS rang\n"
+        f"  FROM {TABLE}\n"
+        f"  WHERE ({where}) AND status IN ({stages})\n"
+        f"  GROUP BY status\n"
+        f"),\n"
+        f"cumul AS (\n"
+        f"  SELECT status, rang,\n"
+        f"    SUM(nb) OVER (ORDER BY rang DESC ROWS UNBOUNDED PRECEDING) AS atteint\n"
+        f"  FROM etapes\n"
+        f")\n"
+    )
+
+    if conversion:
+        return base + (
+            "SELECT status,\n"
+            "  atteint * 1.0 / NULLIF(LAG(atteint) OVER (ORDER BY rang), 0) AS taux\n"
+            "FROM cumul\nORDER BY rang"
+        )
+    if not cumulative:
+        return base + "SELECT status, atteint FROM cumul ORDER BY rang"
+    return base + "SELECT status, atteint AS nb_opportunities FROM cumul ORDER BY rang"
+
+
+def _agg_kind(metric: str) -> str:
+    """« sum » si les valeurs de la métrique s'additionnent (budget, comptage),
+    « mean » sinon (probabilité de gain). Détermine si la traîne d'un graphique peut
+    être regroupée : additionner des sommes a du sens, moyenner des moyennes non."""
+    return "mean" if metric == "win_probability" else "sum"
+
 # Colonnes numériques : leurs valeurs de filtre ne doivent pas être quotées comme
 # du texte (WHERE deadline_year = 2026, pas = '2026').
 _NUMERIC_COLUMNS = {"budget", "financial_offer", "weighted_amount", "win_probability",
@@ -101,22 +163,7 @@ def build_sql(intent: dict) -> str:
     expr = _metric_expr(metric)
 
     if chart_type == "funnel":
-        # Ordre du pipeline commercial, jamais l'ordre des valeurs : un entonnoir
-        # trié par volume ne raconterait rien du parcours réel. Les statuts de
-        # sortie (perdu, NO GO…) sont exclus — ce sont des sorties, pas des étapes.
-        cases = "\n".join(
-            f"    WHEN {_literal('status', stage)} THEN {i + 1}"
-            for i, stage in enumerate(FUNNEL_STAGE_ORDER)
-        )
-        stages = ", ".join(_literal("status", s) for s in FUNNEL_STAGE_ORDER)
-        return (
-            f"SELECT status, {expr} AS {metric},\n"
-            f"  CASE status\n{cases}\n  END AS etape\n"
-            f"FROM {TABLE}\n"
-            f"WHERE ({where}) AND status IN ({stages})\n"
-            f"GROUP BY status\n"
-            f"ORDER BY etape"
-        )
+        return funnel_sql(intent, cumulative=True)
 
     if chart_type == "heatmap" and dimension:
         secondary = "country" if dimension == "practice" else "practice"
@@ -152,10 +199,37 @@ def build_sql(intent: dict) -> str:
         f"GROUP BY {dimension}\n"
         f"ORDER BY {order}"
     )
+
+    # Un "top N" demandé par l'utilisateur DOIT tronquer : il a explicitement demandé
+    # les N premiers, regrouper le reste trahirait sa question.
     if limit > 0:
-        sql += f"\nLIMIT {limit}"
-    elif dimension != "deadline_month":
-        # Plafond de lisibilité : au-delà, un graphique catégoriel devient illisible
-        # (même principe que MAX_BAR_CATEGORIES côté Vega).
-        sql += "\nLIMIT 12"
-    return sql
+        return f"{sql}\nLIMIT {limit}"
+
+    # Une dimension temporelle n'est jamais plafonnée : l'axe est chronologique, en
+    # couper la fin amputerait la tendance au lieu de l'alléger.
+    if dimension == "deadline_month":
+        return sql
+
+    # Plafond de lisibilité. Le reste est REGROUPÉ dans « Autres » plutôt que jeté :
+    # un simple LIMIT ferait disparaître des lignes sans le dire, et le total affiché
+    # en KPI ne correspondrait plus à la somme des barres (constaté : 6,58 M€ d'écart
+    # sur « budget par pays », 9 pays sur 21 absents du graphique).
+    if _agg_kind(metric) != "sum":
+        # Une moyenne de moyennes n'a pas de sens statistique : sur ce type de métrique
+        # (probabilité de gain), on tronque honnêtement au lieu d'inventer un agrégat.
+        return f"{sql}\nLIMIT {MAX_CATEGORIES}"
+
+    head = MAX_CATEGORIES - 1
+    return (
+        f"WITH agg AS (\n"
+        f"  SELECT {dimension} AS dim, {expr} AS val\n"
+        f"  FROM {TABLE}\n  WHERE {where}\n  GROUP BY {dimension}\n"
+        f"),\n"
+        f"ranked AS (SELECT dim, val, ROW_NUMBER() OVER (ORDER BY val DESC) AS rn FROM agg)\n"
+        f"SELECT dim AS {dimension}, val AS {metric}, 0 AS is_autres FROM ranked WHERE rn <= {head}\n"
+        f"UNION ALL\n"
+        f"SELECT 'Autres', SUM(val), 1 FROM ranked WHERE rn > {head} HAVING COUNT(*) > 0\n"
+        # « Autres » épinglé en dernier plutôt que classé par valeur : ce n'est pas une
+        # catégorie réelle, la voir se ranger 5e induirait en erreur.
+        f"ORDER BY is_autres, {metric} DESC"
+    )
