@@ -3,30 +3,36 @@
 Dashboard commercial conversationnel : l'utilisateur pose une question en langage
 naturel dans un chat (ex. *"montre-moi le budget par pays pour Risk Advisory"*), un
 LLM (Google Gemini) extrait une intention structurée et validée, celle-ci est
-traduite en requête (pandas) sur les données chargées depuis Google Sheets, et le
-résultat est affiché sous forme de graphique (Vega-Lite), de carte KPI ou de
-tableau. Une alerte quotidienne (email + bannière) prévient aussi des opportunités
-dont l'échéance approche.
+traduite en requête sur les données chargées depuis Google Sheets, et la réponse
+s'affiche sous forme d'un **dashboard complet** (plusieurs graphiques, KPI et
+tableaux partageant les filtres de la question), rendu par Bruin DAC. Une alerte
+quotidienne (email + bannière) prévient aussi des opportunités dont l'échéance
+approche.
 
 Stack : **FastAPI** (backend) + **Google Sheets + pandas** (source de données,
 chargée en mémoire) + **Google Gemini** (LLM, `gemini-flash-lite-latest`) +
-**Vite/React** (frontend) + **APScheduler** (tâches planifiées). Hébergement local
-uniquement, sans base de données à installer.
+**Bruin DAC + DuckDB** (dashboards « as code ») + **Vite/React** (frontend) +
+**APScheduler** (tâches planifiées). Hébergement local uniquement, sans base de
+données à installer.
 
 ## Fonctionnalités
 
 - Chat en français libre, avec contexte multi-tour, dates relatives et requêtes de
   comparaison ("compare la France et le Maroc") ; l'historique de conversation persiste
   entre les rechargements de page (localStorage).
-- 8 types de rendu au choix : barres, courbes, aires, camemberts, cartes KPI,
-  tableaux, entonnoir de vente et carte de chaleur — voir `PROGRESS.md` pour le détail.
+- **Un dashboard par question** : chaque question génère 5 à 7 widgets (totaux du
+  périmètre, graphique principal, angle complémentaire, pipeline, détail), tous
+  filtrés à l'identique — voir `Documentation/WORKFLOW.md` pour le traçage complet.
+- **Vue d'ensemble versionnée** : la page d'accueil est un dashboard YAML relu en
+  revue (`dac/dashboards/accueil.yml`), avec filtre interactif.
+- 9 types de rendu : barres, courbes, aires, camemberts, cartes KPI, tableaux,
+  entonnoir de vente, nuage de points et carte de chaleur.
 - Alertes deadlines : email quotidien (Gmail SMTP) + bannière dans le dashboard pour
-  les opportunités actives (statuts clos exclus) à échéance ≤ 7 jours ; `days_remaining`
-  recalculée chaque nuit depuis la deadline réelle. Rattrapée automatiquement au
-  redémarrage si le serveur était éteint pile à l'heure planifiée.
-- Thème clair/sombre, palette de couleurs validée pour l'accessibilité (daltonisme).
+  les opportunités actives (statuts clos exclus) à échéance ≤ 7 jours. Rattrapée
+  automatiquement au redémarrage si le serveur était éteint pile à l'heure planifiée.
 - Anti-hallucination : toute métrique/dimension/valeur de filtre non reconnue déclenche
-  une demande de clarification plutôt qu'un résultat deviné.
+  une demande de clarification plutôt qu'un résultat deviné. **Le LLM n'écrit jamais
+  de SQL** — il ne produit qu'une intention validée, traduite ensuite par du code.
 - Google Sheets comme source de données unique : l'application lit directement le
   Sheet (via pandas), en mémoire, rafraîchi toutes les 15 minutes + au démarrage +
   sur demande (`POST /sheets/sync`). Le Sheet sert aussi de formulaire d'ajout/
@@ -160,18 +166,29 @@ dossier entier — jamais de fichier `.json` de credentials commité, quel que s
 ## Structure
 
 ```
-backend/              FastAPI, parsing LLM (Gemini), couche de requêtage pandas
-                       (db_layer.py), génération Vega-Lite, alertes deadlines
-                       (alerts.py), chargement des données Sheets (data_store.py)
-                       et projection DuckDB pour DAC (duckdb_export.py)
-dac/                   dashboards "as code" (YAML) + connexion Bruin (.bruin.yml)
+backend/
+  data_store.py          chargement Google Sheet -> DataFrame pandas (source de vérité)
+  db_layer.py            requêtage pandas (chat, message texte)
+  llm.py                 appel Gemini, validation Pydantic, anti-hallucination
+  intent_refiner.py      parseur rapide, dates relatives, garde-fous déterministes
+  sql_builder.py         intention validée -> SQL DuckDB (jamais écrit par le LLM)
+  dac_composer.py        composition du dashboard multi-widgets -> YAML
+  duckdb_export.py       projection du DataFrame vers DuckDB (pour DAC)
+  alerts.py              alertes deadlines (email + endpoint)
+  response_builder.py    messages texte déterministes
+  vega_generator.py      héritage Vega-Lite, plus utilisé par l'UI (voir PROGRESS.md)
+dac/
+  .bruin.yml             connexion DuckDB (aucun secret, versionnée volontairement)
+  dashboards/accueil.yml vue d'ensemble écrite à la main, versionnée
+  dashboards/_analyse.yml dashboard généré par question (gitignoré, éphémère)
+  data/devoteam.db       projection DuckDB (gitignorée, régénérée)
 frontend/              Vite + React (build servi par FastAPI en local)
 credentials/           clé de compte de service Google (gitignoré, absent par défaut)
 data/                  scheduler_state.json (état local, gitignoré) ; dump SQL
-                       historique (data/devoteam_dashboard_mysql.sql, plus utilisé)
-tests/                 suite pytest (mock Gemini/Sheets), 132 tests
+                       historique de l'ancienne base MySQL, conservé pour référence
+tests/                 suite pytest (mock Gemini/Sheets), 152 tests
 Documentation/
-  WORKFLOW.md            traçage concret d'une question, du prompt au graphique affiché
+  WORKFLOW.md            traçage concret d'une question, du prompt au dashboard affiché
   reports/              rapport professionnel + guide technique (.docx) et leur générateur
   planning/             brief initial et données sources du projet
 ```

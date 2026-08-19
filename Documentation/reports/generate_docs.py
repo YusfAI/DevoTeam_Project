@@ -286,17 +286,22 @@ def build_rapport_professionnel():
     add_body(doc,
         "DevoTeam Dashboard est une application de tableau de bord commercial "
         "conversationnel : un utilisateur pose une question en français dans un chat "
-        "(ex. « budget par pays pour Risk Advisory »), et l'application produit "
-        "instantanément le graphique, la carte KPI ou le tableau correspondant, à "
-        "partir des données réelles des opportunités commerciales stockées en base. "
-        "Aucune compétence SQL ou BI n'est requise côté utilisateur.")
+        "(ex. « budget par pays pour Risk Advisory »), et l'application construit "
+        "instantanément un tableau de bord complet qui y répond — plusieurs "
+        "graphiques, chiffres clés et tableaux, tous cohérents entre eux, à partir des "
+        "données réelles des opportunités commerciales. Aucune compétence SQL ou BI "
+        "n'est requise côté utilisateur.")
     add_body(doc,
         "Le projet est aujourd'hui fonctionnel de bout en bout, hébergé localement, "
-        "et couvre l'ensemble du cycle : compréhension du langage naturel, "
-        "génération de requêtes sécurisées, visualisation (huit types de graphiques au "
-        "choix), et un système d'alerte proactive par email et dans l'interface pour "
-        "les opportunités dont l'échéance approche, avec une donnée « jours restants » "
-        "recalculée chaque jour pour rester exacte.")
+        "et couvre l'ensemble du cycle : compréhension du langage naturel, génération "
+        "de requêtes sécurisées, composition automatique de tableaux de bord "
+        "versionnés, et un système d'alerte proactive par email et dans l'interface "
+        "pour les opportunités dont l'échéance approche.")
+    add_body(doc,
+        "Particularité assumée : les données vivent dans un simple Google Sheet, que "
+        "les équipes commerciales éditent elles-mêmes. L'application n'a aucune base "
+        "de données à installer, sauvegarder ou administrer — un choix qui réduit "
+        "fortement le coût d'exploitation pour un portefeuille de cette taille.")
 
     # --- Contexte et besoin métier ---
     add_h1(doc, "2. Contexte et besoin métier")
@@ -336,6 +341,11 @@ def build_rapport_professionnel():
         "chaque jour, le système identifie automatiquement les opportunités encore "
         "actives dont l'échéance tombe dans les 7 jours suivants, envoie un email "
         "récapitulatif, et affiche un bandeau d'alerte directement dans le dashboard.")
+    add_body(doc,
+        "Enfin, plutôt que de livrer un graphique isolé par question, l'application "
+        "compose un tableau de bord entier : le chiffre demandé, le même chiffre sous "
+        "un autre angle, l'état du pipeline et le détail vérifiable — de quoi non "
+        "seulement répondre à la question posée, mais aussi susciter la suivante.")
 
     # --- Fonctionnalités ---
     add_h1(doc, "4. Fonctionnalités")
@@ -351,24 +361,44 @@ def build_rapport_professionnel():
     add_bullet(doc, "L'historique de conversation reste disponible après un rechargement de page — "
                      "une analyse en cours n'est plus perdue par un rafraîchissement accidentel.")
 
-    add_h2(doc, "4.2 Visualisation")
-    add_bullet(doc, "Huit types de rendu au choix, décidés automatiquement selon la question : "
-                     "barres, courbes, camemberts, cartes KPI, tableaux détaillés, entonnoir de "
-                     "vente, nuage de points et carte de chaleur (Vega-Lite).")
-    add_bullet(doc, "Entonnoir de vente : nombre ou budget par étape du pipeline commercial, dans "
-                     "l'ordre réel du cycle de vente — visualise directement où les deals se perdent.")
-    add_bullet(doc, "Nuage de points : budget vs probabilité de gain, taille des points = montant "
-                     "pondéré — révèle si les gros budgets ont statistiquement plus de chances de "
-                     "gagner.")
-    add_bullet(doc, "Carte de chaleur : intensité croisée entre une dimension (pays, statut…) et "
-                     "practice, pour repérer d'un coup d'œil les combinaisons les plus fortes.")
-    add_bullet(doc, "Bascule automatique camembert → barres horizontales au-delà de 6 segments, "
-                     "pour rester lisible.")
-    add_bullet(doc, "Thème clair / sombre, palette de couleurs validée pour l'accessibilité "
-                     "(daltonisme).")
-    add_bullet(doc, "Mise en cache des graphiques déjà générés pour un ré-affichage instantané.")
+    add_h2(doc, "4.2 Un dashboard complet par question")
+    add_body(doc,
+        "Une question ne produit pas un graphique isolé mais un tableau de bord "
+        "entier : cinq à sept visualisations qui répondent ensemble, et qui partagent "
+        "toutes les mêmes filtres — l'utilisateur regarde donc un périmètre cohérent, "
+        "jamais des chiffres qui ne se comparent pas entre eux.")
+    add_bullet(doc, "Les totaux du périmètre interrogé (budget, nombre d'opportunités, "
+                     "montant pondéré) en cartes chiffrées.")
+    add_bullet(doc, "Le graphique qui répond directement à la question posée.")
+    add_bullet(doc, "Le même chiffre vu sous un autre angle (une dimension complémentaire, "
+                     "choisie pour ne jamais dupliquer un axe déjà filtré).")
+    add_bullet(doc, "L'état du pipeline commercial sur ce périmètre.")
+    add_bullet(doc, "Le détail ligne par ligne, pour vérifier les chiffres.")
+    add_body(doc,
+        "La page d'accueil, elle, est un tableau de bord fixe répondant aux cinq "
+        "questions les plus fréquentes, avec un filtre interactif par practice qui "
+        "recalcule instantanément l'ensemble des visualisations.")
+    add_bullet(doc, "Neuf types de rendu disponibles : barres, courbes, aires, camemberts, "
+                     "cartes chiffrées, tableaux, entonnoir de vente, nuage de points et "
+                     "carte de chaleur.")
+    add_bullet(doc, "Entonnoir de vente : opportunités par étape du pipeline, dans l'ordre réel "
+                     "du cycle de vente — visualise directement où les deals se perdent.")
+    add_bullet(doc, "Nuage de points : budget vs probabilité de gain — révèle si les gros "
+                     "budgets ont statistiquement plus de chances d'être gagnés.")
 
-    add_h2(doc, "4.3 Alertes deadlines (nouvelle fonctionnalité)")
+    add_h2(doc, "4.3 Tableaux de bord « as code »")
+    add_body(doc,
+        "Les tableaux de bord ne sont pas configurés dans une interface graphique mais "
+        "décrits dans des fichiers texte versionnés (Bruin DAC). Conséquence concrète : "
+        "toute évolution d'un tableau de bord passe en revue comme du code, se compare "
+        "d'une version à l'autre, et se reproduit à l'identique sur n'importe quel poste.")
+    add_bullet(doc, "Les tableaux de bord générés par le chat le sont dans le même format que "
+                     "ceux écrits à la main — un tableau de bord produit par l'IA peut donc être "
+                     "relu, corrigé et conservé comme n'importe quel autre.")
+    add_bullet(doc, "Deux commandes de contrôle : l'une vérifie la structure, l'autre exécute "
+                     "réellement chaque requête pour confirmer qu'aucun widget n'est cassé.")
+
+    add_h2(doc, "4.4 Alertes deadlines")
     add_bullet(doc, "Email quotidien automatique récapitulant les opportunités actives à "
                      "échéance ≤ 7 jours, envoyé chaque matin à 8h.")
     add_bullet(doc, "Rappel répété chaque jour tant que l'échéance n'est pas passée — "
@@ -379,22 +409,25 @@ def build_rapport_professionnel():
                      "signées, infructueuses…) pour ne pas polluer l'alerte — la même règle "
                      "s'applique désormais à la question « opportunités urgentes » posée "
                      "directement dans le chat, pour une définition cohérente sur tous les canaux.")
-    add_bullet(doc, "Donnée « jours restants » recalculée chaque nuit à partir de la date "
-                     "réelle du jour, pour ne jamais afficher un chiffre obsolète.")
+    add_bullet(doc, "Donnée « jours restants » recalculée à chaque chargement des données à "
+                     "partir de la date réelle du jour, pour ne jamais afficher un chiffre obsolète.")
 
-    add_h2(doc, "4.4 Synchronisation Google Sheets (nouvelle fonctionnalité)")
-    add_bullet(doc, "Un Google Sheet sert de formulaire d'ajout et de modification d'opportunités — "
-                     "plus simple à éditer au quotidien qu'une base de données directement.")
-    add_bullet(doc, "Synchronisation à sens unique (Sheet vers base) toutes les 15 minutes, au "
-                     "démarrage du serveur, et à la demande — la base reste la seule source lue par "
-                     "le chat, les graphiques et les alertes, jamais le Sheet directement.")
+    add_h2(doc, "4.5 Le Google Sheet comme source de données")
+    add_bullet(doc, "Les équipes gèrent les opportunités dans un Google Sheet — un outil qu'elles "
+                     "maîtrisent déjà — plutôt que dans une base de données : ajouter ou corriger "
+                     "une opportunité ne demande aucune compétence technique.")
+    add_bullet(doc, "L'application lit le Sheet directement et le recharge toutes les 15 minutes, "
+                     "au démarrage, et à la demande via un bouton dans l'interface. Aucune base de "
+                     "données à installer, à sauvegarder ou à administrer.")
     add_bullet(doc, "Chaque ligne est validée indépendamment (dates, montants, statuts) ; une ligne "
-                     "invalide est journalisée et sautée, sans jamais bloquer l'import des autres.")
-    add_bullet(doc, "Volontairement sans suppression automatique : retirer une ligne du Sheet ne "
-                     "supprime jamais l'opportunité correspondante en base — un choix de prudence "
-                     "assumé sur une tâche qui tourne sans surveillance humaine.")
+                     "invalide est journalisée et ignorée, sans jamais bloquer le chargement des "
+                     "autres — c'est ce contrôle qui a révélé douze opportunités au statut erroné, "
+                     "passées inaperçues jusque-là.")
+    add_bullet(doc, "Les colonnes calculées (mois et année d'échéance, jours restants, montant "
+                     "pondéré) sont toujours recalculées à la lecture puis réécrites dans le Sheet : "
+                     "elles ne peuvent donc jamais diverger des données saisies.")
 
-    add_h2(doc, "4.5 Branding et expérience utilisateur")
+    add_h2(doc, "4.6 Branding et expérience utilisateur")
     add_bullet(doc, "Interface habillée aux couleurs et au logo Devoteam.")
     add_bullet(doc, "Micro-interactions et animations (fond animé, transitions, mise en avant "
                      "des nouveaux résultats).")
@@ -404,12 +437,12 @@ def build_rapport_professionnel():
     # --- Conception et architecture ---
     add_h1(doc, "5. Conception et architecture")
     add_body(doc,
-        "L'architecture suit un principe simple : le LLM ne produit jamais "
-        "directement un graphique ou du SQL. Il transforme la question de "
-        "l'utilisateur en une structure intermédiaire strictement validée (métrique, "
-        "dimension, filtres, type de graphique…), qui est ensuite traduite en requête "
-        "SQL sécurisée par du code déterministe. Cette séparation garantit que les "
-        "résultats affichés proviennent toujours des données réelles.")
+        "L'architecture suit un principe simple, et non négociable : le LLM ne produit "
+        "jamais directement un graphique, une requête ou un chiffre. Il transforme la "
+        "question de l'utilisateur en une structure intermédiaire strictement validée "
+        "(métrique, dimension, filtres, type de graphique…), et c'est ensuite du code "
+        "déterministe qui la traduit en requêtes et en tableau de bord. Cette séparation "
+        "garantit que tout ce qui s'affiche provient des données réelles.")
     add_table(doc,
         ["Étape", "Rôle"],
         [
@@ -418,18 +451,23 @@ def build_rapport_professionnel():
              "simples) extrait une intention structurée et validée."],
             ["3. Résolution des filtres", "Chaque valeur de filtre (pays, statut…) est vérifiée contre "
              "les données réelles ; en cas de doute, une clarification est demandée."],
-            ["4. Requête SQL sécurisée", "L'intention est traduite en requête paramétrée sur une liste "
-             "blanche de tables/colonnes autorisées."],
-            ["5. Génération du résultat", "Graphique Vega-Lite, carte KPI ou tableau, plus un message "
-             "texte calculé directement depuis les données (jamais rédigé par le LLM)."],
-            ["6. Affichage", "Le frontend React affiche le résultat, avec mise en cache pour les "
-             "requêtes déjà vues."],
+            ["4. Composition du tableau de bord", "Des règles déterministes choisissent les cinq à sept "
+             "visualisations qui répondent ensemble à la question, toutes filtrées à l'identique."],
+            ["5. Génération des requêtes", "Chaque visualisation reçoit sa requête, produite par du code "
+             "à partir de l'intention validée — jamais écrite par le LLM."],
+            ["6. Affichage", "Le tableau de bord est décrit dans un fichier versionné, puis rendu à "
+             "l'écran ; un message texte l'accompagne, calculé directement depuis les données."],
         ])
     add_body(doc,
         "L'alerte deadlines suit le même principe de fiabilité : la vérification des "
-        "échéances se fait par un calcul de date direct en base (jamais une valeur "
-        "mise en cache trop longtemps), sur un calendrier automatique indépendant de "
-        "toute action utilisateur.")
+        "échéances repose sur un nombre de jours restants recalculé à chaque chargement "
+        "des données depuis la date réelle du jour, sur un calendrier automatique "
+        "indépendant de toute action utilisateur.")
+    add_body(doc,
+        "Une seule source de vérité alimente l'ensemble : les données du Google Sheet, "
+        "chargées en mémoire. Le moteur de tableaux de bord interroge une copie de "
+        "cette même source, régénérée à chaque rafraîchissement — les chiffres du chat "
+        "et ceux des tableaux de bord ne peuvent donc pas diverger.", italic=False)
 
     # --- Stack technique ---
     add_h1(doc, "6. Stack technique")
@@ -438,41 +476,41 @@ def build_rapport_professionnel():
         [
             ["Backend / API", "FastAPI (Python)", "Framework léger, typé, avec validation de données native "
              "(Pydantic) — cohérent avec l'exigence anti-hallucination."],
-            ["Base de données", "MySQL / MariaDB (XAMPP)", "Vues pré-agrégées par dimension, requêtes "
-             "paramétrées, adapté au volume et à l'hébergement local."],
+            ["Source de données", "Google Sheets + pandas", "Les équipes gèrent les opportunités dans un "
+             "tableur familier ; l'application le charge en mémoire. Aucune base à installer ni administrer."],
             ["Compréhension du langage", "Google Gemini — gemini-flash-lite-latest", "Sortie JSON "
              "structurée, faible latence, complétée par une validation stricte côté serveur."],
-            ["Visualisation", "Vega-Lite / vega-embed", "Grammaire de graphiques déclarative en JSON, génération "
-             "automatique fiable, rendu navigateur natif."],
-            ["Frontend", "Vite + React", "Interface réactive, thème clair/sombre, build optimisé pour "
-             "un déploiement local en un seul processus."],
+            ["Tableaux de bord", "Bruin DAC", "Tableaux de bord décrits en fichiers versionnés plutôt que "
+             "configurés à la souris : relus en revue, reproductibles, 21 types de graphiques."],
+            ["Moteur de requête", "DuckDB (fichier local)", "Copie en lecture seule des données, régénérée "
+             "à chaque rafraîchissement — le moteur de tableaux de bord n'interroge que du SQL."],
+            ["Frontend", "Vite + React", "Interface de chat réactive, build optimisé pour un déploiement "
+             "local."],
             ["Planification des tâches", "APScheduler", "Exécution fiable des vérifications quotidiennes "
-             "(alertes deadlines, mise à jour des données) sans dépendance externe."],
+             "(alertes deadlines, rafraîchissement des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Synchro Google Sheets", "Google Sheets API (gspread)", "Permet aux équipes commerciales de "
-             "gérer les opportunités depuis un tableur familier, plutôt qu'en éditant la base directement."],
-            ["Tests", "pytest (143 tests)", "Suite automatisée sans dépendance réseau/DB réelle (mocks), "
-             "garde-fou contre les régressions."],
+            ["Tests", "pytest (152 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
+             "(mocks), garde-fou contre les régressions."],
         ])
     add_body(doc,
-        "Côté données, la base MySQL repose sur une table principale `opportunities` "
-        "(360 opportunités commerciales, 18 colonnes : pays, practice, statut, "
-        "budget, échéance…) et six vues pré-agrégées par dimension (pays, practice, "
-        "statut, mois, source de financement, croisement pays/practice), qui "
-        "accélèrent les questions les plus fréquentes du chat sans dupliquer les "
-        "données.")
+        "Côté données, l'ensemble tient dans une seule feuille de calcul : environ 350 "
+        "opportunités commerciales décrites par 18 colonnes (pays, practice, statut, "
+        "budget, échéance…). Ce volume tient sans difficulté en mémoire, ce qui rend "
+        "toute base de données inutile — un choix qui simplifie radicalement "
+        "l'installation et la maintenance, et qui reste valable tant que le portefeuille "
+        "ne change pas d'ordre de grandeur.")
 
     # --- Sécurité et fiabilité ---
     add_h1(doc, "7. Sécurité et fiabilité")
     add_bullet(doc, "Aucune clé API ni identifiant n'est versionné dans le code source "
                      "(fichier .env exclu du dépôt git).")
-    add_bullet(doc, "Le LLM ne peut interroger que les tables et colonnes d'une liste blanche "
-                     "explicite — aucune requête SQL libre.")
+    add_bullet(doc, "Le LLM ne peut désigner que les colonnes et valeurs d'une liste blanche "
+                     "explicite — il n'écrit jamais lui-même de requête.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "143 tests automatisés couvrent la compréhension du langage, la couche SQL, "
-                     "la génération des graphiques, le système d'alerte et la synchronisation Sheets.")
+    add_bullet(doc, "152 tests automatisés couvrent la compréhension du langage, le requêtage des "
+                     "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
     add_bullet(doc, "La clé de compte de service Google (accès au Sheet) est un fichier JSON exclu "
@@ -492,14 +530,18 @@ def build_rapport_professionnel():
     # --- État d'avancement et roadmap ---
     add_h1(doc, "9. État d'avancement et roadmap")
     add_body(doc, "L'application est complète et fonctionnelle de bout en bout, en hébergement local. "
-                   "Dix-sept phases de développement ont été livrées, de la mise en place du backend "
-                   "jusqu'à la synchronisation Google Sheets et l'optimisation de ses performances "
-                   "(dernières phases en date).", bold=False)
+                   "Vingt-et-une phases de développement ont été livrées, de la mise en place du "
+                   "backend jusqu'à la génération automatique de tableaux de bord complets à partir "
+                   "d'une question — en passant par la suppression de la base de données au profit "
+                   "d'une lecture directe du Google Sheet.", bold=False)
     add_h2(doc, "Améliorations envisagées (hors périmètre actuel)")
     add_bullet(doc, "Authentification et gestion multi-utilisateurs (restriction par practice/BU).")
+    add_bullet(doc, "Épinglage des tableaux de bord générés : permettre à l'utilisateur de conserver "
+                     "et renommer un tableau de bord produit par l'IA, pour en faire un véritable "
+                     "atelier de création.")
+    add_bullet(doc, "Couche sémantique : définir les métriques une seule fois et les réutiliser dans "
+                     "tous les tableaux de bord, plutôt que de générer chaque requête isolément.")
     add_bullet(doc, "Suivi analytique des sessions utilisateur.")
-    add_bullet(doc, "Barres empilées/groupées (2 dimensions croisées, ex: budget par pays décomposé "
-                     "par statut) — nécessite une évolution du schéma d'intention.")
 
     # --- Conclusion ---
     add_h1(doc, "10. Conclusion")
@@ -509,10 +551,16 @@ def build_rapport_professionnel():
         "fiable, à la fois simple d'usage pour les équipes commerciales et rigoureuse "
         "dans sa conception technique (validation stricte, tests automatisés, "
         "traçabilité des résultats). Les alertes deadlines par email et dans "
-        "l'interface répondent directement au risque métier identifié : ne plus "
-        "jamais manquer une échéance commerciale faute d'avoir consulté le dashboard "
-        "à temps ; les nouveaux types de graphiques donnent aux équipes davantage de "
-        "façons de présenter et d'expliquer ces données à un client.")
+        "l'interface répondent directement au risque métier identifié : ne plus jamais "
+        "manquer une échéance commerciale faute d'avoir consulté le dashboard à temps.")
+    add_body(doc,
+        "Trois partis pris résument le projet. Les données restent là où les équipes "
+        "les gèrent déjà — un Google Sheet — ce qui supprime toute base à administrer. "
+        "Les tableaux de bord sont du code versionné, donc relisibles et reproductibles "
+        "plutôt que configurés à la souris par une seule personne. Et l'intelligence "
+        "artificielle sert à comprendre la question, jamais à produire les chiffres : "
+        "cette frontière est ce qui rend l'outil utilisable pour de vraies décisions "
+        "commerciales.")
 
     out_path = os.path.join(DOC_DIR, "Rapport_Professionnel_DevoTeam_Dashboard.docx")
     doc.save(out_path)
@@ -533,14 +581,14 @@ def build_guide_technique():
         "Vue d'ensemble de l'architecture",
         "Stack technique et justifications",
         "Structure du dépôt",
-        "Base de données",
+        "Source de données (backend/data_store.py)",
         "Pipeline requête → réponse",
         "Compréhension du langage naturel (backend/llm.py, intent_refiner.py)",
-        "Couche SQL sécurisée (backend/db_layer.py, schema_and_whitelist.py)",
-        "Génération des graphiques (backend/vega_generator.py)",
+        "Couche de requêtage pandas (backend/db_layer.py, schema_and_whitelist.py)",
+        "Tableaux de bord as code (backend/dac_composer.py, sql_builder.py)",
         "Réponses textuelles déterministes (backend/response_builder.py)",
-        "Alertes deadlines (backend/alerts.py, maintenance.py, scheduler)",
-        "Synchronisation Google Sheets (backend/sheets_sync.py)",
+        "Alertes deadlines (backend/alerts.py, scheduler)",
+        "Le pont DuckDB (backend/duckdb_export.py)",
         "Frontend (Vite + React)",
         "Sécurité",
         "Tests automatisés",
@@ -553,42 +601,66 @@ def build_guide_technique():
     add_body(doc,
         "L'application suit un pipeline linéaire, chaque étape gérée par un module "
         "backend dédié. Le principe directeur : le LLM ne produit jamais directement "
-        "un graphique ni du SQL — il produit uniquement un JSON intermédiaire "
-        "strictement validé, que du code déterministe transforme ensuite en requête "
-        "puis en visualisation.")
+        "un graphique, une requête ni un chiffre — il produit uniquement un JSON "
+        "intermédiaire strictement validé, que du code déterministe transforme ensuite "
+        "en requêtes puis en tableau de bord.")
     add_code_block(doc,
+        "Google Sheet (source de vérité)\n"
+        "   │  toutes les 15 min (+ démarrage + à la demande)\n"
+        "   ▼\n"
+        "backend/data_store.py  →  DataFrame pandas (en mémoire)\n"
+        "   │                              │\n"
+        "   │ duckdb_export.py             └─→ chat & alertes\n"
+        "   ▼ (projection lecture seule)\n"
+        "dac/data/devoteam.db  ←──────────── interrogé par Bruin DAC\n"
+        "\n"
         "Utilisateur (chat React)\n"
         "   │  POST /dashboard { query, previous_intent }\n"
         "   ▼\n"
         "backend/llm.py :: parse_user_query()\n"
         "   │  parseur rapide (mots-clés) OU appel Gemini + validation Pydantic\n"
         "   │  résolution des filtres (fuzzy match) contre les données réelles\n"
-        "   ▼  intent = {metric, dimension, filters, chart_type, aggregation, ...}\n"
-        "backend/db_layer.py :: build_and_execute_query(intent)\n"
-        "   │  requête SQL paramétrée sur une liste blanche de tables/colonnes\n"
-        "   ▼  data = [ {...}, {...} ]\n"
-        "backend/vega_generator.py + response_builder.py\n"
-        "   │  spec Vega-Lite (ou carte KPI / table) + message texte calculé\n"
-        "   ▼\n"
-        "Frontend React :: DashboardPanel + vega-embed\n"
-        "   affichage du graphique / KPI / tableau")
+        "   ▼  intent = {metric, dimension, filters, chart_type, ...}\n"
+        "backend/db_layer.py (pandas)  →  response_builder.py  →  message texte\n"
+        "   │\n"
+        "backend/dac_composer.py\n"
+        "   │  compose 5-7 widgets par règles déterministes\n"
+        "   │  sql_builder.py génère le SQL de chacun\n"
+        "   ▼  écrit dac/dashboards/_analyse.yml\n"
+        "Frontend React :: iframe → Bruin DAC (port 8321)\n"
+        "   exécute le SQL sur DuckDB et affiche le tableau de bord")
     add_body(doc,
-        "En parallèle, un scheduler (APScheduler) exécute deux tâches quotidiennes "
-        "indépendantes du chat : le recalcul de « jours restants » à minuit, et la "
-        "vérification des échéances proches à 8h (voir section 10).")
+        "En parallèle, un scheduler (APScheduler) exécute deux tâches indépendantes du "
+        "chat : le rafraîchissement des données depuis le Sheet toutes les 15 minutes, "
+        "et la vérification des échéances proches à 8h (voir section 10).")
+    add_body(doc,
+        "Trois processus tournent donc en local : l'API FastAPI (port 8000), le serveur "
+        "de tableaux de bord DAC (port 8321) et le frontend Vite (port 5173). "
+        "scripts/start_dev.bat les lance ensemble.")
 
     # --- Stack et justifications ---
     add_h1(doc, "2. Stack technique et justifications")
-    add_h2(doc, "2.1 Pourquoi MySQL plutôt que SQLite (prévu dans le brief initial)")
+    add_h2(doc, "2.1 De SQLite à MySQL, puis plus de base du tout")
     add_body(doc,
-        "Le document de cadrage initial du projet envisageait SQLite pour sa "
-        "simplicité. Le choix final s'est porté sur MySQL/MariaDB via XAMPP : accès "
-        "concurrent plus robuste pour un backend FastAPI multi-requêtes, support natif "
-        "des vues SQL pré-agrégées par dimension (utilisées pour accélérer les "
-        "requêtes fréquentes comme « budget par pays »), et un pool de connexions "
-        "(DBUtils PooledDB) adapté à ce moteur. Le schéma reste simple (une table "
-        "principale `opportunities` + des vues), donc le coût de complexité "
-        "supplémentaire par rapport à SQLite reste faible.")
+        "Le cadrage initial envisageait SQLite ; le projet est d'abord passé à "
+        "MySQL/MariaDB via XAMPP (accès concurrent, vues SQL pré-agrégées par "
+        "dimension, pool de connexions). Une fois le Google Sheet devenu l'outil de "
+        "saisie des équipes, cette base n'était plus qu'un intermédiaire : les données "
+        "y étaient recopiées depuis le Sheet toutes les 15 minutes, pour être relues "
+        "juste après. La base a donc été supprimée — le Sheet est désormais lu "
+        "directement et chargé dans un DataFrame pandas en mémoire.")
+    add_body(doc,
+        "Ce que ça a réellement simplifié, au-delà de la suppression de XAMPP des "
+        "prérequis : toute la machinerie de vues pré-agrégées a disparu avec elle. La "
+        "couche SQL devait choisir la bonne vue selon la dimension demandée, vérifier "
+        "que cette vue supportait bien les filtres et la métrique, puis retomber sur "
+        "un GROUP BY brut quand ce n'était pas le cas. pandas groupe uniformément, "
+        "quelle que soit la combinaison — trois mécanismes de repli en moins.")
+    add_body(doc,
+        "Le raisonnement tient à l'échelle des données : environ 350 lignes et 18 "
+        "colonnes tiennent en mémoire sans effort. Ce choix serait à revoir si le "
+        "portefeuille changeait d'ordre de grandeur (dizaines de milliers de lignes), "
+        "ou s'il fallait des écritures concurrentes depuis plusieurs postes.")
     add_h2(doc, "2.2 Groq → Google Gemini (migration forcée en cours de projet)")
     add_body(doc,
         "Le mandat initial imposait un modèle open source à faible latence : Groq "
@@ -615,14 +687,57 @@ def build_guide_technique():
         "modèle. Un quota épuisé (429) et une surcharge transitoire (503, avec deux "
         "tentatives automatiques avant abandon) reçoivent maintenant chacun un "
         "message distinct plutôt que la même erreur générique.")
-    add_h2(doc, "2.3 Pourquoi APScheduler plutôt qu'une tâche planifiée externe (cron/Task Scheduler)")
+    add_h2(doc, "2.3 Vega-Lite → Bruin DAC (tableaux de bord as code)")
     add_body(doc,
-        "L'application est un processus unique en local (`uvicorn`). APScheduler "
-        "tourne dans ce même processus (`BackgroundScheduler`), démarré/arrêté via le "
-        "cycle de vie FastAPI (`lifespan`) — aucune dépendance à un ordonnanceur "
-        "système externe, ce qui simplifie le déploiement local. Limite assumée : si "
-        "le processus est arrêté au moment précis d'une exécution planifiée, elle est "
-        "manquée (pas de rattrapage automatique en cours de journée).")
+        "Le rendu était assuré par Vega-Lite : le backend générait une spécification "
+        "JSON par question, affichée par un composant React. Ça fonctionnait pour un "
+        "graphique isolé, mais chaque type de graphique demandait sa propre logique de "
+        "construction — l'entonnoir de vente, par exemple, exigeait de précalculer une "
+        "géométrie symétrique en Python parce que Vega-Lite ne sait pas produire cette "
+        "forme nativement.")
+    add_body(doc,
+        "Bruin DAC renverse l'approche : un tableau de bord est un fichier YAML "
+        "versionné décrivant des widgets (grille 12 colonnes, 21 types de graphiques, "
+        "filtres interactifs), rendu par un binaire dédié. Trois bénéfices concrets : "
+        "les tableaux de bord passent en revue comme du code et se comparent d'une "
+        "version à l'autre ; l'entonnoir, la carte de chaleur et le nuage de points "
+        "sont natifs ; et surtout DAC est explicitement conçu pour que des agents IA "
+        "écrivent les tableaux de bord — ce qui correspond exactement à l'usage visé "
+        "ici, où le chat en génère un par question.")
+    add_body(doc,
+        "Contrepartie assumée : DAC sert sa propre interface web (port 8321), qu'on ne "
+        "peut pas rendre comme un composant React. L'application l'affiche donc en "
+        "iframe, ce qui signifie que la zone tableau de bord n'utilise pas le thème "
+        "Devoteam ni le mode sombre du reste de l'interface. C'est le prix payé pour "
+        "récupérer un moteur de rendu complet plutôt que de le réécrire.")
+
+    add_h2(doc, "2.4 Pourquoi un fichier DuckDB alors qu'il n'y a plus de base")
+    add_body(doc,
+        "DAC ne sait interroger que des connexions SQL. Comme les données vivent "
+        "désormais dans un DataFrame en mémoire, un pont était nécessaire : "
+        "`backend/duckdb_export.py` réécrit ce DataFrame dans un fichier DuckDB local "
+        "à chaque rafraîchissement. Ce n'est pas un retour à une base de données — "
+        "c'est une projection en lecture seule, régénérée, que rien d'autre ne lit. "
+        "pandas reste la source de vérité pour le chat et les alertes, ce qui garantit "
+        "que les deux moteurs affichent les mêmes chiffres.")
+    add_body(doc,
+        "Un piège de concurrence a dû être traité : DuckDB autorise plusieurs lecteurs "
+        "OU un seul écrivain, jamais les deux. Une lecture DAC pendant une écriture "
+        "échouerait donc. La connexion DAC est déclarée en lecture seule, et l'écriture "
+        "réessaie quelques fois à intervalle court — vérifié sous charge avec trois "
+        "rafraîchissements concurrents contre vingt-sept requêtes de widgets.")
+
+    add_h2(doc, "2.5 Pourquoi APScheduler plutôt qu'une tâche planifiée externe (cron/Task Scheduler)")
+    add_body(doc,
+        "Le backend est un processus unique en local (`uvicorn`). APScheduler tourne "
+        "dans ce même processus (`BackgroundScheduler`), démarré/arrêté via le cycle "
+        "de vie FastAPI (`lifespan`) — aucune dépendance à un ordonnanceur système "
+        "externe, ce qui simplifie le déploiement local. Les tâches de démarrage sont "
+        "enregistrées comme des jobs « une fois, immédiatement » plutôt qu'exécutées "
+        "avant le `yield` : le serveur accepte donc les requêtes dès que la boucle est "
+        "prête, sans attendre le premier chargement du Sheet. Limite assumée : si le "
+        "processus est arrêté au moment précis d'une exécution planifiée, elle est "
+        "manquée — d'où le mécanisme de rattrapage décrit en section 10.")
 
     # --- Structure du dépôt ---
     add_h1(doc, "3. Structure du dépôt")
@@ -630,103 +745,97 @@ def build_guide_technique():
         ["Chemin", "Contenu"],
         [
             ["backend/main.py", "Application FastAPI, endpoints, câblage du scheduler."],
+            ["backend/data_store.py", "Chargement du Google Sheet vers un DataFrame pandas (source de vérité)."],
             ["backend/llm.py", "Appel LLM, validation Pydantic, résolution des filtres, anti-hallucination."],
             ["backend/intent_refiner.py", "Parseur rapide par mots-clés, dates relatives, affinage de l'intention."],
-            ["backend/db_layer.py", "Construction et exécution des requêtes SQL paramétrées."],
-            ["backend/schema_and_whitelist.py", "Source unique de vérité : tables/colonnes autorisées, valeurs connues."],
-            ["backend/vega_generator.py", "Génération des spécifications Vega-Lite."],
+            ["backend/db_layer.py", "Requêtage pandas du DataFrame (données du message texte)."],
+            ["backend/schema_and_whitelist.py", "Source unique de vérité : métriques/dimensions/filtres autorisés."],
+            ["backend/sql_builder.py", "Intention validée -> SQL DuckDB. Jamais écrit par le LLM."],
+            ["backend/dac_composer.py", "Composition du tableau de bord multi-widgets, écriture du YAML."],
+            ["backend/duckdb_export.py", "Projection du DataFrame vers le fichier DuckDB interrogé par DAC."],
             ["backend/response_builder.py", "Messages texte déterministes (jamais générés par le LLM)."],
-            ["backend/alerts.py", "Requête des opportunités à échéance proche, envoi de l'email d'alerte."],
-            ["backend/maintenance.py", "Recalcul quotidien de days_remaining."],
-            ["backend/sheets_sync.py", "Synchronisation Google Sheets -> MySQL (table opportunities uniquement)."],
-            ["backend/db.py", "Pool de connexions MySQL (DBUtils PooledDB), paresseux."],
-            ["frontend/src/", "Application Vite + React (composants, hooks, styles)."],
-            ["tests/", "Suite pytest — 143 tests, aucune dépendance réseau/DB réelle."],
-            ["data/devoteam_dashboard_mysql.sql", "Dump SQL de référence (schéma + données)."],
-            ["Documentation/reports/", "Ce rapport, le guide technique et leur générateur (generate_docs.py)."],
+            ["backend/alerts.py", "Opportunités à échéance proche, envoi de l'email d'alerte."],
+            ["backend/vega_generator.py", "Héritage Vega-Lite — plus utilisé par l'interface (voir section 16)."],
+            ["dac/.bruin.yml", "Connexion DuckDB de DAC (aucun identifiant, versionnée volontairement)."],
+            ["dac/dashboards/accueil.yml", "Vue d'ensemble écrite à la main, versionnée et relue en revue."],
+            ["dac/dashboards/_analyse.yml", "Tableau de bord généré par question (éphémère, hors suivi git)."],
+            ["frontend/src/", "Application Vite + React (chat, iframe DAC, hooks, styles)."],
+            ["tests/", "Suite pytest — 152 tests, aucune dépendance réseau ni données réelles."],
+            ["Documentation/WORKFLOW.md", "Traçage d'une question, du prompt au tableau de bord affiché."],
+            ["Documentation/reports/", "Ce guide, le rapport et leur générateur (generate_docs.py)."],
             ["Documentation/planning/", "Brief initial du projet et données sources (hors suivi git du dépôt)."],
         ])
 
-    # --- Base de données ---
-    add_h1(doc, "4. Base de données")
+    # --- Source de données ---
+    add_h1(doc, "4. Source de données (backend/data_store.py)")
     add_body(doc,
-        "Moteur MySQL/MariaDB (XAMPP en local, utilisateur root sans mot de passe par "
-        "défaut). Le schéma tient volontairement en peu de tables : une table de "
-        "faits, six vues de lecture pré-agrégées, et deux tables techniques pour le "
-        "cache et l'historique.")
+        "Il n'y a plus de base de données. Le Google Sheet est la source de vérité : "
+        "`data_store.py` le lit via l'API Google (gspread), valide chaque ligne, et "
+        "construit un DataFrame pandas conservé en mémoire. Ce DataFrame est rafraîchi "
+        "toutes les 15 minutes, au démarrage, et à la demande via POST /sheets/sync.")
 
-    add_h2(doc, "4.1 Table de faits — opportunities")
+    add_h2(doc, "4.1 Les colonnes")
     add_body(doc,
-        "360 lignes au moment de la rédaction. Chaque ligne représente une "
-        "opportunité commerciale ; c'est la seule table sur laquelle des écritures "
-        "ont lieu (mise à jour quotidienne de days_remaining).")
+        "Environ 350 lignes, 18 colonnes. Les quatre dernières sont CALCULÉES à chaque "
+        "chargement et jamais lues depuis le Sheet, même si elles y figurent : une "
+        "donnée dérivable ne doit jamais pouvoir diverger de ce dont elle dérive.")
     add_table(doc,
         ["Colonne", "Type", "Rôle"],
         [
-            ["id", "INT, clé primaire", "Identifiant unique."],
-            ["country", "VARCHAR(100)", "Pays de l'opportunité (indexé)."],
-            ["created_date", "DATE", "Date de création de l'opportunité."],
-            ["deadline", "DATE", "Date limite de remise — source de vérité pour toute "
-             "notion d'urgence (jamais une valeur mise en cache)."],
-            ["deadline_month / deadline_year", "VARCHAR(7) / INT", "Dérivées de deadline, "
-             "utilisées comme dimensions d'analyse (indexées)."],
-            ["days_remaining", "INT, nullable", "Jours restants — recalculée chaque nuit "
-             "depuis deadline (voir section 10.1), jamais la source de vérité elle-même."],
-            ["practice", "VARCHAR(100)", "Digital Transformation / Risk Advisory / Data "
-             "Management (indexé)."],
-            ["description, buyer, partner", "TEXT / VARCHAR", "Informations descriptives "
-             "libres."],
-            ["opp_type", "VARCHAR(50)", "AO, DP, AMI, Consultation, Prospection…"],
-            ["status", "VARCHAR(100)", "Statut du cycle de vente (indexé) — 16 valeurs "
-             "possibles, dont les 7 statuts « clos » exclus des alertes."],
-            ["budget, financial_offer, weighted_amount", "DOUBLE, nullable", "Montants en "
-             "euros ; weighted_amount ~47% NULL (offres sans probabilité assignée)."],
-            ["funding_source", "VARCHAR(100), nullable", "Source de financement (indexée)."],
-            ["win_probability", "DOUBLE, nullable", "Fraction 0–1 (0.74 = 74%), jamais "
-             "stockée déjà multipliée par 100 — voir response_builder.py."],
+            ["id", "entier", "Identifiant ; attribué automatiquement (max + 1) et réécrit dans "
+             "le Sheet si la ligne n'en a pas."],
+            ["country", "texte", "Pays de l'opportunité."],
+            ["created_date / deadline", "date", "Dates de création et d'échéance. La deadline est "
+             "la source de vérité de toute notion d'urgence."],
+            ["practice", "texte", "Digital Transformation / Risk Advisory / Data Management."],
+            ["description, buyer, partner", "texte", "Informations descriptives libres."],
+            ["opp_type", "texte", "AO, DP, AMI, Consultation, Prospection, Gré à gré, Avant-vente."],
+            ["status", "texte", "Statut du cycle de vente — 16 valeurs, dont 7 statuts « clos » "
+             "exclus des alertes."],
+            ["budget, financial_offer", "décimal", "Montants en euros."],
+            ["funding_source", "texte", "Source de financement."],
+            ["win_probability", "décimal", "Fraction 0–1 (0.74 = 74 %), jamais stockée déjà "
+             "multipliée par 100 — voir response_builder.py."],
+            ["deadline_month / deadline_year", "CALCULÉES", "Dérivées de deadline, utilisées comme "
+             "dimensions d'analyse."],
+            ["days_remaining", "CALCULÉE", "deadline moins la date du jour, recalculée à chaque "
+             "chargement — donc jamais obsolète."],
+            ["weighted_amount", "CALCULÉE", "financial_offer × win_probability."],
         ])
 
-    add_h2(doc, "4.2 Vues pré-agrégées (lecture seule)")
+    add_h2(doc, "4.2 Validation ligne par ligne")
     add_body(doc,
-        "Chacune est un simple GROUP BY sur opportunities (recalculée à la demande "
-        "par MySQL, pas matérialisée) — elles existent pour donner au LLM des noms de "
-        "colonnes déjà agrégés et simples plutôt que de lui faire recalculer une "
-        "agrégation à chaque requête, et pour que db_layer.py puisse choisir la bonne "
-        "source selon la dimension demandée (voir section 7).")
-    add_table(doc,
-        ["Vue", "Regroupée par", "Colonnes agrégées"],
-        [
-            ["v_by_country", "country", "nb_opportunities, total_budget, total_offer, total_weighted"],
-            ["v_by_practice", "practice", "nb_opportunities, total_budget, total_offer, total_weighted"],
-            ["v_by_status", "status", "nb_opportunities, total_budget, total_offer"],
-            ["v_by_month", "deadline_month", "nb_opportunities, total_budget, total_offer, total_weighted"],
-            ["v_by_funding_source", "funding_source", "nb_opportunities, total_budget"],
-            ["v_by_country_practice", "country, practice", "nb_opportunities, total_budget, total_weighted"],
-        ])
+        "Chaque ligne est validée indépendamment : dates acceptées dans deux formats, "
+        "nombres à virgule décimale, probabilité tolérée en fraction (0.8) comme en "
+        "pourcentage (80), et practice/opp_type/status vérifiés contre la liste blanche "
+        "de schema_and_whitelist.py. Une ligne invalide est journalisée et sautée — "
+        "jamais bloquante pour les autres.")
     add_body(doc,
-        "Une vue qui ne couvre pas la métrique demandée (ex. weighted_amount sur "
-        "v_by_status) déclenche un repli automatique vers un GROUP BY à la volée sur "
-        "opportunities plutôt qu'une erreur (voir section 7).")
+        "Détail qui a compté en pratique : l'export CSV vers Sheets écrit parfois les "
+        "valeurs vides comme le texte littéral « NULL ». Sans normalisation explicite, "
+        "un partenaire se serait appelé « NULL ». C'est aussi cette validation qui a "
+        "révélé douze opportunités au statut invalide, présentes de longue date et "
+        "jamais détectées faute de contrôle à l'écriture.")
 
-    add_h2(doc, "4.3 Tables techniques")
-    add_table(doc,
-        ["Table", "Rôle"],
-        [
-            ["dashboard_requests", "Historique : chaque question posée au chat, avec l'intention "
-             "JSON extraite — utile pour l'audit et l'amélioration continue du prompt."],
-            ["generated_dashboards", "Cache des spécifications Vega-Lite déjà générées, indexé par le "
-             "hash SHA-256 de l'intention — évite de régénérer une spec identique."],
-            ["scheduler_state", "Une ligne par job planifié (job_name, last_run_date) — permet au "
-             "digest email quotidien de savoir s'il a déjà tourné aujourd'hui et de rattraper une "
-             "exécution manquée sans jamais en envoyer deux (section 10.9)."],
-        ])
-
-    add_h2(doc, "4.4 Accès depuis le backend")
+    add_h2(doc, "4.3 Écriture retour dans le Sheet")
     add_body(doc,
-        "backend/db.py centralise l'unique point de connexion : un pool "
-        "(DBUtils PooledDB, 2 à 10 connexions) créé de façon paresseuse — importer les "
-        "modules backend ne nécessite donc pas que MySQL soit déjà démarré, ce qui "
-        "permet à la suite de tests de s'exécuter sans base de données réelle.")
+        "Le module écrit dans le Sheet deux choses seulement : l'identifiant des "
+        "nouvelles lignes, et les quatre colonnes calculées — pour que l'utilisateur "
+        "voie le résultat sans ouvrir l'application. Toutes ces cellules sont envoyées "
+        "en un SEUL appel groupé : sur 350 lignes × 4 colonnes, un appel par cellule "
+        "représenterait plus d'un millier d'allers-retours réseau.")
+    add_body(doc,
+        "Volontairement, aucune suppression : retirer une ligne du Sheet la fait "
+        "simplement disparaître du chargement suivant, et rien n'est jamais effacé "
+        "ailleurs.")
+
+    add_h2(doc, "4.4 État local (hors Sheet)")
+    add_body(doc,
+        "Deux éléments seulement vivent hors du Sheet, et aucun n'est une base de "
+        "données : `data/scheduler_state.json` retient la date du dernier envoi de "
+        "l'alerte quotidienne (anti-doublon, section 10), et le cache des tableaux de "
+        "bord déjà générés est un simple dictionnaire en mémoire, vidé à chaque "
+        "rafraîchissement des données puisque celles-ci ont pu changer.")
 
     # --- Pipeline détaillé ---
     add_h1(doc, "5. Pipeline requête → réponse (backend/main.py)")
@@ -734,13 +843,16 @@ def build_guide_technique():
     add_numbered(doc, "appelle parse_user_query(query, previous_intent) — jamais de session serveur, "
                        "le frontend renvoie le dernier intent résolu à chaque nouvelle question.")
     add_numbered(doc, "si l'intention est une conversation générale (salutation, hors sujet) ou "
-                       "reste ambiguë, renvoie directement le message de clarification, sans requête SQL.")
-    add_numbered(doc, "sinon, exécute build_and_execute_query(intent), puis choisit le format de "
-                       "réponse (table brute, carte KPI, ou graphique Vega-Lite).")
-    add_numbered(doc, "pour un graphique, un hash de l'intention sert de clé de cache "
-                       "(table generated_dashboards) pour éviter de régénérer une spec déjà connue.")
-    add_numbered(doc, "chaque requête est aussi journalisée (table dashboard_requests) à des fins "
-                       "d'historique.")
+                       "reste ambiguë, renvoie directement le message de clarification, sans rien interroger.")
+    add_numbered(doc, "sinon, exécute build_and_execute_query(intent) sur le DataFrame pandas, puis "
+                       "compose le message texte à partir des lignes obtenues.")
+    add_numbered(doc, "appelle write_generated_dashboard(query, intent) : le tableau de bord "
+                       "multi-widgets est composé puis écrit en YAML, et son nom est renvoyé au "
+                       "frontend qui pointe son iframe dessus.")
+    add_numbered(doc, "cette génération est enveloppée dans un try/except : si elle échoue, la réponse "
+                       "textuelle est renvoyée quand même plutôt que de faire échouer toute la requête.")
+    add_numbered(doc, "chaque question est journalisée (logger) avec l'intention extraite, à des fins "
+                       "d'audit et d'amélioration du prompt.")
 
     # --- LLM ---
     add_h1(doc, "6. Compréhension du langage naturel")
@@ -780,79 +892,99 @@ def build_guide_technique():
         "d'erreurs plausibles-mais-fausses.")
 
     # --- SQL ---
-    add_h1(doc, "7. Couche SQL sécurisée")
+    add_h1(doc, "7. Couche de requêtage pandas")
     add_body(doc,
-        "schema_and_whitelist.py est la source unique de vérité : ALLOWED_TABLES "
-        "définit les tables/vues et leurs colonnes autorisées ; VALID_METRICS, "
-        "VALID_DIMENSIONS, VALID_FILTERS bornent ce que le LLM peut produire. "
-        "db_layer.py traduit l'intention validée en requête SQL paramétrée (jamais "
-        "de concaténation de valeurs utilisateur dans la chaîne SQL).")
-    add_bullet(doc, "Chaque dimension a une vue pré-agrégée dédiée (ex. v_by_country) ; à "
-                     "défaut, bascule sur un GROUP BY à la volée sur la table opportunities.")
-    add_bullet(doc, "Un filtre à valeurs multiples (comparaison) devient une clause SQL IN (...).")
-    add_bullet(doc, "Les filtres numériques (range_filters) supportent <, >, <=, >=, =, et between.")
-    add_bullet(doc, "Si une vue ne contient pas la métrique demandée, bascule automatique et "
-                     "cohérente vers un calcul groupé sur la table brute plutôt qu'une erreur.")
+        "schema_and_whitelist.py est la source unique de vérité : VALID_METRICS, "
+        "VALID_DIMENSIONS, VALID_FILTERS et KNOWN_VALUES bornent ce que le LLM peut "
+        "produire. db_layer.py traduit ensuite l'intention validée en opérations "
+        "pandas sur le DataFrame en mémoire — ce sont ces données qui alimentent le "
+        "message texte affiché dans le chat.")
+    add_bullet(doc, "Les filtres deviennent des masques booléens ; un filtre à valeurs multiples "
+                     "(comparaison « France et Maroc ») devient un .isin().")
+    add_bullet(doc, "Les filtres numériques (range_filters) supportent <, >, <=, >=, = et between.")
+    add_bullet(doc, "L'agrégation dépend de la métrique elle-même, pas du champ « aggregation » : "
+                     "le budget est toujours sommé, la probabilité de gain toujours moyennée.")
+    add_bullet(doc, "La sortie reste une liste de dictionnaires — même contrat qu'à l'époque SQL, "
+                     "ce qui a permis de changer de moteur sans toucher response_builder.py.")
+    add_body(doc,
+        "Simplification obtenue au passage : la version MySQL devait choisir une vue "
+        "pré-agrégée selon la dimension, vérifier qu'elle supportait les filtres ET la "
+        "métrique demandés, puis retomber sur un calcul groupé quand ce n'était pas le "
+        "cas. pandas groupe uniformément quelle que soit la combinaison — ces trois "
+        "mécanismes de repli ont disparu avec la base.")
 
-    # --- Vega ---
-    add_h1(doc, "8. Génération des graphiques (Vega-Lite)")
-    add_h2(doc, "8.1 Bar / pie / line — règles communes")
-    add_bullet(doc, "Un camembert de plus de 6 segments bascule automatiquement en barres "
-                     "horizontales (lisibilité) — MAX_PIE_SLICES / MAX_BAR_CATEGORIES.")
-    add_bullet(doc, "Pour sum/count, la traîne au-delà du seuil est regroupée dans « Autres » ; "
-                     "pour avg (ex. win_probability), simple troncature — une moyenne de moyennes "
-                     "n'aurait pas de sens statistique.")
-    add_bullet(doc, "Palette catégorielle fixe et validée (contraste daltonisme) pour les "
-                     "camemberts, distincte de la teinte de marque (ACCENT) utilisée pour les "
-                     "graphiques à série unique (barres/courbes) — séparation volontaire pour ne "
-                     "pas perturber la validation CVD de la première en retintant pour le branding.")
-    add_bullet(doc, "Les valeurs KPI NULL (win_probability/weighted_amount, ~47% des lignes) "
-                     "restent None côté Python et s'affichent « N/A » — jamais silencieusement "
-                     "converties en 0.")
+    # --- Tableaux de bord as code ---
+    add_h1(doc, "8. Tableaux de bord as code (dac_composer.py, sql_builder.py)")
+    add_body(doc,
+        "Une question ne produit pas un graphique mais un tableau de bord entier, écrit "
+        "en YAML puis rendu par Bruin DAC. Deux modules s'en chargent : dac_composer.py "
+        "décide QUELS widgets composent le tableau de bord, sql_builder.py produit la "
+        "requête de chacun.")
 
-    add_h2(doc, "8.2 Quatre types supplémentaires (funnel, scatter, heatmap, area)")
+    add_h2(doc, "8.1 Le LLM ne produit jamais le SQL")
     add_body(doc,
-        "Ajoutés après une relecture du skill de data-visualisation (choix de forme par "
-        "le job de la donnée, palette validée par un script, specs de marks) pour donner "
-        "plus de façons de raconter la même donnée commerciale sans sortir du cadre "
-        "CVD-safe déjà en place.")
-    add_bullet(doc, "Entonnoir (funnel) : dimension forcée à « status » (backend/intent_refiner.py), "
-                     "réordonné selon l'ordre réel du pipeline (FUNNEL_STAGE_ORDER) — jamais trié "
-                     "par valeur, qui donnerait un entonnoir qui ne raconte rien. Les statuts de "
-                     "sortie (perdu, NO GO, infructueux…) sont exclus : ce sont des sorties du "
-                     "pipeline, pas des étapes séquentielles. Géométrie symétrique (x_start/x_end "
-                     "centrés sur 0) précalculée en Python — Vega-Lite ne sait pas produire un "
-                     "entonnoir nativement. Rampe de bleus ordinale (une teinte par étape).")
-    add_bullet(doc, "Nuage de points (scatter) : budget × probabilité de gain, taille = montant "
-                     "pondéré, couleur = practice. Practice a exactement 3 valeurs fixes — sous le "
-                     "plafond de 3 séries que le skill impose aux formes « toutes paires » "
-                     "(scatter/bubble) pour rester lisible en vision daltonienne.")
-    add_bullet(doc, "Carte de chaleur (heatmap) : n'importe quelle dimension croisée avec practice, "
-                     "plafonnée aux 15 valeurs les plus fortes (MAX_HEATMAP_ROWS) pour rester lisible "
-                     "— rampe séquentielle (un seul hue, clair → foncé), jamais une palette "
-                     "catégorielle sur un encodage de magnitude.")
-    add_bullet(doc, "Aire (area) : même donnée qu'une courbe, remplissage en dégradé pour plus "
-                     "d'impact visuel — un principe du skill (« color comes last ») appliqué "
-                     "littéralement : la forme est identique à « line », seul l'habillage change.")
+        "C'est la décision structurante de cette partie. Il aurait été tentant de "
+        "demander directement le SQL au modèle — c'est ce que font beaucoup d'outils de "
+        "« text-to-SQL ». Ça aurait rouvert exactement la classe de bugs que tout le "
+        "reste du projet est bâti pour empêcher : colonne inventée, valeur de filtre "
+        "hallucinée, agrégation silencieusement fausse.")
+    add_body(doc,
+        "Le modèle continue donc de ne produire qu'une intention validée contre la "
+        "liste blanche, et sql_builder.py la traduit. Le coût de ce choix est nul en "
+        "pratique : le Sheet a 18 colonnes fixes, donc la liste blanche décrit déjà "
+        "l'intégralité des données interrogeables — il n'existe aucune question "
+        "légitime qu'elle empêcherait de poser.")
+    add_bullet(doc, "Les noms de colonnes proviennent toujours de la liste blanche, jamais de "
+                     "texte libre : une métrique ou une dimension inconnue est ignorée et remplacée "
+                     "par le défaut, jamais insérée dans la requête.")
+    add_bullet(doc, "Les valeurs de filtre sont échappées (les apostrophes doublées) — les vraies "
+                     "données en contiennent (« Côte d'Ivoire », « Complément d'information »), et "
+                     "sans ce traitement la requête serait syntaxiquement cassée.")
 
-    add_h2(doc, "8.3 Étude de cas — deux bugs texte/graphique trouvés en vérifiant en conditions réelles")
+    add_h2(doc, "8.2 Composition par règles déterministes")
     add_body(doc,
-        "Les tests automatisés valident la structure des données ; ils ne suffisent pas à "
-        "garantir que le message texte affiché au-dessus d'un graphique décrit bien ce que "
-        "ce graphique montre. Deux écarts réels ont été trouvés en interrogeant l'application "
-        "en direct (pas seulement en pytest) :")
-    add_bullet(doc, "Le texte de l'entonnoir décrivait les 19 statuts de la base (y compris "
-                     "« Offre perdue ») alors que le graphique n'en affiche que 10 (les étapes du "
-                     "pipeline). Corrigé en appliquant le même filtre de statuts au texte qu'au "
-                     "graphique — jamais deux sources de vérité différentes pour la même réponse.")
-    add_bullet(doc, "Le texte de la carte de chaleur annonçait 21 pays quand le graphique n'en "
-                     "affiche que 15 (plafond de lisibilité). Même correction : le texte réutilise "
-                     "désormais exactement la fonction de plafonnage du graphique.")
+        "L'intention donne l'angle principal ; des règles fixes l'entourent de widgets "
+        "complémentaires qui partagent TOUS ses filtres — sans quoi le tableau de bord "
+        "mélangerait des chiffres qui ne se comparent pas.")
+    add_table(doc,
+        ["Widget", "Rôle"],
+        [
+            ["Totaux du périmètre", "La métrique demandée, le nombre d'opportunités et le montant "
+             "pondéré, en cartes chiffrées."],
+            ["Graphique principal", "Répond directement à la question posée."],
+            ["Angle complémentaire", "La même métrique sur une autre dimension."],
+            ["Pipeline commercial", "L'entonnoir des statuts sur ce périmètre."],
+            ["Détail", "Les opportunités ligne par ligne, pour vérifier les chiffres."],
+        ])
     add_body(doc,
-        "Les deux sont couverts par un test de non-régression dédié — la leçon retenue : "
-        "un test unitaire qui vérifie chaque brique séparément peut rester vert alors que "
-        "l'assemblage final ment à l'utilisateur ; seule une vérification bout-en-bout, sur "
-        "de vraies données, le révèle.")
+        "Pourquoi des règles plutôt qu'un second appel au LLM : la pertinence de ces "
+        "widgets se déduit entièrement de l'intention principale, et un appel "
+        "supplémentaire par question consommerait le quota gratuit du modèle (~16 "
+        "requêtes/minute) pour un gain nul.")
+
+    add_h2(doc, "8.3 Deux défauts trouvés en exécutant, pas en relisant")
+    add_bullet(doc, "Le widget complémentaire pouvait reprendre une dimension DÉJÀ FIGÉE par un "
+                     "filtre : demander « budget par pays pour Risk Advisory » puis afficher « budget "
+                     "par practice » donnait un graphique à une seule barre, sans aucune information. "
+                     "La dimension complémentaire évite désormais toute dimension épinglée par un "
+                     "filtre — défaut invisible en lecture du code, évident dès la première exécution.")
+    add_bullet(doc, "PyYAML repliait le SQL en style quoté, produisant un YAML correct mais "
+                     "illisible — ce qui ruinait l'intérêt même du « dashboard as code », dont toute "
+                     "la valeur est d'être relu en revue. Un dumper en bloc littéral le garde lisible "
+                     "tel qu'écrit.")
+
+    add_h2(doc, "8.4 L'entonnoir de vente")
+    add_body(doc,
+        "Cas le plus instructif. Les étapes sont ordonnées par l'ordre RÉEL du cycle de "
+        "vente, via un CASE explicite dans la requête — jamais par volume, qui "
+        "donnerait un entonnoir ne racontant rien du parcours d'une opportunité. Les "
+        "statuts de sortie (perdu, NO GO, infructueux…) en sont exclus : ce sont des "
+        "sorties du pipeline, pas des étapes que chaque opportunité traverse.")
+    add_body(doc,
+        "À noter : avec Vega-Lite, cette forme exigeait de précalculer en Python une "
+        "géométrie symétrique (bornes gauche/droite centrées sur zéro) car la "
+        "bibliothèque ne la produit pas nativement. DAC ayant un type funnel natif, ce "
+        "contournement a disparu avec la migration.")
 
     # --- Réponses texte ---
     add_h1(doc, "9. Réponses textuelles déterministes")
@@ -866,36 +998,32 @@ def build_guide_technique():
 
     # --- Alertes ---
     add_h1(doc, "10. Alertes deadlines")
-    add_h2(doc, "10.1 Pourquoi ne pas se fier à la colonne days_remaining seule")
+    add_h2(doc, "10.1 Une donnée « jours restants » qui ne peut pas devenir obsolète")
     add_body(doc,
-        "days_remaining est une colonne figée au moment de l'import des données — "
-        "elle ne diminue pas toute seule au fil des jours. get_upcoming_deadline_"
-        "opportunities() (alerts.py) calcule donc la fenêtre « échéance ≤ 7 jours » "
-        "en direct via DATEDIFF(deadline, CURDATE()) côté MySQL, jamais depuis cette "
-        "colonne. En complément, maintenance.py::refresh_days_remaining() recalcule "
-        "purement et simplement cette colonne chaque nuit (UPDATE ... SET "
-        "days_remaining = DATEDIFF(deadline, CURDATE())), pour que sa valeur reste "
-        "cohérente partout ailleurs dans l'application (tableaux, requêtes « urgentes "
-        "< 7 jours » posées au chat).")
-    add_h2(doc, "10.2 Pourquoi recalculer plutôt que décrémenter de 1 chaque jour")
+        "Historiquement, days_remaining était une colonne figée à l'import, qui ne "
+        "diminuait pas toute seule au fil des jours — il fallait donc un job nocturne "
+        "pour la recalculer, et se méfier de sa valeur entre deux exécutions. Depuis le "
+        "passage à une lecture directe du Sheet, le problème disparaît par construction : "
+        "days_remaining est recalculée à CHAQUE chargement des données (toutes les 15 "
+        "minutes) depuis la deadline réelle et la date du jour. Il n'y a plus rien à "
+        "rafraîchir la nuit, et le module de maintenance dédié a été supprimé.")
     add_body(doc,
-        "Un simple `days_remaining = days_remaining - 1` accumulerait une dérive "
-        "silencieuse dès que le job est manqué un jour (serveur éteint, redémarrage) "
-        "— l'écart resterait indéfiniment. Recalculer depuis la deadline réelle est "
-        "idempotent et se corrige tout seul à la prochaine exécution, quel que soit "
-        "le nombre de jours manqués entre-temps.")
-    add_h2(doc, "10.3 Deux jobs planifiés (APScheduler, backend/main.py)")
+        "C'est un bon exemple de simplification obtenue en changeant la structure "
+        "plutôt qu'en ajoutant du code : le mécanisme le plus fiable est ici celui "
+        "qu'on a pu retirer.")
+    add_h2(doc, "10.2 Un job planifié (APScheduler, backend/main.py)")
     add_table(doc,
-        ["Heure", "Job", "Rôle"],
+        ["Fréquence", "Job", "Rôle"],
         [
-            ["00:05", "refresh_days_remaining", "Recalcule days_remaining pour toutes les opportunités."],
-            ["08:00", "run_daily_alert_check", "Requête les opportunités actives à échéance ≤ 7 jours et "
-             "envoie l'email récapitulatif si la liste n'est pas vide."],
+            ["Toutes les 15 min", "refresh_dataframe", "Recharge les données depuis le Sheet et "
+             "régénère la projection DuckDB. Recalcule au passage days_remaining."],
+            ["08:00", "run_daily_alert_check_if_needed", "Sélectionne les opportunités actives à "
+             "échéance ≤ 7 jours et envoie l'email récapitulatif si la liste n'est pas vide."],
         ])
     add_body(doc,
-        "refresh_days_remaining() est aussi appelée une première fois au démarrage "
-        "du serveur (lifespan), pour rattraper immédiatement une valeur restée figée "
-        "depuis le dernier arrêt, sans attendre minuit.")
+        "Les deux tournent aussi une fois au démarrage, en tâche de fond : le serveur "
+        "accepte les requêtes immédiatement, sans attendre le premier chargement du "
+        "Sheet (qui prend une à deux secondes).")
     add_h2(doc, "10.4 Envoi de l'email (Gmail SMTP)")
     add_body(doc,
         "send_alert_email() utilise smtplib avec STARTTLS sur smtp.gmail.com:587, "
@@ -962,122 +1090,98 @@ def build_guide_technique():
     add_body(doc,
         "APScheduler ne rattrape pas un job manqué si le processus était entièrement arrêté "
         "au moment prévu (contrairement à misfire_grace_time, qui ne couvre qu'un léger "
-        "retard sur un processus resté actif). Pour le recalcul de days_remaining, ce n'était "
-        "pas un problème : il est déjà rappelé sans condition à chaque démarrage (section "
-        "10.2), et le recalculer plusieurs fois ne fait jamais de mal. Pour l'email "
-        "quotidien, un rappel sans condition renverrait un doublon si le cron 8h avait déjà "
-        "tourné le jour même.")
+        "retard sur un processus resté actif). Pour le rafraîchissement des données, ce "
+        "n'est pas un problème : il est rappelé sans condition à chaque démarrage, et le "
+        "refaire ne coûte rien. Pour l'email quotidien, un rappel sans condition renverrait "
+        "un doublon si le cron de 8h avait déjà tourné le jour même.")
     add_body(doc,
-        "Solution : une table scheduler_state (job_name, last_run_date), auto-créée à la "
-        "demande — aucune migration à relancer sur un déploiement existant. "
-        "run_daily_alert_check_if_needed() vérifie d'abord si le job a déjà tourné "
-        "aujourd'hui ; sinon, elle exécute la vérification puis marque la date. Appelée à "
-        "la fois par le cron 8h ET au démarrage du serveur : un serveur éteint pile à 8h "
-        "rattrape l'envoi dès qu'il redémarre, quelle que soit l'heure, sans jamais "
-        "produire de second email le même jour.")
+        "Solution : un fichier `data/scheduler_state.json` retenant la date de dernière "
+        "exécution par job — auparavant une table MySQL, devenue un simple fichier local "
+        "avec la suppression de la base. run_daily_alert_check_if_needed() vérifie d'abord "
+        "si le job a déjà tourné aujourd'hui ; sinon, elle exécute la vérification puis "
+        "marque la date. Appelée à la fois par le cron de 8h ET au démarrage du serveur : "
+        "un serveur éteint pile à 8h rattrape l'envoi dès qu'il redémarre, quelle que soit "
+        "l'heure, sans jamais produire de second email le même jour.")
+    add_body(doc,
+        "Détail de robustesse : si la vérification anti-doublon elle-même échoue (fichier "
+        "illisible), l'alerte est envoyée quand même. Un mécanisme de suivi cassé ne doit "
+        "jamais avoir pour conséquence de supprimer silencieusement l'alerte qu'il protège.")
 
-    # --- Google Sheets ---
-    add_h1(doc, "11. Synchronisation Google Sheets -> MySQL")
+    # --- Pont DuckDB ---
+    add_h1(doc, "11. Le pont DuckDB (backend/duckdb_export.py)")
     add_body(doc,
-        "backend/sheets_sync.py. Le Sheet devient un formulaire d'ajout/modification "
-        "d'opportunités, plus simple à éditer au quotidien qu'une base de données "
-        "directement — l'application continue de LIRE depuis MySQL comme avant (chat, "
-        "graphiques, alertes) ; ce module importe uniquement les changements du Sheet "
-        "vers la base, jamais l'inverse.")
+        "Bruin DAC ne sait interroger que des connexions SQL. Les données vivant "
+        "désormais dans un DataFrame en mémoire, un pont est nécessaire : ce module "
+        "réécrit le DataFrame dans un fichier DuckDB local à chaque rafraîchissement.")
 
-    add_h2(doc, "11.1 Authentification par compte de service, pas une simple clé API")
+    add_h2(doc, "11.1 Une projection, pas une base de données")
     add_body(doc,
-        "La synchro doit pouvoir ÉCRIRE dans le Sheet (réinjecter l'id MySQL généré pour "
-        "chaque nouvelle ligne, condition de son idempotence — voir 11.3), ce qu'une clé "
-        "API seule ne permet pas (lecture seule). Authentification par compte de service "
-        "Google (fichier JSON, ajouté en Éditeur sur le Sheet cible) via "
-        "gspread.service_account().")
+        "La distinction est importante : le fichier DuckDB n'est jamais lu par le code "
+        "applicatif, jamais édité à la main, et intégralement régénéré à chaque cycle. "
+        "pandas reste la source de vérité pour le chat et les alertes. Cette asymétrie "
+        "garantit qu'aucune divergence ne peut s'installer entre ce que dit le chat et "
+        "ce qu'affichent les tableaux de bord — les deux dérivent du même chargement.")
+    add_body(doc,
+        "L'écriture utilise CREATE OR REPLACE TABLE plutôt qu'un DELETE suivi d'INSERT : "
+        "atomique du point de vue d'un lecteur, et le schéma est repris automatiquement "
+        "du DataFrame — aucune définition de colonnes à maintenir en double.")
 
-    add_h2(doc, "11.2 Champs toujours recalculés, jamais lus depuis le Sheet")
+    add_h2(doc, "11.2 Le piège de concurrence, identifié puis testé")
     add_body(doc,
-        "deadline_month, deadline_year, days_remaining et weighted_amount sont toujours "
-        "dérivés des colonnes brutes (deadline, financial_offer, win_probability) au "
-        "moment de la synchro, même s'ils figurent en colonne dans le Sheet — même "
-        "principe que days_remaining ailleurs dans le projet (section 10.1) : une donnée "
-        "calculable ne doit jamais dépendre d'une saisie externe qui pourrait diverger.")
+        "DuckDB autorise SOIT plusieurs lecteurs, SOIT un seul écrivain — jamais les "
+        "deux simultanément. Or DAC lit le fichier pendant que l'application le "
+        "réécrit toutes les 15 minutes : une collision était donc possible par "
+        "construction.")
+    add_body(doc,
+        "Deux mesures. Côté DAC, la connexion est déclarée en lecture seule "
+        "(read_only: true dans .bruin.yml) — sans quoi elle prendrait un verrou "
+        "exclusif et empêcherait tout rafraîchissement. Côté écriture, la connexion est "
+        "fermée immédiatement après usage, et l'opération réessaie quelques fois à "
+        "intervalle court si le fichier est momentanément verrouillé. En cas d'échec "
+        "complet, l'ancien fichier est conservé : les tableaux de bord affichent des "
+        "données d'un cycle plus anciennes, jamais une base vide ou corrompue.")
+    add_body(doc,
+        "Vérifié sous charge plutôt que supposé : trois rafraîchissements concurrents "
+        "lancés pendant vingt-sept requêtes de widgets, tous passants.")
 
-    add_h2(doc, "11.3 Idempotence de l'insertion — réécriture de l'id dans le Sheet")
+    add_h2(doc, "11.3 Authentification Google — compte de service, pas clé API")
     add_body(doc,
-        "Une ligne sans id = nouvelle opportunité. Après l'INSERT MySQL, l'id généré "
-        "(cur.lastrowid) est immédiatement réécrit dans la cellule id du Sheet — sans "
-        "quoi la synchro suivante (15 minutes plus tard) réinsérerait la même ligne en "
-        "double, faute de moyen de la reconnaître comme déjà traitée. Si cette "
-        "réécriture échoue (ligne insérée mais Sheet non mis à jour), l'erreur est "
-        "journalisée bruyamment plutôt que silencieusement absorbée — l'insertion "
-        "MySQL, elle, reste acquise.")
+        "L'application doit pouvoir ÉCRIRE dans le Sheet (identifiants des nouvelles "
+        "lignes et colonnes calculées, section 4.3), ce qu'une simple clé API ne permet "
+        "pas — elle est en lecture seule. L'accès passe donc par un compte de service "
+        "Google (fichier JSON, ajouté en Éditeur sur le Sheet cible).")
+    add_body(doc,
+        "Optimisation mesurée : la résolution du Sheet (open_by_key puis worksheet) "
+        "coûte deux allers-retours réseau, soit 1,6 s, et était rejouée à chaque cycle "
+        "alors que le client authentifié, lui, était déjà mis en cache. Mettre aussi en "
+        "cache l'objet Worksheet fait tomber ce coût à zéro sur les appels suivants — "
+        "un chargement complet passe de ~1,1 s à ~0,4 s. Le profilage avait d'ailleurs "
+        "démenti l'intuition de départ : les écritures en base ne représentaient que "
+        "0,03 s, l'essentiel du temps était réseau.")
 
-    add_h2(doc, "11.4 Validation par ligne, jamais bloquante")
+    add_h2(doc, "11.4 Déclenchement")
     add_body(doc,
-        "Chaque ligne est validée indépendamment (dates aux deux formats acceptés, "
-        "nombres avec virgule décimale, probabilité en fraction ou en pourcentage, "
-        "practice/opp_type/status contre la liste blanche déjà utilisée par le chat) — "
-        "une ligne invalide est journalisée et sautée, sans jamais empêcher l'import des "
-        "autres. Les littéraux \"NULL\"/\"N/A\" laissés par l'export CSV -> Sheets sont "
-        "normalisés en valeur vide plutôt que stockés tels quels comme texte.")
-
-    add_h2(doc, "11.5 Bug trouvé en conditions réelles — cursor.rowcount ne veut pas dire ce qu'on croit")
-    add_body(doc,
-        "Premier test en direct (pas seulement avec des mocks) : la synchro rapportait "
-        "1 ligne mise à jour et 359 ignorées pour « id introuvable », alors que ces ids "
-        "existaient bel et bien en base. Cause : la détection « id existant vs nouveau » "
-        "se fiait à cursor.rowcount après un UPDATE — or PyMySQL (sans CLIENT_FOUND_ROWS) "
-        "renvoie le nombre de lignes réellement MODIFIÉES, pas trouvées. Le Sheet étant un "
-        "export frais de la base, la quasi-totalité des UPDATE ne changeaient aucune "
-        "valeur, donc rowcount valait 0 même sur un id existant. Corrigé en préchargeant "
-        "une fois l'ensemble des ids existants (SELECT id FROM opportunities) plutôt que "
-        "de déduire l'existence du résultat de l'UPDATE. Vérifié après correction : 348 "
-        "lignes mises à jour, 12 sautées à raison — révélant un vrai problème de qualité "
-        "de données préexistant (des valeurs opp_type comme \"DP\"/\"AMI\" saisies par "
-        "erreur dans la colonne status).")
-
-    add_h2(doc, "11.6 Décision volontaire : pas de suppression automatique")
-    add_body(doc,
-        "Retirer une ligne du Sheet ne supprime jamais l'opportunité correspondante en "
-        "base. Une synchro automatique et non surveillée, qui tourne indéfiniment toutes "
-        "les 15 minutes, est le mauvais endroit pour une opération destructive et "
-        "irréversible : une lecture partielle, un mauvais onglet ou un Sheet vidé par "
-        "erreur pourrait effacer de vraies données sans que personne ne le voie venir "
-        "avant le prochain passage. Ajout et modification seulement — un choix de "
-        "prudence assumé plutôt qu'un oubli.")
-
-    add_h2(doc, "11.7 Optimisation — mettre en cache la résolution du Sheet, pas seulement le client")
-    add_body(doc,
-        "Profilage demandé après coup, pour vérifier l'absence de régression de "
-        "performance : le coût réel n'était pas les écritures MySQL (360 UPDATE "
-        "séquentiels mesurés à 0.032s au total) mais open_by_key() + worksheet(), deux "
-        "allers-retours réseau vers l'API Google Sheets (1.6s mesurés à eux deux) — "
-        "rejoués à chaque appel de sync_sheet_to_mysql() alors que le client gspread "
-        "authentifié, lui, était déjà mis en cache. Corrigé en mettant aussi en cache "
-        "l'objet Worksheet résolu : un appel répété passe de 1.6s à 0s, et une synchro "
-        "complète de ~1.1s à ~0.4s une fois le cache chaud — un gain qui se répète "
-        "indéfiniment, toutes les 15 minutes. Les trois tâches de démarrage (recalcul "
-        "days_remaining, vérification d'alerte, synchro Sheets) bloquaient aussi le "
-        "démarrage du serveur (exécutées avant que FastAPI n'accepte une seule requête "
-        "HTTP, dans lifespan()) ; elles tournent désormais comme jobs « une fois "
-        "immédiatement » sur le thread du scheduler, sans retarder la disponibilité du "
-        "serveur.")
-
-    add_h2(doc, "11.8 Déclenchement")
-    add_body(doc,
-        "Trois déclencheurs : toutes les 15 minutes (APScheduler, job "
-        "sheets_sync_periodic), une fois au démarrage du serveur, et à la demande via "
-        "POST /sheets/sync — utile pour forcer un import sans attendre le prochain "
-        "cycle.")
+        "Trois déclencheurs pour le cycle complet (lecture du Sheet, reconstruction du "
+        "DataFrame, projection DuckDB, purge du cache de tableaux de bord) : toutes les "
+        "15 minutes via APScheduler, une fois au démarrage, et à la demande via "
+        "POST /sheets/sync — ce dernier étant exposé par un bouton dans l'interface de "
+        "chat, qui affiche le résumé du chargement (lignes chargées, ignorées).")
 
     # --- Frontend ---
     add_h1(doc, "12. Frontend (Vite + React)")
-    add_bullet(doc, "Composants principaux : ChatPanel, DashboardPanel, AlertBanner, VegaChart, "
+    add_bullet(doc, "Composants principaux : ChatPanel, DashboardPanel (iframe DAC), AlertBanner, "
                      "DataTable, StatTile, ThemeToggle, DevoteamLogo.")
     add_bullet(doc, "Hooks dédiés : useTheme (clair/sombre), useChatHistory (persistance "
-                     "localStorage), useVegaEmbed (rendu Vega-Lite dans le DOM).")
+                     "localStorage).")
+    add_bullet(doc, "DashboardPanel affiche un iframe pointant sur le serveur DAC : la vue "
+                     "d'ensemble par défaut, ou le tableau de bord généré dès qu'une question a été "
+                     "posée. Deux boutons permettent de basculer entre les deux. L'URL est "
+                     "construite à partir du NOM du tableau de bord (DAC route par nom affiché, pas "
+                     "par nom de fichier), et le compteur dashboardKey sert de clé React pour forcer "
+                     "le rechargement de l'iframe même quand le nom ne change pas.")
     add_bullet(doc, "Thème géré par variables CSS (custom properties) — le mode sombre est "
                      "SÉLECTIONNÉ avec ses propres valeurs, pas un simple filtre inversé "
-                     "automatique.")
+                     "automatique. Il s'applique au chat, pas à l'iframe DAC (voir section 16).")
     add_bullet(doc, "Jetons de marque (--brand-primary…) volontairement séparés des jetons "
                      "de sécurité des graphiques (--series-1…8) pour ne jamais mélanger "
                      "esthétique et lisibilité daltonisme.")
@@ -1133,33 +1237,37 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "14. Tests automatisés")
     add_body(doc,
-        "143 tests pytest, sans dépendance réseau ni base de données réelle : le client "
-        "Gemini, les connexions MySQL et le client Google Sheets (gspread) sont simulés "
-        "(monkeypatch) via de faux objets "
-        "(fake cursor/connection capturant la requête générée pour l'affirmer dans le "
-        "test). Complétés systématiquement par une vérification en conditions réelles "
-        "(DB MySQL réelle, appel Gemini réel, et compilation par le vrai moteur vega-lite "
-        "en Node.js) — les tests protègent contre les régressions, la vérification réelle "
-        "est ce qui a révélé les deux bugs texte/graphique de la section 8.3.")
+        "152 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
+        "et le client Google Sheets (gspread) sont simulés (monkeypatch), et les données "
+        "sont un petit DataFrame construit dans le test. La suite tourne donc hors ligne, "
+        "en quelques secondes.")
+    add_body(doc,
+        "Ces tests sont systématiquement complétés par une vérification en conditions "
+        "réelles — Sheet réel, appel Gemini réel, exécution effective de chaque widget "
+        "via `dac check`. La répartition des rôles est nette : les tests protègent contre "
+        "les régressions, la vérification réelle est ce qui a révélé la quasi-totalité "
+        "des vrais bugs de ce projet (sections 8.3 et 15).")
     add_table(doc,
         ["Fichier", "Tests", "Ce qu'il protège"],
         [
-            ["test_intent_refiner.py", "37", "Dates relatives, parseur par mots-clés, affinage d'intention, "
-             "normalisation funnel/heatmap/scatter/days_remaining/exclude_statuses."],
-            ["test_vega_generator.py", "18", "Cardinalité des graphiques, palette, valeurs NULL, "
-             "les 4 nouveaux types de graphiques."],
-            ["test_llm_validation.py", "14", "Anti-hallucination : clarification plutôt que valeur devinée, "
-             "résolution fuzzy des filtres, chemin rapide vs LLM."],
+            ["test_intent_refiner.py", "37", "Dates relatives, parseur par mots-clés, affinage "
+             "d'intention, normalisation funnel/heatmap/scatter/days_remaining/exclude_statuses."],
+            ["test_data_store.py", "23", "Parsing et validation par ligne, littéraux NULL, "
+             "attribution et réécriture des identifiants, ligne invalide sautée sans bloquer les "
+             "autres, résilience à une panne de lecture du Sheet."],
+            ["test_dac_composer.py", "20", "Génération SQL (échappement des apostrophes, refus "
+             "d'injection), composition multi-widgets, filtres propagés à tous les widgets, grille "
+             "12 colonnes respectée, YAML valide et relisible."],
+            ["test_vega_generator.py", "18", "Cardinalité, palette, valeurs NULL (module conservé "
+             "mais plus utilisé par l'interface — voir section 16)."],
+            ["test_db_layer.py", "15", "Requêtage pandas : groupements, filtres à valeurs multiples, "
+             "intervalles, exclusion de statuts, chemin brut du scatter, DataFrame vide."],
+            ["test_llm_validation.py", "14", "Anti-hallucination : clarification plutôt que valeur "
+             "devinée, résolution fuzzy des filtres, chemin rapide vs LLM."],
             ["test_response_builder.py", "13", "Formatage des unités, messages texte déterministes, "
              "cohérence texte/graphique pour funnel et heatmap."],
-            ["test_db_layer.py", "13", "Construction des requêtes SQL, choix de vue, clauses IN/BETWEEN, "
-             "requête 2D du heatmap, chemin brut du scatter, exclusion de statuts."],
-            ["test_alerts.py", "12", "Fenêtre de 7 jours en direct, exclusion des statuts clos, envoi email, "
+            ["test_alerts.py", "12", "Fenêtre de 7 jours, exclusion des statuts clos, envoi email, "
              "rattrapage idempotent du scheduler."],
-            ["test_maintenance.py", "3", "Recalcul de days_remaining, résilience à une panne DB."],
-            ["test_sheets_sync.py", "33", "Parsing/validation par ligne, littéraux NULL, insertion + "
-             "réécriture d'id et des colonnes calculées, détection id existant/inconnu, ligne invalide "
-             "sautée sans bloquer les autres, résilience à une panne de lecture du Sheet."],
         ])
 
     # --- Q&A entretien ---
@@ -1175,20 +1283,41 @@ def build_guide_technique():
          "blanche, (2) _fuzzy_match ne retourne jamais une valeur absente des données "
          "réelles — sinon IntentUnclear déclenche une clarification, (3) les dates relatives "
          "sont calculées par arithmétique Python déterministe, jamais devinées par le LLM."),
-        ("Pourquoi MySQL plutôt que SQLite comme prévu dans le brief initial ?",
-         "Accès concurrent plus robuste pour un backend multi-requêtes, support natif de "
-         "vues pré-agrégées par dimension, et un pool de connexions dédié — le schéma reste "
-         "simple, donc la complexité ajoutée reste faible face au bénéfice."),
+        ("Pourquoi avoir supprimé la base de données ?",
+         "Parce qu'elle ne servait plus à rien. Depuis que les équipes saisissent dans le "
+         "Google Sheet, MySQL n'était qu'un intermédiaire : on y recopiait le Sheet toutes "
+         "les 15 minutes pour le relire juste après. Avec ~350 lignes et 18 colonnes, les "
+         "données tiennent en mémoire dans un DataFrame pandas. Bénéfice mesurable au-delà "
+         "de l'installation simplifiée : toute la machinerie de vues pré-agrégées (choix de "
+         "vue, vérification de compatibilité, repli sur un calcul brut) a disparu, car "
+         "pandas groupe uniformément. Ce choix serait à revoir à partir de quelques dizaines "
+         "de milliers de lignes, ou s'il fallait des écritures concurrentes."),
+        ("Si les données sont dans pandas, pourquoi un fichier DuckDB ?",
+         "Parce que le moteur de tableaux de bord (Bruin DAC) ne sait interroger que des "
+         "connexions SQL. DuckDB est une projection en lecture seule du DataFrame, "
+         "régénérée à chaque rafraîchissement — pas un retour à une base de données : "
+         "aucun code applicatif ne la lit. pandas reste la source de vérité, ce qui "
+         "garantit que le chat et les tableaux de bord ne peuvent pas afficher des "
+         "chiffres différents."),
+        ("Pourquoi ne pas laisser l'IA écrire les tableaux de bord librement ?",
+         "Elle les écrit — mais pas le SQL. Le modèle produit une intention validée contre "
+         "la liste blanche, et du code déterministe la traduit en requêtes. Laisser le "
+         "modèle produire le SQL rouvrirait exactement la classe de bugs que tout le projet "
+         "empêche : colonne inventée, filtre halluciné, agrégation silencieusement fausse. "
+         "Le coût de cette contrainte est nul en pratique, puisque les 18 colonnes fixes du "
+         "Sheet sont déjà entièrement décrites par la liste blanche."),
         ("Comment gérez-vous le contexte multi-tour sans session serveur ?",
          "Le frontend renvoie le dernier intent résolu (previous_intent) à chaque nouvelle "
          "question. Dès qu'un contexte est présent, le parseur rapide est systématiquement "
          "court-circuité au profit du LLM, à qui ce contexte est injecté dans le prompt "
          "système pour qu'il décide d'hériter ou non des paramètres précédents."),
-        ("Pourquoi recalculer days_remaining plutôt que le décrémenter de 1 chaque jour ?",
-         "Un décrément accumule une dérive silencieuse si un jour est manqué (serveur "
-         "éteint). Recalculer depuis DATEDIFF(deadline, CURDATE()) est idempotent : le "
-         "résultat est toujours correct, peu importe combien de jours se sont écoulés "
-         "depuis la dernière exécution."),
+        ("Comment garantissez-vous que « jours restants » n'est jamais obsolète ?",
+         "Par construction, plus par un job de maintenance. Cette valeur est recalculée à "
+         "chaque chargement des données (toutes les 15 minutes) depuis la deadline réelle "
+         "et la date du jour. Auparavant, c'était une colonne figée qu'un job nocturne "
+         "rafraîchissait — avec le risque classique d'une dérive si le job était manqué. "
+         "Le module de maintenance dédié a pu être supprimé : le mécanisme le plus fiable "
+         "est ici celui qu'on a retiré."),
         ("Que se passe-t-il si le LLM renvoie un JSON malformé ou un schéma invalide ?",
          "json.JSONDecodeError et pydantic.ValidationError sont interceptées explicitement "
          "et transformées en message de clarification pour l'utilisateur — jamais une "
@@ -1211,11 +1340,14 @@ def build_guide_technique():
          "quelle que soit son origine — utile si jamais les deux premiers correctifs sont "
          "un jour contournés par une reformulation imprévue."),
         ("Comment garantis-tu qu'un email d'alerte n'est jamais envoyé deux fois le même jour ?",
-         "Une table scheduler_state (job_name, last_run_date) trace la dernière exécution. "
+         "Un fichier local (data/scheduler_state.json) trace la date de dernière exécution "
+         "par job — c'était une table MySQL avant la suppression de la base. "
          "run_daily_alert_check_if_needed() vérifie cette date avant d'agir, et la met à "
          "jour après — appelée à la fois par le cron 8h et au démarrage du serveur, donc "
          "un redémarrage tardif rattrape l'envoi manqué sans risquer un doublon si le cron "
-         "avait déjà tourné plus tôt dans la journée."),
+         "avait déjà tourné plus tôt dans la journée. Nuance de robustesse : si la lecture "
+         "de ce fichier échoue, l'alerte part quand même — un mécanisme de suivi cassé ne "
+         "doit jamais supprimer silencieusement l'alerte qu'il protège."),
         ("Comment as-tu trouvé les bugs de contraste en mode sombre sans navigateur ni capture d'écran ?",
          "En lisant le CSS ligne par ligne plutôt qu'en devinant : chercher chaque endroit "
          "où une couleur qui change avec le thème (var(--text-primary), un color-mix vers "
@@ -1224,24 +1356,32 @@ def build_guide_technique():
          "blanc lui aussi en mode sombre. Un raisonnement statique suffit à repérer ce "
          "type de bug ; il n'a fallu aucun rendu réel pour le localiser, seulement pour le "
          "confirmer visuellement ensuite."),
-        ("Pourquoi ne pas synchroniser aussi les suppressions (Sheet -> base) ?",
-         "Choix de prudence délibéré, pas un oubli : la synchro tourne toutes les 15 "
-         "minutes sans supervision humaine. Une suppression automatique y est le pire "
-         "endroit possible pour une opération destructive et irréversible — une lecture "
-         "partielle, un mauvais onglet ou un Sheet vidé par erreur effacerait de vraies "
-         "données avant que quiconque ne le remarque. Le risque a été explicitement "
-         "évalué avec le porteur du projet, qui a choisi de garantir seulement l'ajout et "
-         "la modification plutôt que la fonctionnalité complète."),
-        ("Un test avec des mocks peut-il garantir qu'une intégration externe (Google Sheets, MySQL) "
-         "fonctionne réellement ?",
-         "Non — exemple concret rencontré sur ce projet : tous les tests mockés de la "
-         "synchro Sheets passaient, mais le premier essai en conditions réelles rapportait "
-         "359 lignes sur 360 comme « id introuvable » alors qu'elles existaient toutes en "
-         "base. La cause (cursor.rowcount qui compte les lignes modifiées, pas trouvées) "
-         "n'était visible qu'avec de vraies données où la plupart des UPDATE ne changent "
-         "rien. Les mocks avaient simulé le comportement qu'on attendait de rowcount, pas "
-         "son vrai comportement — la leçon : les mocks valident la logique connue, seule "
+        ("Un test avec des mocks peut-il garantir qu'une intégration externe fonctionne "
+         "réellement ?",
+         "Non — exemple concret rencontré sur ce projet, à l'époque où les données "
+         "transitaient encore par MySQL : tous les tests mockés passaient, mais le premier "
+         "essai en conditions réelles rapportait 359 lignes sur 360 comme « id introuvable » "
+         "alors qu'elles existaient toutes. La cause (cursor.rowcount qui compte les lignes "
+         "modifiées, pas trouvées) n'était visible qu'avec de vraies données où la plupart "
+         "des mises à jour ne changent rien. Les mocks avaient simulé le comportement qu'on "
+         "ATTENDAIT, pas le vrai — la leçon : les mocks valident la logique connue, seule "
          "une vérification en conditions réelles révèle ce qu'on n'avait pas anticipé."),
+        ("Quel bug ce projet vous a-t-il appris à chercher en priorité ?",
+         "Ceux qui produisent un résultat plausible plutôt qu'une erreur. Trois exemples "
+         "réels : une liste d'opportunités « urgentes » qui incluait des échéances dépassées "
+         "(moins sept jours est bien inférieur à sept, mathématiquement juste et "
+         "sémantiquement faux) ; un texte qui décrivait dix-neuf statuts quand le graphique "
+         "n'en montrait que dix ; et un widget « budget par practice » réduit à une seule "
+         "barre parce que la question filtrait déjà sur une practice. Aucun ne lève "
+         "d'exception, aucun n'échoue en test unitaire — ils se voient seulement en "
+         "regardant le résultat final avec de vraies données."),
+        ("Que se passe-t-il si la génération du tableau de bord échoue ?",
+         "La réponse textuelle est renvoyée quand même : l'appel est enveloppé dans un "
+         "try/except et l'échec est journalisé, pas propagé. Le frontend retombe alors sur "
+         "la vue d'ensemble. Même principe pour la projection DuckDB : si le fichier est "
+         "momentanément verrouillé, l'ancien est conservé et les tableaux de bord affichent "
+         "des données d'un cycle plus anciennes — jamais une erreur à l'écran, jamais une "
+         "base vide."),
     ]
     for question, answer in qa:
         add_h3(doc, "Q : " + question)
@@ -1258,17 +1398,32 @@ def build_guide_technique():
     add_bullet(doc, "L'historique de conversation persistant (localStorage) est par "
                      "navigateur/appareil, pas partagé entre postes — nécessiterait un compte "
                      "utilisateur pour ça.")
-    add_bullet(doc, "Le nuage de points et la carte de chaleur n'ont pas de garde-fou de "
-                     "cardinalité aussi mûr que bar/pie pour des cas extrêmes (dimension à très "
-                     "forte cardinalité en axe du heatmap au-delà du plafond testé).")
-    add_bullet(doc, "La synchro Google Sheets ne détecte pas les suppressions (section 11.6, "
-                     "choix délibéré) et retraite chaque ligne à chaque passage plutôt que de "
-                     "ne toucher que les lignes changées — sans impact réel à l'échelle actuelle "
-                     "(360 lignes/15 min), mais à reconsidérer si le Sheet grossissait beaucoup.")
-    add_bullet(doc, "12 opportunités en base ont un status invalide, présent avant même la "
-                     "synchro Sheets et jamais détecté faute de validation stricte à l'écriture "
-                     "d'origine (section 11.5) — à corriger manuellement ou à ajouter à la liste "
-                     "blanche si ce sont des statuts légitimes.")
+    add_bullet(doc, "Trois processus doivent tourner (API, serveur DAC sur le port 8321, "
+                     "frontend) au lieu d'un seul. scripts/start_dev.bat les lance ensemble, mais "
+                     "un tableau de bord vide dans l'iframe signifie presque toujours que le "
+                     "serveur DAC n'est pas démarré.")
+    add_bullet(doc, "La zone tableau de bord utilise l'apparence de DAC, pas le thème Devoteam : "
+                     "DAC sert sa propre interface web, impossible à rendre comme un composant "
+                     "React, donc les jetons de couleur et le mode sombre du projet ne s'y "
+                     "appliquent pas. Le chat, lui, garde le branding complet.")
+    add_bullet(doc, "Le module Vega-Lite n'est plus utilisé par l'interface depuis le passage à "
+                     "DAC, mais reste dans le dépôt (backend/vega_generator.py et le composant "
+                     "React associé) — un nettoyage dédié reste à faire, il allègerait aussi "
+                     "sensiblement le bundle frontend.")
+    add_bullet(doc, "La toute première requête d'un widget prend environ 12 secondes (démarrage à "
+                     "froid du moteur de requête), puis ~400 ms. Sensible uniquement au premier "
+                     "chargement après démarrage.")
+    add_bullet(doc, "Le chargement retraite chaque ligne du Sheet à chaque cycle plutôt que de ne "
+                     "toucher que les lignes modifiées — sans impact réel à l'échelle actuelle "
+                     "(~350 lignes toutes les 15 minutes), à reconsidérer si le Sheet grossissait "
+                     "beaucoup.")
+    add_bullet(doc, "12 opportunités ont un status invalide dans le Sheet — problème de qualité de "
+                     "données antérieur au projet, révélé par la validation stricte (section 4.2). "
+                     "Ces lignes sont journalisées et ignorées à chaque chargement. À corriger dans "
+                     "le Sheet, ou à ajouter à la liste blanche si ces statuts sont légitimes.")
+    add_bullet(doc, "Le mot « urgentes » seul ne pose aucun filtre de délai : il faut « urgentes "
+                     "(< 7 jours) » pour borner l'échéance. Comportement volontaire — ne rien "
+                     "deviner — mais qui surprend au premier essai.")
 
     out_path = os.path.join(DOC_DIR, "Guide_Technique_DevoTeam_Dashboard.docx")
     doc.save(out_path)
@@ -1306,16 +1461,20 @@ def build_presentation_script():
         "projet attaque les deux en même temps : l'accès aux données devient conversationnel, "
         "et le système prévient tout seul quand une échéance approche.")
 
-    add_h1(doc, "Ce qui va vous surprendre : huit façons de voir les mêmes données")
+    add_h1(doc, "Ce qui va vous surprendre : un tableau de bord entier par question")
     add_cue(doc, "[Montrer le chat à l'écran — poser une vraie question en direct si possible]")
     add_body(doc,
-        "Barres, courbes, aires, camemberts, cartes KPI, tableaux — jusque-là, classique. "
-        "Mais j'ai aussi construit un entonnoir de vente, qui montre visuellement où les "
-        "deals se perdent dans le pipeline commercial, et un nuage de points qui croise le "
-        "budget avec la probabilité de gain pour révéler une vraie corrélation : "
-        "est-ce que les gros budgets ont statistiquement plus de chances d'être gagnés ? "
-        "Ce sont des types de graphiques qu'on ne trouve pas dans un dashboard interne "
-        "standard, et le système choisit tout seul lequel utiliser selon la question posée.")
+        "Quand je pose une question, je ne reçois pas un graphique : je reçois un tableau "
+        "de bord entier. Les totaux du périmètre, le graphique qui répond, le même chiffre "
+        "sous un autre angle, l'état du pipeline, et le détail ligne par ligne — tous "
+        "filtrés exactement pareil. Autrement dit, ça ne répond pas seulement à la "
+        "question posée, ça donne de quoi poser la suivante.")
+    add_body(doc,
+        "Parmi les visualisations, il y a un entonnoir de vente qui montre où les deals se "
+        "perdent dans le pipeline, et un nuage de points qui croise le budget avec la "
+        "probabilité de gain — est-ce que les gros budgets ont statistiquement plus de "
+        "chances d'être gagnés ? Ce sont des choses qu'on ne trouve pas dans un dashboard "
+        "interne standard, et le système choisit tout seul quoi afficher selon la question.")
     add_body(doc,
         "Le chat comprend aussi le contexte : je peux demander « et pour Data Management ? » "
         "juste après une première question, et il comprend que je veux le même graphique, "
@@ -1369,13 +1528,21 @@ def build_presentation_script():
         "entièrement lisible — et pas juste esthétique : j'ai trouvé et corrigé deux bugs "
         "de contraste où le texte devenait quasiment invisible en mode sombre, en relisant "
         "le CSS ligne par ligne plutôt qu'en devinant. Et pour que ce soit simple à lancer "
-        "au quotidien, j'ai construit un raccourci bureau en un clic qui démarre MySQL, le "
-        "serveur et l'interface, puis ouvre directement la page.")
+        "au quotidien, j'ai construit un raccourci bureau en un clic qui démarre les trois "
+        "services et ouvre directement la page.")
+    add_body(doc,
+        "J'ai aussi fini par supprimer la base de données. Elle ne servait plus à rien : "
+        "les équipes saisissent dans un Google Sheet, et on recopiait ce Sheet en base "
+        "toutes les quinze minutes pour le relire juste après. Aujourd'hui l'application "
+        "lit le Sheet directement — plus rien à installer, plus rien à administrer, et "
+        "tout un pan de code compliqué qui disparaît avec.")
 
     add_h1(doc, "Les chiffres à retenir")
-    add_bullet(doc, "8 types de graphiques choisis automatiquement selon la question posée.")
-    add_bullet(doc, "100 tests automatisés, aucune dépendance à une base de données réelle.")
-    add_bullet(doc, "15 phases de développement livrées, de bout en bout, en autonomie.")
+    add_bullet(doc, "1 question = 1 tableau de bord complet, généré automatiquement.")
+    add_bullet(doc, "9 types de visualisations choisis automatiquement selon la question.")
+    add_bullet(doc, "152 tests automatisés, aucune dépendance à des données réelles.")
+    add_bullet(doc, "21 phases de développement livrées, de bout en bout, en autonomie.")
+    add_bullet(doc, "0 base de données à administrer — le Google Sheet est la source de vérité.")
     add_bullet(doc, "0 hallucination tolérée : donnée non fiable = question posée en retour, jamais un chiffre inventé.")
 
     add_h1(doc, "Pour conclure")
@@ -1393,9 +1560,11 @@ def build_presentation_script():
 
 
 if __name__ == "__main__":
+    # build_presentation_script() n'est volontairement PAS appelée ici : son .docx a été
+    # retiré du dépôt (il ne servait plus), et le régénérer à chaque exécution le ferait
+    # silencieusement réapparaître. La fonction reste disponible et à jour — l'appeler
+    # explicitement suffit à reproduire le document si le besoin revient.
     p1 = build_rapport_professionnel()
     p2 = build_guide_technique()
-    p3 = build_presentation_script()
     print("Généré :", p1)
     print("Généré :", p2)
-    print("Généré :", p3)
