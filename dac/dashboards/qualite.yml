@@ -1,0 +1,84 @@
+schema: https://getbruin.com/schemas/dac/dashboard/v1
+name: Qualité des données
+description: Ce qui est écarté du portefeuille à chaque chargement, et pourquoi
+connection: devoteam_duckdb
+
+# L'application rejette toute ligne dont une valeur n'est pas reconnue, plutôt que
+# de la rattacher au hasard à une valeur voisine. Ce dashboard rend ces rejets
+# visibles : une ligne écartée en silence est un chiffre faux qui s'ignore.
+#
+# Il ne corrige rien — décider qu'« AMI » saisi dans status doit devenir un opp_type
+# relève du métier. Les corrections se font dans le Google Sheet ; le prochain
+# chargement (15 min, ou le bouton de synchro) les prend en compte.
+
+rows:
+  - widgets:
+      - name: Opportunités chargées
+        type: metric
+        col: 4
+        sql: SELECT COUNT(*) AS value FROM opportunities
+        value: { field: value, type: number, format: ",.0f" }
+
+      - name: Lignes rejetées
+        type: metric
+        col: 4
+        description: Écartées du portefeuille — leurs montants ne comptent nulle part.
+        sql: |
+          SELECT COALESCE(SUM(nb), 0) AS value
+          FROM data_quality
+          WHERE categorie = 'Ligne rejetée'
+        value: { field: value, type: number, format: ",.0f" }
+
+      - name: Part du portefeuille perdue
+        type: metric
+        col: 4
+        sql: |
+          SELECT COALESCE(
+                   (SELECT SUM(nb) FROM data_quality WHERE categorie = 'Ligne rejetée'), 0
+                 ) * 1.0
+                 / NULLIF((SELECT COUNT(*) FROM opportunities)
+                          + COALESCE((SELECT SUM(nb) FROM data_quality
+                                      WHERE categorie = 'Ligne rejetée'), 0), 0) AS value
+        value: { field: value, type: number, format: ".1%" }
+
+  - widgets:
+      - name: Pourquoi des lignes sont rejetées
+        type: table
+        col: 12
+        description: À corriger dans le Google Sheet, ou à ajouter à la liste blanche si la valeur est légitime.
+        sql: |
+          SELECT sujet, nb, detail
+          FROM data_quality
+          WHERE categorie = 'Ligne rejetée'
+          ORDER BY nb DESC
+        columns:
+          - { name: sujet, label: Valeur en cause }
+          - { name: nb, label: Lignes, number: number }
+          - { name: detail, label: Diagnostic }
+
+  - widgets:
+      - name: Valeurs manquantes
+        type: chart
+        chart: bar
+        col: 6
+        description: Part des opportunités où la colonne est vide.
+        sql: |
+          SELECT sujet, part
+          FROM data_quality
+          WHERE categorie = 'Valeur manquante'
+          ORDER BY part DESC
+        x: { field: sujet, type: category, title: Colonne }
+        y: { field: part, type: number, title: Part vide, format: ".0%" }
+
+      - name: Conséquence de chaque manque
+        type: table
+        col: 6
+        sql: |
+          SELECT sujet, nb, detail
+          FROM data_quality
+          WHERE categorie = 'Valeur manquante'
+          ORDER BY nb DESC
+        columns:
+          - { name: sujet, label: Colonne }
+          - { name: nb, label: Lignes vides, number: number }
+          - { name: detail, label: Conséquence }

@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 DUCKDB_PATH = Path(__file__).resolve().parent.parent / "dac" / "data" / "devoteam.db"
 
 TABLE_NAME = "opportunities"
+QUALITY_TABLE = "data_quality"
 
 # DuckDB autorise SOIT plusieurs lecteurs SOIT un seul écrivain sur un fichier :
 # si un `bruin query` (lecture, lancé par DAC) est en cours pile au moment du
@@ -46,6 +47,13 @@ def export_dataframe(df) -> bool:
                 # vue d'un lecteur, et reprend automatiquement le schéma du DataFrame
                 # (pas de définition de colonnes à maintenir en double ici).
                 con.execute(f"CREATE OR REPLACE TABLE {TABLE_NAME} AS SELECT * FROM df")
+
+                # Le rapport de qualité voyage avec les données : écrit dans la même
+                # transaction, il décrit forcément le chargement qu'on vient de faire
+                # — impossible d'afficher un rapport décalé d'un cycle.
+                from .data_quality import quality_dataframe
+                qdf = quality_dataframe()
+                con.execute(f"CREATE OR REPLACE TABLE {QUALITY_TABLE} AS SELECT * FROM qdf")
             finally:
                 # Fermeture immédiate : garder la connexion ouverte bloquerait les
                 # lectures de DAC jusqu'au prochain rafraîchissement.

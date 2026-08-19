@@ -95,7 +95,16 @@ def _get_worksheet():
 
 class RowError(ValueError):
     """Ligne de Sheet invalide — jamais laissée corrompre les lignes suivantes,
-    seulement journalisée et sautée (voir _load_from_sheet)."""
+    seulement journalisée et sautée (voir _load_from_sheet).
+
+    Porte la colonne et la valeur fautives en plus du message : c'est ce qui permet
+    au rapport de qualité (backend/data_quality.py) de regrouper les erreurs par
+    cause réelle, plutôt que de devoir réanalyser des phrases déjà formatées."""
+
+    def __init__(self, message: str, field: str | None = None, value: str | None = None):
+        super().__init__(message)
+        self.field = field
+        self.value = value
 
 
 def _parse_date(raw: str, field: str) -> date:
@@ -107,7 +116,8 @@ def _parse_date(raw: str, field: str) -> date:
             return datetime.strptime(raw, fmt).date()
         except ValueError:
             continue
-    raise RowError(f"{field}='{raw}' n'est pas une date valide (attendu AAAA-MM-JJ)")
+    raise RowError(f"{field}='{raw}' n'est pas une date valide (attendu AAAA-MM-JJ)",
+                    field=field, value=raw)
 
 
 def _parse_float(raw: str, field: str):
@@ -117,7 +127,7 @@ def _parse_float(raw: str, field: str):
     try:
         return float(raw)
     except ValueError:
-        raise RowError(f"{field}='{raw}' n'est pas un nombre valide")
+        raise RowError(f"{field}='{raw}' n'est pas un nombre valide", field=field, value=raw)
 
 
 def _parse_win_probability(raw: str):
@@ -141,7 +151,8 @@ def _normalize_choice(raw: str, field: str) -> str:
     for candidate in known:
         if candidate.lower() == raw.lower():
             return candidate
-    raise RowError(f"{field}='{raw}' non reconnu — valeurs attendues : {', '.join(known)}")
+    raise RowError(f"{field}='{raw}' non reconnu — valeurs attendues : {', '.join(known)}",
+                    field=field, value=raw)
 
 
 def _parse_row(headers: list, values: list) -> dict:
@@ -195,7 +206,10 @@ def _parse_row(headers: list, values: list) -> dict:
 def _load_from_sheet() -> tuple[list[dict], dict]:
     """Lit le Sheet, valide chaque ligne, attribue un id aux nouvelles lignes et
     réécrit id + colonnes calculées dans le Sheet. Renvoie (lignes valides, résumé)."""
-    summary = {"total_rows": 0, "skipped": 0, "new_ids_assigned": 0, "errors": []}
+    # "errors" reste la liste lisible affichee a l'utilisateur ; "issues" en est la
+    # version structuree, exploitee par backend/data_quality.py pour regrouper les
+    # rejets par cause plutot que de reanalyser des phrases deja formatees.
+    summary = {"total_rows": 0, "skipped": 0, "new_ids_assigned": 0, "errors": [], "issues": []}
 
     ws = _get_worksheet()
     all_values = ws.get_all_values()
@@ -225,6 +239,12 @@ def _load_from_sheet() -> tuple[list[dict], dict]:
             logger.warning("Chargement des données : ligne %d ignorée — %s", row_number, e)
             summary["skipped"] += 1
             summary["errors"].append(f"Ligne {row_number} : {e}")
+            summary["issues"].append({
+                "row": row_number,
+                "field": getattr(e, "field", None) or "?",
+                "value": getattr(e, "value", None) or "",
+                "message": str(e),
+            })
             continue
 
         parsed_rows.append((row_number, row))
@@ -292,7 +312,7 @@ def refresh_dataframe() -> dict:
         rows, summary = _load_from_sheet()
     except Exception:
         logger.exception("Chargement des données : impossible de lire le Sheet.")
-        summary = {"total_rows": 0, "skipped": 0, "new_ids_assigned": 0,
+        summary = {"total_rows": 0, "skipped": 0, "new_ids_assigned": 0, "issues": [],
                     "errors": ["Lecture du Sheet impossible — voir les logs."]}
         _last_refresh_summary = summary
         return summary

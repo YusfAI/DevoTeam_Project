@@ -182,7 +182,12 @@ def test_empty_sheet_is_a_noop(monkeypatch):
 
     summary = refresh_dataframe()
 
-    assert summary == {"total_rows": 0, "skipped": 0, "new_ids_assigned": 0, "errors": []}
+    # Assertion sur les champs qui portent le sens, pas sur le dict entier :
+    # une clé ajoutée au résumé ne doit pas casser un test sur le comportement.
+    assert summary["total_rows"] == 0
+    assert summary["skipped"] == 0
+    assert summary["new_ids_assigned"] == 0
+    assert summary["errors"] == []
     df = get_dataframe()
     assert df.empty
 
@@ -194,7 +199,12 @@ def test_completely_blank_row_is_silently_skipped(monkeypatch):
 
     summary = refresh_dataframe()
 
-    assert summary == {"total_rows": 0, "skipped": 0, "new_ids_assigned": 0, "errors": []}
+    # Assertion sur les champs qui portent le sens, pas sur le dict entier :
+    # une clé ajoutée au résumé ne doit pas casser un test sur le comportement.
+    assert summary["total_rows"] == 0
+    assert summary["skipped"] == 0
+    assert summary["new_ids_assigned"] == 0
+    assert summary["errors"] == []
 
 
 def test_id_writeback_failure_keeps_the_row_loaded_in_memory(monkeypatch):

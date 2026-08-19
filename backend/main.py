@@ -164,6 +164,15 @@ async def get_deadline_alerts():
     return {"opportunities": opportunities, "window_days": 7}
 
 
+@app.get("/data/quality")
+async def data_quality_report():
+    """Ce qui a été écarté au dernier chargement et pourquoi (lignes rejetées,
+    valeurs manquantes). Les mêmes chiffres alimentent le dashboard « Qualité des
+    données » via DuckDB — voir backend/data_quality.py."""
+    from .data_quality import report
+    return report()
+
+
 @app.post("/sheets/sync")
 async def trigger_sheets_sync():
     """Rafraîchissement manuel des données depuis le Google Sheet, en plus du job

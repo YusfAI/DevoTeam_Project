@@ -194,6 +194,8 @@ def compose_widgets(intent: dict) -> list:
     conservent les filtres de la question — sinon le dashboard mélangerait des
     chiffres qui ne se comparent pas."""
     archetype = _question_archetype(intent)
+    if archetype == "comparison":
+        return _compose_comparison(intent)
     if archetype == "temporal":
         return _compose_temporal(intent)
     if archetype == "pipeline":
@@ -205,6 +207,15 @@ def compose_widgets(intent: dict) -> list:
     return _compose_breakdown(intent)
 
 
+def _compared_values(intent: dict):
+    """Colonne et valeurs mises en regard quand la question compare explicitement
+    (« compare la France et le Maroc » → filters={'country': ['France','Maroc']})."""
+    for column, value in (intent.get("filters") or {}).items():
+        if isinstance(value, (list, tuple)) and len(value) >= 2:
+            return column, list(value)
+    return None, []
+
+
 def _question_archetype(intent: dict) -> str:
     chart_type = intent.get("chart_type") or "bar"
     dimension = intent.get("dimension") or ""
@@ -214,21 +225,37 @@ def _question_archetype(intent: dict) -> str:
         return "pipeline"
     if chart_type == "table" or intent.get("use_raw_table"):
         return "detail"
+    # Une comparaison prime sur les autres formes : la question porte sur l'ÉCART
+    # entre plusieurs entités, pas sur la répartition de chacune prise isolément.
+    if _compared_values(intent)[0]:
+        return "comparison"
     if dimension in ("deadline_month", "deadline_year"):
         return "temporal"
     return "breakdown"
 
 
 def _kpi_row(intent: dict, metric: str) -> list:
-    """Les totaux du périmètre. weighted_amount n'est proposé que si la métrique
-    principale n'est pas déjà celle-là."""
-    widgets = [_widget_from_intent(_kpi_intent(intent, metric), _metric_label(metric), col=4)]
+    """Les chiffres du périmètre, chacun accompagné de quoi le situer.
+
+    Un total seul ne veut rien dire : on ajoute donc systématiquement un point de
+    comparaison — le poids du périmètre dans le portefeuille quand la question
+    filtre, sinon la valeur moyenne par opportunité."""
+    widgets = [_widget_from_intent(_kpi_intent(intent, metric), _metric_label(metric), col=3)]
     if metric != "nb_opportunities":
         widgets.append(_widget_from_intent(
-            _kpi_intent(intent, "nb_opportunities"), "Opportunités", col=4))
+            _kpi_intent(intent, "nb_opportunities"), "Opportunités", col=3))
+
+    # Contexte : « part du portefeuille » n'a de sens que si un filtre restreint le
+    # périmètre (sans filtre elle vaudrait toujours 100 %) — sinon on donne l'ordre
+    # de grandeur unitaire, qui situe le total tout aussi bien.
+    if intent.get("filters") or intent.get("range_filters"):
+        widgets.append(_share_of_portfolio_widget(intent, metric, col=3))
+    elif metric != "nb_opportunities":
+        widgets.append(_average_widget(intent, metric, col=3))
+
     if metric != "weighted_amount":
         widget = _widget_from_intent(
-            _kpi_intent(intent, "weighted_amount"), "Montant pondéré", col=4)
+            _kpi_intent(intent, "weighted_amount"), "Montant pondéré", col=3)
         # Mention explicite : weighted_amount est vide pour ~49 % des opportunités
         # (probabilité de gain non renseignée). Sans cette précision, le chiffre se
         # lit comme un total du portefeuille alors qu'il n'en couvre que la moitié.
@@ -295,6 +322,39 @@ def _is_pie_readable(dimension: str, intent: dict) -> bool:
         logger.warning("Cardinalité de %s indéterminable, repli sur un graphique en barres.",
                         dimension, exc_info=True)
         return False
+
+
+def _share_of_portfolio_widget(intent: dict, metric: str, col: int) -> dict:
+    """Poids du périmètre interrogé dans le portefeuille entier.
+
+    C'est la réponse directe à « 72 M€, c'est beaucoup ? » : un montant absolu n'a
+    aucun point de comparaison tant qu'on ne sait pas ce qu'il représente du tout.
+    Ne vaut la peine que si la question filtre — sans filtre, la part vaut 100 %."""
+    expr = METRIC_SQL.get(metric, METRIC_SQL["budget"])
+    where = _where_clause(intent)
+    sql = (
+        f"SELECT (SELECT {expr} FROM opportunities WHERE {where})\n"
+        f"     / NULLIF((SELECT {expr} FROM opportunities), 0) AS value"
+    )
+    return {
+        "name": "Part du portefeuille", "type": "metric", "col": col, "sql": sql,
+        "description": f"Ce que représente ce périmètre sur l'ensemble ({_metric_label(metric).lower()}).",
+        "value": {"field": "value", "type": "number", "format": ".1%"},
+    }
+
+
+def _average_widget(intent: dict, metric: str, col: int) -> dict:
+    """Valeur moyenne par opportunité : un ordre de grandeur unitaire, qui situe le
+    total (350 opportunités à 470 k€ n'est pas la même histoire que 10 à 16 M€)."""
+    column = {"budget": "budget", "financial_offer": "financial_offer",
+              "weighted_amount": "weighted_amount"}.get(metric, "budget")
+    where = _where_clause(intent)
+    return {
+        "name": f"{_metric_label(metric)} moyen", "type": "metric", "col": col,
+        "sql": f"SELECT AVG({column}) AS value\nFROM opportunities\nWHERE {where}",
+        "description": "Moyenne par opportunité du périmètre.",
+        "value": {"field": "value", "type": "number", "format": ",.0f"},
+    }
 
 
 def _share_of_total_widget(intent: dict, metric: str, col: int) -> dict:
@@ -397,6 +457,58 @@ def _compose_detail(intent: dict) -> list:
             widgets.append(second)
         else:
             widgets[-1]["col"] = 12
+    return widgets
+
+
+def _grouped_bar_widget(intent: dict, metric: str, axis: str, series: str, col: int) -> dict:
+    """Barres groupées : `axis` en abscisse, une couleur par valeur de `series`.
+
+    C'est ce qui rend une comparaison lisible — voir côte à côte le budget de chaque
+    pays DÉCOMPOSÉ par practice montre d'où vient l'écart, là où deux barres totales
+    disent seulement qu'il existe."""
+    expr = METRIC_SQL.get(metric, METRIC_SQL["budget"])
+    where = _where_clause(intent)
+    sql = (
+        f"SELECT {axis}, {series}, {expr} AS {metric}\n"
+        f"FROM opportunities\nWHERE {where}\n"
+        f"GROUP BY {axis}, {series}\n"
+        f"ORDER BY {axis}, {series}"
+    )
+    return {
+        "name": f"{_metric_label(metric)} par {_dimension_label(axis).lower()} "
+                 f"et {_dimension_label(series).lower()}",
+        "type": "chart", "chart": "bar", "col": col, "sql": sql, "stacked": True,
+        "color": {"field": series},
+        "x": {"field": axis, "type": "category", "title": _dimension_label(axis)},
+        "y": {"field": metric, "type": "number", "title": _metric_label(metric), "format": _fmt(metric)},
+    }
+
+
+def _compose_comparison(intent: dict) -> list:
+    """« compare la France et le Maroc » : montrer l'écart, puis l'expliquer.
+
+    Une comparaison ne se satisfait pas de deux barres : il faut la part relative de
+    chacun (l'écart en proportion, pas seulement en valeur) et une décomposition qui
+    montre D'OÙ vient cet écart."""
+    metric = intent.get("metric") or "budget"
+    column, values = _compared_values(intent)
+    widgets = _kpi_row(intent, metric)
+
+    compare_intent = _variant_intent(intent, dimension=column, chart_type="bar",
+                                      use_raw_table=False, limit=0)
+    widgets.append(_widget_from_intent(
+        compare_intent, intent.get("goal") or f"Comparaison par {_dimension_label(column).lower()}",
+        col=6))
+
+    # Part de chacun dans le total comparé : dit si l'écart est marginal ou massif.
+    widgets.append(_share_of_total_widget(compare_intent, metric, col=6))
+
+    # D'où vient l'écart : même comparaison, décomposée par une seconde dimension.
+    series = _complementary_dimension(intent, exclude={column})
+    if series:
+        widgets.append(_grouped_bar_widget(intent, metric, axis=column, series=series, col=12))
+
+    widgets.append(_detail_widget(intent, col=12))
     return widgets
 
 
