@@ -3,7 +3,9 @@ import { OVERVIEW_DASHBOARD_NAME, dacDashboardUrl } from '../dac'
 import { getHealth } from '../api'
 import DevoteamLogo from './DevoteamLogo'
 
-export default function DashboardPanel({ dashboard, dashboardKey }) {
+export default function DashboardPanel({
+  dashboard, dashboardKey, historyOpen, onToggleHistory,
+}) {
   // Nom du dashboard DAC généré pour la dernière question (backend/dac_composer.py).
   // Absent tant qu'aucune question n'a été posée, ou si sa génération a échoué —
   // dans ce cas on retombe simplement sur la vue d'ensemble.
@@ -60,8 +62,22 @@ export default function DashboardPanel({ dashboard, dashboardKey }) {
           <h2>{title}</h2>
           <p>{subtitle}</p>
         </div>
-        {generatedName && (
-          <div className="dashboard-header-actions">
+        {/* Les commandes de vue vivent au-dessus du tableau de bord, pas dans le
+            chat : elles agissent sur ce qui est affiché ici. L'historique est le
+            premier, avant le sélecteur — c'est par lui qu'on choisit QUELLE analyse
+            regarder, le sélecteur ne fait ensuite que basculer entre elle et la vue
+            d'ensemble. */}
+        <div className="dashboard-header-actions">
+          <button
+            type="button"
+            className={`history-button${historyOpen ? ' active' : ''}`}
+            onClick={onToggleHistory}
+            title="Historique des analyses"
+            aria-expanded={historyOpen}
+          >
+            🕘 Historique
+          </button>
+          {generatedName && (
             <div className="view-toggle">
               <button
                 type="button"
@@ -78,8 +94,8 @@ export default function DashboardPanel({ dashboard, dashboardKey }) {
                 {isReplay ? 'Analyse' : 'Mon tableau de bord'}
               </button>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="dashboard-body align-top">

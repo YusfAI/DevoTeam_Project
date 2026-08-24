@@ -270,13 +270,6 @@ body::before {
   opacity: 0.6;
 }
 
-/* Bouton d'historique quand le panneau est ouvert : sans cet état, le bouton qui a
-   fait apparaître le panneau ne se distingue plus de ceux qui n'ont rien fait. */
-.theme-toggle.active {
-  background: rgba(255, 255, 255, 0.22);
-  border-color: rgba(255, 255, 255, 0.45);
-}
-
 .theme-toggle.syncing {
   animation: syncSpin 0.9s linear infinite;
 }
@@ -541,6 +534,36 @@ body::before {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+
+/* Bouton d'historique, dans l'en-tête du tableau de bord. Aligné sur le sélecteur
+   de vue qu'il précède : même hauteur, même rayon, même famille de couleurs — ce
+   sont deux commandes du même objet, elles doivent se lire comme une paire. */
+.history-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-card);
+  color: var(--text-secondary);
+  padding: 7px 13px;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.history-button:hover {
+  border-color: var(--brand-primary);
+  color: var(--text-primary);
+}
+
+.history-button.active {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: #ffffff;
 }
 
 .view-toggle {

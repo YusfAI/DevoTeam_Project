@@ -1372,7 +1372,10 @@ def build_guide_technique():
         "boutons suggérait à tort que le reste ne se demandait pas.")
     add_body(doc,
         "Les analyses déjà produites vivent dans un volet d'historique, ouvert depuis "
-        "l'en-tête et superposé au chat : groupé par jour, il signale l'analyse "
+        "l'en-tête du TABLEAU DE BORD — pas du chat : c'est par lui qu'on choisit "
+        "quelle analyse regarder, il précède donc le sélecteur de vue, qui ne fait "
+        "ensuite que basculer entre elle et la vue d'ensemble. Superposé au chat, "
+        "groupé par jour, il signale l'analyse "
         "affichée et rouvre n'importe quelle demande passée d'un clic. Une liste "
         "déroulante avait d'abord été livrée, puis remplacée — elle cachait son contenu "
         "tant qu'on ne l'ouvrait pas, tronquait des intitulés qui sont des phrases "

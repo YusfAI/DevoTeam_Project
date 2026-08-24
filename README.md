@@ -30,8 +30,9 @@ données à installer.
   pas compris repart par le chemin complet plutôt que d'hériter d'un filtre que
   l'utilisateur n'a pas redemandé. L'application dit à chaque fois ce qui a changé
   (« axe : pays → practice ; filtres retirés »), ou que la demande n'a rien changé.
-- **Historique des analyses** : un volet groupé par jour rassemble toutes les
-  questions posées ; chacune rouvre le tableau de bord qu'elle avait produit.
+- **Historique des analyses** : ouvert depuis l'en-tête du tableau de bord, un volet
+  groupé par jour rassemble toutes les questions posées et signale celle qui est
+  affichée ; chacune rouvre le tableau de bord qu'elle avait produit.
 - **Affaires perdues exclues par défaut** : les statuts d'échec (Offre perdue,
   Infructueux, NO GO, Hors scope, Non shortlisté) — 66 M€ sur 164 M€ — sortent de tous
   les chiffres et de tous les graphiques, sauf si la question porte explicitement sur

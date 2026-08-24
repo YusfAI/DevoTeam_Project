@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import ChatMessage from './ChatMessage'
 import ChatInput from './ChatInput'
 import HistoryPanel from './HistoryPanel'
@@ -21,9 +21,9 @@ const SUGGESTIONS = [
 export default function ChatPanel({
   messages, loading, onSubmit, theme, onToggleTheme, onClearHistory, onSyncSheets,
   syncingSheets, inputRef, onOpenDashboard, history, currentDashboardName,
+  historyOpen, onCloseHistory,
 }) {
   const endRef = useRef(null)
-  const [historyOpen, setHistoryOpen] = useState(false)
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' })
@@ -31,7 +31,7 @@ export default function ChatPanel({
 
   function handleOpenFromHistory(name, question) {
     onOpenDashboard(name, question)
-    setHistoryOpen(false)
+    onCloseHistory()
   }
 
   return (
@@ -45,16 +45,6 @@ export default function ChatPanel({
           </div>
         </div>
         <div className="chat-header-actions">
-          <button
-            className={`theme-toggle${historyOpen ? ' active' : ''}`}
-            onClick={() => setHistoryOpen((open) => !open)}
-            title="Historique des analyses"
-            aria-label="Historique des analyses"
-            aria-expanded={historyOpen}
-            type="button"
-          >
-            🕘
-          </button>
           <button
             className={`theme-toggle${syncingSheets ? ' syncing' : ''}`}
             onClick={onSyncSheets}
@@ -121,7 +111,7 @@ export default function ChatPanel({
           history={history}
           currentName={currentDashboardName}
           onOpen={handleOpenFromHistory}
-          onClose={() => setHistoryOpen(false)}
+          onClose={onCloseHistory}
         />
       )}
     </div>

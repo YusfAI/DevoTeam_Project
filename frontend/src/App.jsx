@@ -20,6 +20,9 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [syncingSheets, setSyncingSheets] = useState(false)
   const [dashboardKey, setDashboardKey] = useState(0)
+  // Ouvert depuis l'en-tête du tableau de bord, affiché par-dessus le chat : l'état
+  // est partagé par les deux panneaux, il vit donc ici plutôt que dans l'un d'eux.
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [theme, toggleTheme] = useTheme()
   const inputRef = useRef(null)
 
@@ -132,8 +135,15 @@ export default function App() {
           onSyncSheets={handleSyncSheets}
           syncingSheets={syncingSheets}
           inputRef={inputRef}
+          historyOpen={historyOpen}
+          onCloseHistory={() => setHistoryOpen(false)}
         />
-        <DashboardPanel dashboard={dashboard} dashboardKey={dashboardKey} />
+        <DashboardPanel
+          dashboard={dashboard}
+          dashboardKey={dashboardKey}
+          historyOpen={historyOpen}
+          onToggleHistory={() => setHistoryOpen((open) => !open)}
+        />
       </div>
     </div>
   )
