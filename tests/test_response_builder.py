@@ -156,3 +156,47 @@ def test_plural_does_not_double_an_existing_s():
     assert "pays" in _concentration_note(rows, 100.0, "pays")
     # Un label normal reste accordé.
     assert "practices" in _concentration_note(rows, 100.0, "practice")
+
+
+# ---------------------------------------------------------------------------
+# describe_change — dire ce qui a changé dans le tableau de bord
+# ---------------------------------------------------------------------------
+
+from backend.response_builder import describe_change, list_changes
+
+_AVANT = {"metric": "budget", "dimension": "country", "chart_type": "bar",
+          "filters": {"practice": "Risk Advisory"}, "limit": 0}
+
+
+def test_a_change_of_display_is_named():
+    phrase = describe_change(_AVANT, dict(_AVANT, chart_type="pie"))
+    assert "barres → camembert" in phrase
+
+
+def test_a_change_of_axis_is_named():
+    phrase = describe_change(_AVANT, dict(_AVANT, dimension="practice"))
+    assert "pays → practice" in phrase
+
+
+def test_removing_the_filters_is_named():
+    assert "filtres retirés" in describe_change(_AVANT, dict(_AVANT, filters={}))
+
+
+def test_an_unchanged_request_produces_no_sentence():
+    # Distinct du cas « trop de changements » : la liste vide dit qu'il ne s'est
+    # rien passé, ce que l'appelant transforme en message explicite.
+    assert list_changes(_AVANT, dict(_AVANT)) == []
+    assert describe_change(_AVANT, dict(_AVANT)) == ""
+
+
+def test_a_wholly_different_analysis_is_not_called_a_modification():
+    # Énumérer cinq différences serait plus long que la réponse, et le mot
+    # « modifié » deviendrait trompeur : ce n'est plus la même analyse.
+    autre = {"metric": "nb_opportunities", "dimension": "status", "chart_type": "funnel",
+             "filters": {}, "limit": 10}
+    assert len(list_changes(_AVANT, autre)) > 3
+    assert describe_change(_AVANT, autre) == ""
+
+
+def test_no_previous_question_means_nothing_to_compare():
+    assert describe_change(None, _AVANT) == ""

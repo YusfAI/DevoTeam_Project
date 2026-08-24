@@ -42,7 +42,11 @@ export function useChatHistory(welcomeMessage) {
   }, [messages, dashboard, lastIntent])
 
   function addMessage(partial) {
-    const message = { id: nextIdRef.current++, ...partial }
+    // Horodatage posé ici plutôt qu'à l'appel : l'historique groupe les analyses par
+    // jour, et un seul endroit qui date les messages garantit qu'aucun n'y échappe.
+    // Les conversations enregistrées avant cette version n'en ont pas — l'historique
+    // les regroupe alors sous « Plus ancien » plutôt que d'afficher une fausse date.
+    const message = { id: nextIdRef.current++, at: Date.now(), ...partial }
     setMessages((prev) => [...prev, message])
     return message
   }

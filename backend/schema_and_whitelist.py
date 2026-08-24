@@ -23,8 +23,13 @@ VALID_AGGREGATIONS = ["sum", "avg", "count"]
 
 # ---- Valeurs catégorielles réelles (pour que le LLM/validateur sache ce qui existe) ----
 KNOWN_VALUES = {
-    "practice": ["Digital Transformation", "Risk Advisory", "Data Management"],
-    "opp_type": ["AO", "DP", "AMI", "Consultation", "Prospection", "Gré à gré", "Avant-vente"],
+    # « Non renseigné » n'est pas une valeur du Sheet : c'est ce que le chargement
+    # inscrit quand la cellule est vide ou illisible, plutôt que de perdre la ligne
+    # entière (voir data_store.UNKNOWN). Listée ici pour rester filtrable — « montre
+    # les opportunités sans practice » est une question légitime.
+    "practice": ["Digital Transformation", "Risk Advisory", "Data Management", "Non renseigné"],
+    "opp_type": ["AO", "DP", "AMI", "Consultation", "Prospection", "Gré à gré", "Avant-vente",
+                 "Non renseigné"],
     # « En attente du plan de charge » figure sur 8 lignes du Sheet et a été confirmé
     # comme un statut légitime : une étape réelle du pipeline, pas une faute de saisie.
     # « Non renseigné » recueille les lignes dont la colonne statut contient en fait un

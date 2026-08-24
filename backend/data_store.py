@@ -155,32 +155,65 @@ def _normalize_choice(raw: str, field: str) -> str:
                     field=field, value=raw)
 
 
-# Statut des lignes récupérées : la colonne contenait un type d'opportunité, donc le
-# statut réel est inconnu. Une catégorie explicite vaut mieux qu'un statut inventé —
-# elle reste visible dans les graphiques, et la ligne cesse d'être perdue.
-UNKNOWN_STATUS = "Non renseigné"
+# Valeur inscrite à la place d'une cellule vide ou illisible.
+#
+# Le principe du projet reste de ne rien deviner : « Non renseigné » n'invente aucune
+# donnée, il DIT que la donnée manque. Mais rejeter la ligne entière pour une seule
+# cellule fautive faisait disparaître une opportunité complète — budget, échéance,
+# client — à cause d'un statut mal tapé. Le coût de l'élimination dépasse largement
+# celui d'une catégorie explicitement inconnue, visible telle quelle dans les
+# graphiques et recensée cellule par cellule dans le rapport de qualité.
+UNKNOWN = "Non renseigné"
 
 
-def _normalize_status(raw: str) -> str:
-    """Comme _normalize_choice, mais rattrape le mélange de colonnes constaté dans le
-    Sheet : 4 lignes portent « AMI » ou « DP » — des valeurs de `opp_type` — dans la
-    colonne statut. Les rejeter faisait disparaître l'opportunité entière (budget
-    compris) à cause d'une seule cellule mal remplie. Toute AUTRE valeur inconnue reste
-    rejetée : on récupère une erreur de colonne identifiable, jamais n'importe quoi.
-    """
+def _repair(repairs: list, field: str, value: str, remplacement) -> None:
+    """Enregistre une cellule réparée. C'est la contrepartie NON NÉGOCIABLE de la
+    tolérance : sans cette trace, réparer au lieu de rejeter reviendrait à corrompre
+    les données en silence — exactement ce que le rejet servait à éviter."""
+    repairs.append({"field": field, "value": value, "replacement": remplacement})
+
+
+def _choice_or_unknown(raw: str, field: str, repairs: list) -> str:
     try:
-        return _normalize_choice(raw, "status")
+        return _normalize_choice(raw, field)
     except RowError:
-        value = (raw or "").strip()
-        if value and any(c.lower() == value.lower() for c in _CHOICE_FIELDS["opp_type"]):
-            return UNKNOWN_STATUS
-        raise
+        _repair(repairs, field, (raw or "").strip(), UNKNOWN)
+        return UNKNOWN
 
 
-def _parse_row(headers: list, values: list) -> dict:
-    """Transforme une ligne brute du Sheet en dict validé, champs dérivés déjà
-    calculés. Lève RowError (message précis) si la ligne est invalide."""
+def _date_or_none(raw: str, field: str, repairs: list):
+    try:
+        return _parse_date(raw, field)
+    except RowError:
+        _repair(repairs, field, (raw or "").strip(), None)
+        return None
+
+
+def _float_or_none(raw: str, field: str, repairs: list):
+    try:
+        return _parse_float(raw, field)
+    except RowError:
+        _repair(repairs, field, (raw or "").strip(), None)
+        return None
+
+
+def _probability_or_none(raw: str, repairs: list):
+    try:
+        return _parse_win_probability(raw)
+    except RowError:
+        _repair(repairs, "win_probability", (raw or "").strip(), None)
+        return None
+
+
+def _parse_row(headers: list, values: list) -> tuple[dict, list]:
+    """Transforme une ligne brute du Sheet en dict, champs dérivés déjà calculés.
+
+    Ne rejette JAMAIS la ligne : chaque cellule illisible est remplacée par une
+    valeur explicitement inconnue et consignée dans la liste de réparations
+    renvoyée, que le rapport de qualité restitue cellule par cellule.
+    """
     raw = dict(zip(headers, values))
+    repairs: list = []
 
     def get(field):
         # L'export CSV -> Sheets écrit parfois les NULL comme le texte littéral
@@ -195,34 +228,44 @@ def _parse_row(headers: list, values: list) -> dict:
 
     row["country"] = get("country") or None
     if not row["country"]:
-        raise RowError("country est vide")
+        _repair(repairs, "country", "", UNKNOWN)
+        row["country"] = UNKNOWN
 
-    row["created_date"] = _parse_date(get("created_date"), "created_date")
-    row["deadline"] = _parse_date(get("deadline"), "deadline")
+    row["created_date"] = _date_or_none(get("created_date"), "created_date", repairs)
+    row["deadline"] = _date_or_none(get("deadline"), "deadline", repairs)
 
-    row["practice"] = _normalize_choice(get("practice"), "practice")
-    row["opp_type"] = _normalize_choice(get("opp_type"), "opp_type")
-    row["status"] = _normalize_status(get("status"))
+    row["practice"] = _choice_or_unknown(get("practice"), "practice", repairs)
+    row["opp_type"] = _choice_or_unknown(get("opp_type"), "opp_type", repairs)
+    row["status"] = _choice_or_unknown(get("status"), "status", repairs)
 
     row["description"] = get("description") or None
     row["buyer"] = get("buyer") or None
     row["funding_source"] = get("funding_source") or None
     row["partner"] = get("partner") or None
 
-    row["budget"] = _parse_float(get("budget"), "budget")
-    row["financial_offer"] = _parse_float(get("financial_offer"), "financial_offer")
-    row["win_probability"] = _parse_win_probability(get("win_probability"))
+    row["budget"] = _float_or_none(get("budget"), "budget", repairs)
+    row["financial_offer"] = _float_or_none(get("financial_offer"), "financial_offer", repairs)
+    row["win_probability"] = _probability_or_none(get("win_probability"), repairs)
 
     # --- Champs dérivés — jamais lus depuis le Sheet, toujours recalculés ---
-    row["deadline_month"] = row["deadline"].strftime("%Y-%m")
-    row["deadline_year"] = row["deadline"].year
-    row["days_remaining"] = (row["deadline"] - date.today()).days
+    # Tous dépendent de l'échéance : sans elle ils restent vides, et la ligne sort
+    # naturellement des analyses temporelles sans fausser les autres (son budget
+    # continue de compter dans les totaux, ce qui est bien le but).
+    if row["deadline"] is not None:
+        row["deadline_month"] = row["deadline"].strftime("%Y-%m")
+        row["deadline_year"] = row["deadline"].year
+        row["days_remaining"] = (row["deadline"] - date.today()).days
+    else:
+        row["deadline_month"] = None
+        row["deadline_year"] = None
+        row["days_remaining"] = None
+
     if row["financial_offer"] is not None and row["win_probability"] is not None:
         row["weighted_amount"] = row["financial_offer"] * row["win_probability"]
     else:
         row["weighted_amount"] = None
 
-    return row
+    return row, repairs
 
 
 def _load_from_sheet() -> tuple[list[dict], dict]:
@@ -231,7 +274,8 @@ def _load_from_sheet() -> tuple[list[dict], dict]:
     # "errors" reste la liste lisible affichee a l'utilisateur ; "issues" en est la
     # version structuree, exploitee par backend/data_quality.py pour regrouper les
     # rejets par cause plutot que de reanalyser des phrases deja formatees.
-    summary = {"total_rows": 0, "skipped": 0, "new_ids_assigned": 0, "errors": [], "issues": []}
+    summary = {"total_rows": 0, "skipped": 0, "new_ids_assigned": 0, "errors": [],
+               "issues": [], "repairs": []}
 
     ws = _get_worksheet()
     all_values = ws.get_all_values()
@@ -256,18 +300,27 @@ def _load_from_sheet() -> tuple[list[dict], dict]:
             continue  # ligne totalement vide — ignorée silencieusement
 
         try:
-            row = _parse_row(headers, values)
-        except RowError as e:
-            logger.warning("Chargement des données : ligne %d ignorée — %s", row_number, e)
+            row, repairs = _parse_row(headers, values)
+        except Exception as e:
+            # _parse_row ne rejette plus rien : n'arrive ici qu'un défaut imprévu du
+            # code lui-même. On saute la ligne plutôt que de faire échouer les 361
+            # autres, mais on le journalise comme l'anomalie que c'est.
+            logger.exception("Chargement des données : ligne %d illisible malgré la tolérance.", row_number)
             summary["skipped"] += 1
             summary["errors"].append(f"Ligne {row_number} : {e}")
             summary["issues"].append({
-                "row": row_number,
-                "field": getattr(e, "field", None) or "?",
-                "value": getattr(e, "value", None) or "",
-                "message": str(e),
+                "row": row_number, "field": "?", "value": "", "message": str(e),
             })
             continue
+
+        for repair in repairs:
+            summary["repairs"].append({"row": row_number, **repair})
+        if repairs:
+            logger.info(
+                "Chargement des données : ligne %d conservée, %d cellule(s) remplacée(s) par « %s » (%s).",
+                row_number, len(repairs), UNKNOWN,
+                ", ".join(r["field"] for r in repairs),
+            )
 
         parsed_rows.append((row_number, row))
 
@@ -319,8 +372,10 @@ def _load_from_sheet() -> tuple[list[dict], dict]:
             )
 
     logger.info(
-        "Chargement des données : %d ligne(s) valide(s), %d ignorée(s), %d nouvel(aux) id(s) attribué(s).",
-        summary["total_rows"], summary["skipped"], summary["new_ids_assigned"],
+        "Chargement des données : %d ligne(s) chargée(s), %d ignorée(s), %d cellule(s) réparée(s), "
+        "%d nouvel(aux) id(s) attribué(s).",
+        summary["total_rows"], summary["skipped"], len(summary["repairs"]),
+        summary["new_ids_assigned"],
     )
     return valid_rows, summary
 
@@ -335,6 +390,7 @@ def refresh_dataframe() -> dict:
     except Exception:
         logger.exception("Chargement des données : impossible de lire le Sheet.")
         summary = {"total_rows": 0, "skipped": 0, "new_ids_assigned": 0, "issues": [],
+                    "repairs": [],
                     "errors": ["Lecture du Sheet impossible — voir les logs."]}
         _last_refresh_summary = summary
         return summary

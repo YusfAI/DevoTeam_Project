@@ -32,7 +32,12 @@ export default function App() {
     () =>
       messages
         .filter((m) => m.dashboardName)
-        .map((m) => ({ id: m.id, name: m.dashboardName, question: m.question || m.dashboardName }))
+        .map((m) => ({
+          id: m.id,
+          at: m.at,
+          name: m.dashboardName,
+          question: m.question || m.dashboardName,
+        }))
         .reverse(),
     [messages],
   )

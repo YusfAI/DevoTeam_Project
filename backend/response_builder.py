@@ -200,3 +200,85 @@ def build_data_response(intent: dict, data: list) -> str:
 
     val = extract_metric_value(data[0], metric)
     return f"Résultat{filter_desc} : {format_metric_value(val, metric)}."
+
+
+# ---------------------------------------------------------------------------
+# Ce qui a changé dans le tableau de bord
+#
+# Une demande de suite MODIFIE le tableau de bord affiché — elle n'en ouvre pas un
+# autre. Sans le dire, l'utilisateur voit l'iframe se recharger et ne sait pas si sa
+# demande a été prise en compte, ni ce qu'elle a touché. La phrase est construite par
+# comparaison des deux intentions, jamais par le modèle : elle décrit donc ce qui a
+# réellement changé dans les requêtes, pas ce qu'on croit avoir compris.
+# ---------------------------------------------------------------------------
+
+CHART_LABELS = {
+    "bar": "barres", "line": "courbe", "area": "aire", "pie": "camembert",
+    "table": "tableau", "kpi_card": "chiffre clé", "scatter": "nuage de points",
+    "heatmap": "carte de chaleur", "funnel": "entonnoir",
+}
+
+# Au-delà, ce n'est plus une retouche mais une analyse différente : énumérer cinq
+# changements serait plus long à lire que la réponse elle-même, et le mot
+# « modifié » deviendrait trompeur.
+_MAX_CHANGES_DESCRIBED = 3
+
+
+def _filter_summary(filters: dict) -> str:
+    parts = []
+    for key, value in (filters or {}).items():
+        label = FILTER_LABELS.get(key, key)
+        if isinstance(value, (list, tuple)):
+            value = " et ".join(str(v) for v in value)
+        parts.append(f"{label} = {value}")
+    return ", ".join(parts)
+
+
+def list_changes(previous: dict, current: dict) -> list:
+    """Différences entre deux intentions, en clair. Une liste vide signifie que la
+    demande n'a rien changé — information à part entière, à ne pas confondre avec
+    « trop de changements pour parler de modification » (voir describe_change)."""
+    if not previous or not current:
+        return []
+
+    changements = []
+
+    avant, apres = previous.get("metric"), current.get("metric")
+    if avant != apres:
+        changements.append(
+            f"mesure : {METRIC_LABELS.get(avant, avant)} → {METRIC_LABELS.get(apres, apres)}")
+
+    avant, apres = previous.get("dimension") or "", current.get("dimension") or ""
+    if avant != apres:
+        libelle = lambda d: DIMENSION_LABELS.get(d, d) if d else "aucun"
+        changements.append(f"axe : {libelle(avant)} → {libelle(apres)}")
+
+    avant, apres = previous.get("chart_type"), current.get("chart_type")
+    if avant != apres:
+        changements.append(
+            f"affichage : {CHART_LABELS.get(avant, avant)} → {CHART_LABELS.get(apres, apres)}")
+
+    avant, apres = previous.get("filters") or {}, current.get("filters") or {}
+    if avant != apres:
+        if not apres:
+            changements.append("filtres retirés")
+        elif not avant:
+            changements.append(f"filtre ajouté : {_filter_summary(apres)}")
+        else:
+            changements.append(f"filtres : {_filter_summary(apres)}")
+
+    avant, apres = int(previous.get("limit") or 0), int(current.get("limit") or 0)
+    if avant != apres:
+        changements.append(f"top {apres}" if apres else "classement complet rétabli")
+
+    return changements
+
+
+def describe_change(previous: dict, current: dict) -> str:
+    """Phrase décrivant la modification du tableau de bord. Vide s'il n'y a rien à
+    dire, ou si les deux analyses n'ont plus assez en commun pour qu'on parle encore
+    de modification plutôt que d'analyse nouvelle."""
+    changements = list_changes(previous, current)
+    if not changements or len(changements) > _MAX_CHANGES_DESCRIBED:
+        return ""
+    return "Tableau de bord mis à jour — " + " ; ".join(changements) + "."

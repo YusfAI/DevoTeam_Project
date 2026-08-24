@@ -9,6 +9,8 @@ affiché. Exemple utilisé : **« budget par pays pour Risk Advisory »**.
                     ┌─ Google Sheet (source de vérité)
                     │        ↓  toutes les 15 min
                     │   backend/data_store.py  →  DataFrame pandas (en mémoire)
+                    │     une cellule illisible → « Non renseigné », la ligne est
+                    │     conservée ; chaque remplacement est tracé (data_quality.py)
                     │        ↓                          ↓
                     │   duckdb_export.py            chat & alertes
                     │        ↓  (projection lecture seule)
@@ -33,6 +35,7 @@ Chat (frontend)                                          │
       → backend/sql_builder.py génère le SQL de chacun ──┘
       → réécrit dac/dashboards/_principal.yml (travail)
       → écrit dac/dashboards/_analyse_<hash>.yml (instantané)
+      → describe_change() : ce qui a changé par rapport au tour précédent
   → réponse { ai_message, dac_dashboard, dashboard_snapshot, intent }
   → Frontend :: iframe → Bruin DAC (port 8321)
       → DAC exécute le SQL de chaque widget sur DuckDB
@@ -142,6 +145,12 @@ rows:
           FROM opportunities
           WHERE practice = 'Risk Advisory'
 ```
+
+**8 bis. Ce qui a changé.** Si la question suit une précédente, les deux intentions
+sont comparées et la différence est annoncée en tête de réponse (« Tableau de bord
+mis à jour — axe : pays → practice ; filtres retirés »). Si la demande n'a rien
+changé, ou si une forme demandée a été refusée, la réponse le dit également : une
+demande comprise ne doit jamais rester sans réponse visible.
 
 **9. La réponse.** FastAPI renvoie :
 ```json

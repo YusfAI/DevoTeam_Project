@@ -178,6 +178,9 @@ body::before {
 .chat-panel {
   width: 360px;
   flex-shrink: 0;
+  /* Repère de positionnement pour le panneau d'historique, qui se superpose au chat
+     sans déplacer la mise en page ni rétrécir la zone du tableau de bord. */
+  position: relative;
   background: var(--surface-card);
   border-right: 1px solid var(--border);
   display: flex;
@@ -265,6 +268,13 @@ body::before {
 .theme-toggle:disabled {
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+/* Bouton d'historique quand le panneau est ouvert : sans cet état, le bouton qui a
+   fait apparaître le panneau ne se distingue plus de ceux qui n'ont rien fait. */
+.theme-toggle.active {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.45);
 }
 
 .theme-toggle.syncing {
@@ -449,73 +459,6 @@ body::before {
   gap: 8px;
 }
 
-/* Retouches du tableau de bord affiché. Volontairement au même endroit que la
-   saisie : ce sont des raccourcis vers ce qu'on pourrait taper, pas une autre
-   fonctionnalité. Elles rendent visible que l'assistant MODIFIE le tableau de bord,
-   là où une zone de texte seule laisse croire qu'il ne sait qu'en créer. */
-.chat-adjustments {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.chat-adjustment {
-  background: var(--surface-page);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--text-secondary);
-  padding: 5px 12px;
-  font: inherit;
-  font-size: 0.78rem;
-  cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
-}
-
-.chat-adjustment:hover:not(:disabled) {
-  border-color: var(--brand-primary);
-  color: var(--text-primary);
-}
-
-.chat-adjustment:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Liste des analyses déjà produites. */
-.prompt-history {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.prompt-history-label {
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.prompt-history select {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-page);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: 0.82rem;
-  cursor: pointer;
-  /* Une question longue ne doit pas élargir le panneau : le <select> reste borné
-     et le navigateur tronque l'intitulé, qui reste lisible en entier une fois
-     la liste ouverte. */
-  max-width: 100%;
-  text-overflow: ellipsis;
-}
-
-.prompt-history select:focus {
-  outline: none;
-  border-color: var(--brand-primary);
-}
 
 .chat-form input {
   flex: 1;
@@ -792,44 +735,6 @@ body::before {
   }
 }
 
-/* ---------- Table ---------- */
-
-.tag {
-  display: inline-block;
-  padding: 2px 9px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.tag-won {
-  background: color-mix(in srgb, var(--status-good) 18%, var(--surface-card));
-  color: var(--success-text);
-}
-
-.tag-lost {
-  background: color-mix(in srgb, var(--status-critical) 15%, var(--surface-card));
-  color: var(--status-critical);
-}
-
-.tag-other {
-  background: color-mix(in srgb, var(--series-7) 15%, var(--surface-card));
-  color: var(--series-7);
-}
-
-.urgent {
-  color: var(--status-critical);
-  font-weight: 700;
-}
-
-/* Échéance déjà passée : informatif, pas une alerte à traiter — sobre plutôt que
-   rouge/gras (qui suggère une action urgente, alors qu'il n'y a plus rien à faire). */
-.expired {
-  color: var(--text-muted);
-  font-style: italic;
-  white-space: nowrap;
-}
-
 /* ---------- Accessibilité : mouvement réduit ---------- */
 /* Toutes les animations décoratives ajoutées ci-dessus (fond, halo du logo,
    pop-in, shimmer...) sont désactivées si l'utilisateur l'a demandé au niveau
@@ -843,4 +748,126 @@ body::before {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* --- Historique des analyses -------------------------------------------- */
+/* Superposé au panneau de chat plutôt qu'ajouté à côté : l'écran est déjà partagé
+   entre la conversation et le tableau de bord, et l'historique est consulté par
+   moments — il ne mérite pas une colonne permanente. */
+.history-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: var(--surface-card);
+  display: flex;
+  flex-direction: column;
+  animation: historySlide 0.18s ease;
+}
+
+@keyframes historySlide {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  background: linear-gradient(135deg, var(--brand-primary) 0%, var(--header-ink) 68%);
+  color: #ffffff;
+}
+
+.history-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.history-close {
+  background: rgba(255, 255, 255, 0.14);
+  border: none;
+  color: #ffffff;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.history-close:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.history-empty {
+  margin: 0;
+  padding: 24px 20px;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.history-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 12px 20px;
+}
+
+.history-group {
+  margin: 14px 8px 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+
+.history-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 10px;
+  font: inherit;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.history-item:hover {
+  background: var(--surface-page);
+}
+
+/* L'analyse actuellement affichée : sans ce repère, rouvrir l'historique ne dit pas
+   où l'on se trouve dans sa propre suite de questions. */
+.history-item.active {
+  background: var(--surface-page);
+  box-shadow: inset 3px 0 0 var(--brand-primary);
+}
+
+.history-item-question {
+  font-size: 0.88rem;
+  line-height: 1.35;
+  /* Une demande peut être une phrase entière : on en montre deux lignes, assez pour
+     la reconnaître, sans qu'une seule entrée occupe tout le panneau. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.history-item-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.history-item.active .history-item-meta {
+  color: var(--brand-primary);
+  font-weight: 600;
 }

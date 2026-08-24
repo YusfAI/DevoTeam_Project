@@ -68,19 +68,56 @@ def _valid_row_kwargs(**overrides):
 
 
 def test_parse_row_computes_derived_fields():
-    row = _parse_row(SHEET_COLUMNS, _row_values(SHEET_COLUMNS, **_valid_row_kwargs()))
+    row, repairs = _parse_row(SHEET_COLUMNS, _row_values(SHEET_COLUMNS, **_valid_row_kwargs()))
     assert row["deadline_month"] == "2026-12"
     assert row["deadline_year"] == 2026
     assert row["weighted_amount"] == 90000 * 0.6
+    assert repairs == []  # une ligne saine ne déclenche aucune réparation
 
 
 def test_parse_row_treats_literal_null_string_as_empty():
-    row = _parse_row(
+    row, _ = _parse_row(
         SHEET_COLUMNS,
         _row_values(SHEET_COLUMNS, **_valid_row_kwargs(partner="NULL", win_probability="NULL")),
     )
     assert row["partner"] is None
     assert row["win_probability"] is None
+
+
+def test_an_unreadable_cell_costs_the_cell_not_the_row():
+    # Rejeter la ligne faisait perdre une opportunité entière — budget, échéance,
+    # client — à cause d'un seul statut mal tapé.
+    row, repairs = _parse_row(
+        SHEET_COLUMNS, _row_values(SHEET_COLUMNS, **_valid_row_kwargs(status="Statut Bidon")))
+
+    assert row["status"] == data_store.UNKNOWN
+    assert row["budget"] == 100000  # le reste de la ligne est intact
+    assert [(r["field"], r["value"]) for r in repairs] == [("status", "Statut Bidon")]
+
+
+def test_a_missing_deadline_empties_the_derived_fields_without_losing_the_row():
+    row, repairs = _parse_row(
+        SHEET_COLUMNS, _row_values(SHEET_COLUMNS, **_valid_row_kwargs(deadline="")))
+
+    assert row["deadline"] is None
+    assert row["deadline_month"] is None
+    assert row["days_remaining"] is None
+    # Le budget continue de compter dans les totaux : c'est tout l'intérêt de garder
+    # la ligne. Elle sort seulement des analyses temporelles.
+    assert row["budget"] == 100000
+    assert repairs[0]["field"] == "deadline"
+
+
+def test_every_repair_is_recorded():
+    # Contrepartie non négociable de la tolérance : réparer sans tracer reviendrait
+    # à corrompre les données en silence.
+    row, repairs = _parse_row(SHEET_COLUMNS, _row_values(
+        SHEET_COLUMNS, **_valid_row_kwargs(status="Bidon", practice="Inconnue",
+                                            country="", budget="pas un nombre")))
+
+    assert {r["field"] for r in repairs} == {"status", "practice", "country", "budget"}
+    assert row["country"] == data_store.UNKNOWN
+    assert row["budget"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +188,7 @@ def test_new_id_is_max_existing_plus_one(monkeypatch):
     assert sorted(df["id"].tolist()) == [5, 6]
 
 
-def test_invalid_row_is_skipped_but_others_still_load(monkeypatch):
+def test_a_row_with_a_bad_cell_is_repaired_not_dropped(monkeypatch):
     bad_row = _row_values(SHEET_COLUMNS, **_valid_row_kwargs(status="Statut Bidon"))
     good_row = _row_values(SHEET_COLUMNS, **_valid_row_kwargs(id="1"))
     ws = _FakeWorksheet([SHEET_COLUMNS, bad_row, good_row])
@@ -159,9 +196,12 @@ def test_invalid_row_is_skipped_but_others_still_load(monkeypatch):
 
     summary = refresh_dataframe()
 
-    assert summary["skipped"] == 1
-    assert summary["total_rows"] == 1
-    assert "Ligne 2" in summary["errors"][0]
+    assert summary["skipped"] == 0
+    assert summary["total_rows"] == 2
+    # La cellule fautive est nommée avec son numéro de ligne : rien n'est perdu de vue.
+    assert summary["repairs"] == [
+        {"row": 2, "field": "status", "value": "Statut Bidon", "replacement": data_store.UNKNOWN}
+    ]
 
 
 def test_missing_required_header_aborts_cleanly(monkeypatch):

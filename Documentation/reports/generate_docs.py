@@ -490,7 +490,7 @@ def build_rapport_professionnel():
              "(alertes deadlines, rafraîchissement des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (184 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
+            ["Tests", "pytest (193 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
              "(mocks), garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -509,7 +509,7 @@ def build_rapport_professionnel():
                      "explicite — il n'écrit jamais lui-même de requête.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "158 tests automatisés couvrent la compréhension du langage, le requêtage des "
+    add_bullet(doc, "193 tests automatisés couvrent la compréhension du langage, le requêtage des "
                      "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -811,14 +811,37 @@ def build_guide_technique():
         "Chaque ligne est validée indépendamment : dates acceptées dans deux formats, "
         "nombres à virgule décimale, probabilité tolérée en fraction (0.8) comme en "
         "pourcentage (80), et practice/opp_type/status vérifiés contre la liste blanche "
-        "de schema_and_whitelist.py. Une ligne invalide est journalisée et sautée — "
-        "jamais bloquante pour les autres.")
+        "de schema_and_whitelist.py. Une cellule illisible coûte la CELLULE, jamais la "
+        "ligne : elle est remplacée par « Non renseigné » et l'opportunité est "
+        "conservée avec son budget, son échéance et son client.")
+    add_cue(doc,
+        "Le rejet de la ligne entière était le choix initial, et il était trop cher : "
+        "une opportunité complète disparaissait des totaux à cause d'un statut mal "
+        "tapé. « Non renseigné » n'invente rien — il DIT que la donnée manque, reste "
+        "visible comme catégorie à part dans les graphiques, et se filtre comme "
+        "n'importe quelle autre valeur.")
+    add_body(doc,
+        "La contrepartie est non négociable : réparer sans tracer reviendrait à "
+        "corrompre les données en silence, exactement ce que le rejet servait à "
+        "éviter. Chaque remplacement est recensé avec son numéro de ligne, sa colonne "
+        "et sa valeur d'origine, exposé par GET /data/quality et par le tableau de "
+        "bord « Qualité des données » — qui porte un compteur « Lignes écartées malgré "
+        "tout » devant rester à zéro.")
+    add_body(doc,
+        "Cas particulier de l'échéance : tous les champs dérivés en dépendent "
+        "(deadline_month, deadline_year, days_remaining). Sans elle ils restent vides, "
+        "et la ligne sort naturellement des analyses temporelles et du filtre "
+        "« urgentes » sans cesser de compter dans les totaux — ce qui est précisément "
+        "le but de la conserver.")
     add_body(doc,
         "Détail qui a compté en pratique : l'export CSV vers Sheets écrit parfois les "
         "valeurs vides comme le texte littéral « NULL ». Sans normalisation explicite, "
         "un partenaire se serait appelé « NULL ». C'est aussi cette validation qui a "
         "révélé douze opportunités au statut invalide, présentes de longue date et "
-        "jamais détectées faute de contrôle à l'écriture.")
+        "jamais détectées faute de contrôle à l'écriture. Onze d'entre elles relevaient "
+        "d'une décision métier (deux statuts légitimes à ajouter à la liste blanche) ; "
+        "les quatre dernières portaient un type d'opportunité dans la colonne statut. "
+        "Aucune n'est plus perdue aujourd'hui.")
 
     add_h2(doc, "4.3 Écriture retour dans le Sheet")
     add_body(doc,
@@ -1070,6 +1093,11 @@ def build_guide_technique():
         "sur le nombre d'opportunités alors que la question d'avant portait sur le "
         "budget — et consommait une requête du quota gratuit pour un changement que le "
         "code sait appliquer instantanément.")
+    add_body(doc,
+        "Ces retouches se TAPENT, elles ne se cliquent pas. Une rangée de raccourcis "
+        "avait été essayée puis retirée : décrire ce que l'on veut est plus expressif "
+        "qu'un choix parmi quatre, et la présence des boutons suggérait à tort que le "
+        "reste ne se demandait pas.")
     add_cue(doc,
         "Le garde-fou est le cœur du mécanisme. Une retouche hérite EN SILENCE de tout "
         "le contexte précédent : si un seul mot de la demande n'a pas été compris, "
@@ -1084,7 +1112,25 @@ def build_guide_technique():
         "filtres à plusieurs valeurs sont épargnés — « compare la France et le Maroc » "
         "veut précisément cet axe ET cette restriction.")
 
-    add_h2(doc, "9.5 Un seul tableau de bord, modifié sur place")
+    add_h2(doc, "9.5 Dire ce qui a changé")
+    add_body(doc,
+        "Une demande de suite modifie le tableau de bord affiché. Sans le dire, "
+        "l'utilisateur voit l'iframe se recharger sans savoir ce qui a été pris en "
+        "compte. La phrase est construite en comparant les deux intentions — jamais "
+        "par le modèle : elle décrit ce qui a réellement changé dans les requêtes, pas "
+        "ce qu'on croit avoir compris.")
+    add_cue(doc,
+        "Deux cas restaient muets, et seule l'exécution les a montrés. « En camembert » "
+        "sur dix-neuf pays ne produisait AUCUN message : la forme était bien refusée, "
+        "mais la raison ne vivait que dans le tableau de bord, et rien d'autre n'ayant "
+        "bougé, la comparaison ne trouvait rien à dire. Une demande sans effet — un "
+        "filtre déjà posé — était tout aussi silencieuse. Chaque demande reçoit "
+        "désormais une réponse explicite.")
+    add_body(doc,
+        "Au-delà de trois différences, rien n'est annoncé : le mot « modifié » "
+        "deviendrait trompeur, ce n'est plus une retouche mais une autre analyse.")
+
+    add_h2(doc, "9.6 Un seul tableau de bord, modifié sur place")
     add_body(doc,
         "Chaque question réécrit _principal.yml, dont le nom de dashboard ne change "
         "jamais — donc l'URL de l'iframe non plus. L'utilisateur voit son tableau de "
@@ -1313,26 +1359,31 @@ def build_guide_technique():
         "confirmation) a été ajouté dans le header, puisqu'un historique qui persiste "
         "indéfiniment a besoin d'une porte de sortie explicite.")
 
-    add_h2(doc, "13.2 La saisie en tête de panneau et la liste des analyses")
+    add_h2(doc, "13.2 La saisie en tête de panneau et le volet d'historique")
     add_body(doc,
         "La zone de saisie était en pied de panneau, sous les messages : elle descendait "
         "avec la conversation et demandait de faire défiler pour être retrouvée. Elle est "
         "désormais en tête, juste sous l'en-tête, et ne bouge plus. Le trait de séparation "
         "passe simplement de border-top à border-bottom.")
     add_body(doc,
-        "Elle y est accompagnée de deux éléments qui répondent au même besoin. Des "
-        "retouches en un clic (« En camembert », « Top 5 », « Par practice », « Sans "
-        "filtre ») rendent visible que l'assistant sait MODIFIER le tableau de bord "
-        "affiché, là où une zone de texte seule laisse croire qu'il ne sait qu'en créer. "
-        "Et une liste déroulante rassemble toutes les demandes déjà posées : chacune "
-        "rouvre le tableau de bord qu'elle avait produit.")
+        "C'est le SEUL moyen de modifier le tableau de bord affiché. Une rangée de "
+        "retouches en un clic avait été essayée puis retirée : décrire ce que l'on veut "
+        "est plus expressif qu'un choix parmi quatre raccourcis, et la présence des "
+        "boutons suggérait à tort que le reste ne se demandait pas.")
+    add_body(doc,
+        "Les analyses déjà produites vivent dans un volet d'historique, ouvert depuis "
+        "l'en-tête et superposé au chat : groupé par jour, il signale l'analyse "
+        "affichée et rouvre n'importe quelle demande passée d'un clic. Une liste "
+        "déroulante avait d'abord été livrée, puis remplacée — elle cachait son contenu "
+        "tant qu'on ne l'ouvrait pas, tronquait des intitulés qui sont des phrases "
+        "entières, et ne pouvait porter ni date ni état courant.")
     add_cue(doc,
-        "La liste retrace ce que l'utilisateur a écrit, pas ce que le backend a produit : "
+        "L'historique retrace ce que l'utilisateur a écrit, pas ce que le backend a produit : "
         "deux formulations aboutissant au même tableau de bord y restent deux entrées, "
         "parce que c'est par sa propre phrase qu'on retrouve une analyse. D'où la clé sur "
         "l'identifiant du message et non sur le nom du tableau de bord, qui peut se "
-        "répéter. Un <select> natif plutôt qu'un menu maison : navigable au clavier, lu "
-        "par un lecteur d'écran, rendu par le système sur mobile, zéro JS à maintenir.")
+        "répéter. Les conversations enregistrées avant l'ajout de l'horodatage sont "
+        "regroupées sous « Plus ancien » plutôt que de porter une fausse date.")
 
     add_h2(doc, "13.3 Bug trouvé : header illisible en mode sombre")
     add_body(doc,
@@ -1369,7 +1420,7 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "15. Tests automatisés")
     add_body(doc,
-        "158 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
+        "193 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
         "et le client Google Sheets (gspread) sont simulés (monkeypatch), et les données "
         "sont un petit DataFrame construit dans le test. La suite tourne donc hors ligne, "
         "en quelques secondes.")
@@ -1382,11 +1433,13 @@ def build_guide_technique():
     add_table(doc,
         ["Fichier", "Tests", "Ce qu'il protège"],
         [
-            ["test_intent_refiner.py", "37", "Dates relatives, parseur par mots-clés, affinage "
-             "d'intention, normalisation funnel/heatmap/scatter/days_remaining/exclude_statuses."],
-            ["test_data_store.py", "23", "Parsing et validation par ligne, littéraux NULL, "
-             "attribution et réécriture des identifiants, ligne invalide sautée sans bloquer les "
-             "autres, résilience à une panne de lecture du Sheet."],
+            ["test_intent_refiner.py", "53", "Dates relatives, parseur par mots-clés, affinage "
+             "d'intention, normalisation funnel/heatmap/scatter/days_remaining/exclude_statuses, "
+             "arbitrage du type de graphique, retouches et vérification de couverture mot à mot."],
+            ["test_data_store.py", "26", "Parsing et validation par ligne, littéraux NULL, "
+             "attribution et réécriture des identifiants, réparation cellule par cellule sans "
+             "perdre la ligne, traçabilité de chaque remplacement, résilience à une panne de "
+             "lecture du Sheet."],
             ["test_dac_composer.py", "35", "Génération SQL (échappement des apostrophes, refus "
              "d'injection), composition multi-widgets, filtres propagés à tous les widgets, grille "
              "12 colonnes respectée, exclusion des affaires perdues, nom du dashboard de travail "
@@ -1396,8 +1449,9 @@ def build_guide_technique():
              "scatter, DataFrame vide."],
             ["test_llm_validation.py", "16", "Anti-hallucination : clarification plutôt que valeur "
              "devinée, résolution fuzzy des filtres, chemin rapide vs LLM."],
-            ["test_response_builder.py", "13", "Formatage des unités, messages texte déterministes, "
-             "cohérence texte/graphique pour funnel et heatmap."],
+            ["test_response_builder.py", "25", "Formatage des unités, messages texte déterministes, "
+             "cohérence texte/graphique pour funnel et heatmap, description de ce qui a changé "
+             "dans le tableau de bord."],
             ["test_alerts.py", "12", "Fenêtre de 7 jours, exclusion des statuts clos, envoi email, "
              "rattrapage idempotent du scheduler."],
         ])
@@ -1675,7 +1729,7 @@ def build_presentation_script():
     add_h1(doc, "Les chiffres à retenir")
     add_bullet(doc, "1 question = 1 tableau de bord complet, généré automatiquement.")
     add_bullet(doc, "9 types de visualisations choisis automatiquement selon la question.")
-    add_bullet(doc, "158 tests automatisés, aucune dépendance à des données réelles.")
+    add_bullet(doc, "193 tests automatisés, aucune dépendance à des données réelles.")
     add_bullet(doc, "21 phases de développement livrées, de bout en bout, en autonomie.")
     add_bullet(doc, "0 base de données à administrer — le Google Sheet est la source de vérité.")
     add_bullet(doc, "0 hallucination tolérée : donnée non fiable = question posée en retour, jamais un chiffre inventé.")

@@ -24,12 +24,14 @@ données à installer.
   travail (5 à 7 widgets — totaux du périmètre, graphique principal, angle
   complémentaire, pipeline, détail, tous filtrés à l'identique) au lieu d'en ouvrir un
   de plus. Voir `Documentation/WORKFLOW.md` pour le traçage complet.
-- **Retouches assistées** : « en camembert », « top 5 », « par practice », « sans
-  filtre » ajustent le dashboard affiché en héritant du contexte, sans appel au
-  modèle. Une demande dont un seul mot n'est pas compris repart par le chemin complet
-  plutôt que d'hériter d'un filtre que l'utilisateur n'a pas redemandé.
-- **Liste des analyses** : chaque question posée reste accessible dans une liste
-  déroulante et rouvre son tableau de bord tel qu'il était.
+- **Tout se pilote par la phrase tapée** : « en camembert », « top 5 », « par
+  practice », « sans filtre » ajustent le dashboard affiché en héritant du contexte,
+  sans appel au modèle et sans bouton à cliquer. Une demande dont un seul mot n'est
+  pas compris repart par le chemin complet plutôt que d'hériter d'un filtre que
+  l'utilisateur n'a pas redemandé. L'application dit à chaque fois ce qui a changé
+  (« axe : pays → practice ; filtres retirés »), ou que la demande n'a rien changé.
+- **Historique des analyses** : un volet groupé par jour rassemble toutes les
+  questions posées ; chacune rouvre le tableau de bord qu'elle avait produit.
 - **Affaires perdues exclues par défaut** : les statuts d'échec (Offre perdue,
   Infructueux, NO GO, Hors scope, Non shortlisté) — 66 M€ sur 164 M€ — sortent de tous
   les chiffres et de tous les graphiques, sauf si la question porte explicitement sur
@@ -53,10 +55,12 @@ données à installer.
   Sheet (via pandas), en mémoire, rafraîchi toutes les 15 minutes + au démarrage +
   sur demande (`POST /sheets/sync`). Le Sheet sert aussi de formulaire d'ajout/
   modification d'opportunités — plus simple à éditer qu'une base de données. Une
-  ligne invalide (statut inconnu, date illisible…) est journalisée et sautée sans
-  bloquer les autres. Une ligne dont la colonne statut contient en fait un type
-  d'opportunité (« AMI », « DP ») est récupérée avec le statut « Non renseigné »
-  plutôt que perdue en entier pour une cellule mal remplie.
+  cellule illisible (statut inconnu, date invalide, montant non numérique) coûte la
+  cellule, jamais la ligne : elle est remplacée par « Non renseigné » et l'opportunité
+  est conservée avec son budget, son échéance et son client. Chaque remplacement est
+  recensé — colonne, valeur d'origine, numéro de ligne — dans `GET /data/quality` et
+  le dashboard « Qualité des données », sans quoi tolérer reviendrait à corrompre les
+  données en silence.
 
 ## Prérequis
 
@@ -232,7 +236,7 @@ frontend/              Vite + React (build servi par FastAPI en local)
 credentials/           clé de compte de service Google (gitignoré, absent par défaut)
 data/                  scheduler_state.json (état local, gitignoré) ; dump SQL
                        historique de l'ancienne base MySQL, conservé pour référence
-tests/                 suite pytest (mock Gemini/Sheets), 168 tests
+tests/                 suite pytest (mock Gemini/Sheets), 193 tests
 Documentation/
   WORKFLOW.md            traçage concret d'une question, du prompt au dashboard affiché
   reports/              rapport professionnel + guide technique (.docx) et leur générateur

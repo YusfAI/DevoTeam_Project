@@ -1,28 +1,45 @@
 schema: https://getbruin.com/schemas/dac/dashboard/v1
 name: Qualité des données
-description: Ce qui est écarté du portefeuille à chaque chargement, et pourquoi
+description: Ce qui a été réparé ou écarté au dernier chargement, et pourquoi
 connection: devoteam_duckdb
 
-# L'application rejette toute ligne dont une valeur n'est pas reconnue, plutôt que
-# de la rattacher au hasard à une valeur voisine. Ce dashboard rend ces rejets
-# visibles : une ligne écartée en silence est un chiffre faux qui s'ignore.
+# L'application ne devine jamais : une valeur non reconnue n'est jamais rattachée au
+# hasard à une valeur voisine. Elle est remplacée par « Non renseigné » — qui n'invente
+# rien, il DIT que la donnée manque — et la ligne est CONSERVÉE. Rejeter l'opportunité
+# entière pour une cellule fautive faisait perdre son budget, son échéance et son
+# client avec elle.
 #
-# Il ne corrige rien — décider qu'« AMI » saisi dans status doit devenir un opp_type
-# relève du métier. Les corrections se font dans le Google Sheet ; le prochain
-# chargement (15 min, ou le bouton de synchro) les prend en compte.
+# Ce dashboard est la contrepartie de cette tolérance : réparer sans le montrer
+# reviendrait à corrompre les données en silence, exactement ce que le rejet servait à
+# éviter. Chaque cellule remplacée y figure, avec sa colonne, sa valeur d'origine et
+# son diagnostic.
+#
+# Il ne corrige rien DANS LE SHEET — décider qu'« AMI » saisi dans status doit devenir
+# un opp_type relève du métier. Les corrections se font dans le Google Sheet ; le
+# prochain chargement (15 min, ou le bouton de synchro) les prend en compte.
 
 rows:
   - widgets:
       - name: Opportunités chargées
         type: metric
-        col: 4
+        col: 3
         sql: SELECT COUNT(*) AS value FROM opportunities
+        value: { field: value, type: number, format: ",.0f" }
+
+      - name: Cellules réparées
+        type: metric
+        col: 3
+        description: Remplacées par « Non renseigné ». La ligne, elle, est conservée entièrement.
+        sql: |
+          SELECT COALESCE(SUM(nb), 0) AS value
+          FROM data_quality
+          WHERE categorie = 'Cellule réparée'
         value: { field: value, type: number, format: ",.0f" }
 
       - name: Lignes rejetées
         type: metric
-        col: 4
-        description: Écartées du portefeuille — leurs montants ne comptent nulle part.
+        col: 3
+        description: Écartées du portefeuille — leurs montants ne comptent nulle part. Doit rester à zéro.
         sql: |
           SELECT COALESCE(SUM(nb), 0) AS value
           FROM data_quality
@@ -31,7 +48,8 @@ rows:
 
       - name: Part du portefeuille perdue
         type: metric
-        col: 4
+        col: 3
+        description: Part des opportunités qui n'ont pas pu être chargées du tout.
         sql: |
           SELECT COALESCE(
                    (SELECT SUM(nb) FROM data_quality WHERE categorie = 'Ligne rejetée'), 0
@@ -42,10 +60,30 @@ rows:
         value: { field: value, type: number, format: ".1%" }
 
   - widgets:
-      - name: Pourquoi des lignes sont rejetées
+      - name: Cellules remplacées par « Non renseigné »
         type: table
         col: 12
-        description: À corriger dans le Google Sheet, ou à ajouter à la liste blanche si la valeur est légitime.
+        description: >-
+          La ligne est conservée : son budget compte toujours dans les totaux, seule la
+          colonne en cause est marquée inconnue. À corriger dans le Google Sheet, ou à
+          ajouter à la liste blanche si la valeur est légitime.
+        sql: |
+          SELECT sujet, nb, detail
+          FROM data_quality
+          WHERE categorie = 'Cellule réparée'
+          ORDER BY nb DESC
+        columns:
+          - { name: sujet, label: Colonne et valeur }
+          - { name: nb, label: Lignes, number: number }
+          - { name: detail, label: Diagnostic }
+
+  - widgets:
+      - name: Lignes écartées malgré tout
+        type: table
+        col: 12
+        description: >-
+          Ne devrait jamais rien contenir : depuis que le chargement répare cellule par
+          cellule, une ligne n'est écartée que sur un défaut imprévu du code lui-même.
         sql: |
           SELECT sujet, nb, detail
           FROM data_quality
@@ -69,6 +107,7 @@ rows:
           ORDER BY part DESC
         x: { field: sujet, type: category, title: Colonne }
         y: { field: part, type: number, title: Part vide, format: ".0%" }
+        color: { field: sujet }
 
       - name: Conséquence de chaque manque
         type: table

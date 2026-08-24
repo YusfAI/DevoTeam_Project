@@ -13,7 +13,9 @@ from .llm import parse_user_query
 # pyrefly: ignore [missing-import]
 from .db_layer import build_and_execute_query
 # pyrefly: ignore [missing-import]
-from .response_builder import build_data_response, get_help_message
+from .response_builder import (
+    build_data_response, describe_change, get_help_message, list_changes,
+)
 # pyrefly: ignore [missing-import]
 from .alerts import get_upcoming_deadline_opportunities, run_daily_alert_check_if_needed
 # pyrefly: ignore [missing-import]
@@ -86,6 +88,36 @@ async def generate_dashboard(request: ChatRequest):
 
         data = build_and_execute_query(intent)
         ai_message = build_data_response(intent, data)
+
+        # Une demande de suite modifie le tableau de bord affiché : le dire, sinon
+        # l'utilisateur voit l'iframe se recharger sans savoir ce qui a été pris en
+        # compte. La phrase vient d'une comparaison des deux intentions, jamais du
+        # modèle — elle décrit ce qui a réellement changé dans les requêtes.
+        entete = []
+        changement = describe_change(request.previous_intent, intent)
+        if changement:
+            entete.append(changement)
+        elif (request.previous_intent
+                and not list_changes(request.previous_intent, intent)
+                and not intent.get("chart_type_reason")):
+            # Demande comprise, mais sans effet : un filtre déjà posé, un axe déjà
+            # affiché. Ne rien dire laisserait croire qu'elle n'a pas été reçue.
+            #
+            # Écartée quand une forme a été révisée : là, ce n'est pas « déjà fait »
+            # mais « demandé et refusé », et la raison qui suit le dit mieux.
+            entete.append(
+                "Le tableau de bord affiché répond déjà à cette demande — rien n'a changé."
+            )
+
+        # Forme révisée : la raison est affichée sous le graphique, mais elle doit
+        # aussi être DITE. Demander un camembert et recevoir des barres sans un mot
+        # ressemble à une demande ignorée, pas à une décision motivée.
+        if intent.get("chart_type_reason"):
+            entete.append(intent["chart_type_reason"])
+
+        if entete:
+            ai_message = "\n\n".join(entete) + "\n\n" + ai_message
+
         goal = intent.get("goal", "")
 
         # Dashboard multi-widgets répondant à la question (backend/dac_composer.py),

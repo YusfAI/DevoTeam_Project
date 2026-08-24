@@ -28,6 +28,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 21 — Un dashboard multi-widgets généré à partir de chaque question du chat
 - [x] Phase 22 — Chantier de finition : justesse des chiffres, contexte, qualité des données, fiabilité perçue et identité visuelle
 - [x] Phase 23 — L'assistant modifie LE tableau de bord : affaires perdues exclues, ambiguïtés des données tranchées, forme des graphiques arbitrée sur les données, retouches sans appel au modèle, historique des demandes
+- [x] Phase 24 — Tout se pilote par la phrase tapée, chaque demande reçoit une réponse explicite, historique en volet, et une cellule illisible ne coûte plus la ligne entière
 
 ## 📝 Journaux
 
@@ -134,6 +135,20 @@ Suite `pytest` : 158 tests (était 143), dont plusieurs exécutent du vrai SQL s
 *Interface.* La zone de saisie passe en tête de panneau : en pied, elle descendait avec la conversation. Elle y est accompagnée des retouches en un clic, qui rendent visible que l'assistant sait **modifier** le tableau de bord et pas seulement en créer. Chaque catégorie d'un graphique a sa couleur, la même d'un graphique à l'autre du dashboard. Deux défauts de grille sont apparus en regardant le résultat plutôt que le code : la ligne de KPI ne remplissait pas les 12 colonnes — le graphique suivant venait s'y écraser sur une hauteur de tuile de chiffre — et la dernière ligne restait à moitié vide ; toute ligne incomplète répartit désormais la place restante.
 
 Vérification finale sur les vraies données : `dac check` passe sur **15 dashboards et 111 widgets**, chaque ligne de chaque dashboard généré remplit exactement 12/12, et les trois archétypes testés (répartition, pipeline, comparaison) exécutent toutes leurs requêtes. Suite `pytest` : 168 tests (était 158).
+
+**Phase 24** : Terminée. Quatre demandes qui affinent la posture d'assistance mise en place à la phase précédente.
+
+*La phrase tapée redevient le seul pilote.* Les puces de retouche en un clic sont retirées : décrire ce qu'on veut est plus expressif qu'un choix parmi quatre raccourcis, et leur présence suggérait à tort que le reste ne se demandait pas. Le traitement déterministe des ajustements, lui, est conservé — c'est ce qui rend la phrase tapée immédiate.
+
+*Dire ce qui a changé.* Deux réponses restaient muettes, ce que seule l'exécution a montré. « En camembert » sur 15 pays ne produisait AUCUN message : la forme était bien refusée, mais la raison ne vivait que dans l'iframe, et rien d'autre n'ayant bougé, la comparaison des intentions ne trouvait rien à dire — l'utilisateur voyait un rechargement sans explication. Une demande sans effet (un filtre déjà posé) était tout aussi silencieuse. Chaque demande reçoit désormais une réponse explicite : ce qui a changé (« axe : pays → practice ; filtres retirés »), pourquoi une forme a été refusée, ou que le tableau de bord y répondait déjà. La phrase vient d'une comparaison des deux intentions, jamais du modèle. Au-delà de trois différences, le mot « modifié » devient trompeur : ce n'est plus une retouche mais une autre analyse, et rien n'est annoncé.
+
+*Un vrai historique.* La liste déroulante est remplacée par un volet plein écran, groupé par jour, avec l'analyse affichée signalée. Un `<select>` cachait son contenu tant qu'on ne l'ouvrait pas, tronquait des intitulés qui sont des phrases entières, et ne pouvait porter ni date ni état courant — un historique est un endroit où l'on RELIT ce qu'on a demandé, pas un sélecteur de valeur.
+
+*Réparer plutôt qu'éliminer.* Le chargement rejetait la ligne entière dès qu'une cellule n'était pas reconnue : une opportunité complète — budget, échéance, client — disparaissait à cause d'un statut mal tapé. Chaque cellule illisible est maintenant remplacée par « Non renseigné », qui n'invente rien mais DIT que la donnée manque, et la ligne est conservée. Une échéance absente vide les champs dérivés : la ligne sort des analyses temporelles sans cesser de compter dans les totaux — ce qui est précisément le but. Vérifié de bout en bout, échéance manquante comprise : 362 lignes exportées, la ligne sans date exclue du filtre « urgentes » et du groupement par mois, son budget toujours dans le total.
+
+La contrepartie est non négociable et a été construite en même temps : réparer sans tracer reviendrait à corrompre en silence, exactement ce que le rejet servait à éviter. Chaque remplacement est recensé avec sa ligne, sa colonne et sa valeur d'origine, diagnostiqué quand la faute est reconnaissable, et le dashboard « Qualité des données » a été réécrit autour de cette notion — il porte désormais un compteur « Lignes écartées malgré tout » qui doit rester à zéro.
+
+Suite `pytest` : 193 tests (était 168). `dac check` : 15 dashboards, 115 widgets, tous verts.
 
 ## 📊 Bilan du Produit
 

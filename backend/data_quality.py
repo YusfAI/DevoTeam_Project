@@ -1,13 +1,19 @@
 """Rapport de qualité des données du Google Sheet.
 
-Le principe du projet est de ne jamais deviner : une ligne dont le statut n'est pas
-reconnu est rejetée plutôt que rattachée au hasard à une valeur voisine. Ce module
-rend ces rejets VISIBLES au lieu de les laisser dans les logs — une donnée écartée
-silencieusement est un chiffre faux qui s'ignore.
+Le principe du projet est de ne jamais deviner : une cellule dont la valeur n'est pas
+reconnue n'est jamais rattachée au hasard à une valeur voisine. Elle est remplacée
+par « Non renseigné », qui n'invente rien — il DIT que la donnée manque — et la ligne
+est conservée : rejeter l'opportunité entière pour une cellule fautive faisait perdre
+son budget, son échéance et son client avec elle.
 
-Il ne corrige rien : décider qu'« AMI » saisi dans `status` doit devenir un
-`opp_type`, ou qu'« En attente du plan de charge » est un statut légitime à ajouter
-à la liste blanche, relève du métier, pas du code.
+Ce module est la contrepartie de cette tolérance. Réparer sans tracer reviendrait à
+corrompre les données en silence, exactement ce que le rejet servait à éviter :
+chaque cellule remplacée est donc recensée ici, avec sa ligne, sa colonne et sa valeur
+d'origine, et diagnostiquée quand la faute est reconnaissable (« AMI » saisi dans
+`status` est une valeur valide d'`opp_type`).
+
+Il ne corrige rien DANS LE SHEET : décider qu'une valeur inconnue est légitime et
+doit rejoindre la liste blanche relève du métier, pas du code.
 """
 import logging
 
@@ -72,6 +78,50 @@ def rejected_rows() -> list:
     return sorted(grouped.values(), key=lambda e: -e["nb_lignes"])
 
 
+def repaired_cells() -> list:
+    """Cellules remplacées au dernier chargement, regroupées par cause.
+
+    Ce sont les anomalies qui, avant, coûtaient la ligne entière. Les voir groupées
+    par colonne et valeur montre immédiatement s'il s'agit d'une faute isolée ou d'une
+    colonne systématiquement mal remplie.
+    """
+    summary = get_last_refresh_summary() or {}
+    grouped: dict = {}
+    for repair in summary.get("repairs", []):
+        key = (repair.get("field", "?"), repair.get("value", ""))
+        entry = grouped.setdefault(key, {
+            "colonne": key[0],
+            "valeur": key[1],
+            "nb_lignes": 0,
+            "lignes": [],
+            "diagnostic": "",
+        })
+        entry["nb_lignes"] += 1
+        entry["lignes"].append(repair.get("row"))
+
+    for entry in grouped.values():
+        vide = not entry["valeur"]
+        autre = _looks_like_another_column(entry["colonne"], entry["valeur"])
+        if vide:
+            entry["diagnostic"] = (
+                f"« {entry['colonne']} » est vide sur ces lignes — la ligne est conservée, "
+                f"la colonne marquée « Non renseigné »."
+            )
+        elif autre:
+            entry["diagnostic"] = (
+                f"« {entry['valeur']} » est une valeur valide de « {autre} » — probable "
+                f"erreur de colonne à la saisie. La ligne est conservée, la colonne "
+                f"« {entry['colonne']} » marquée « Non renseigné »."
+            )
+        else:
+            entry["diagnostic"] = (
+                f"« {entry['valeur']} » n'existe pas dans la liste blanche de "
+                f"« {entry['colonne']} » — à corriger dans le Sheet, ou à ajouter à la "
+                f"liste si la valeur est légitime. La ligne est conservée en attendant."
+            )
+    return sorted(grouped.values(), key=lambda e: -e["nb_lignes"])
+
+
 def missing_values() -> list:
     """Taux de valeurs manquantes sur les colonnes qui comptent."""
     df = get_dataframe()
@@ -97,10 +147,13 @@ def report() -> dict:
     """Rapport complet, tel que renvoyé par GET /data/quality."""
     summary = get_last_refresh_summary() or {}
     rejets = rejected_rows()
+    reparations = repaired_cells()
     return {
         "lignes_chargees": summary.get("total_rows", 0),
         "lignes_rejetees": summary.get("skipped", 0),
+        "cellules_reparees": sum(e["nb_lignes"] for e in reparations),
         "rejets": rejets,
+        "reparations": reparations,
         "valeurs_manquantes": missing_values(),
     }
 
@@ -117,6 +170,14 @@ def quality_dataframe() -> pd.DataFrame:
             "nb": rejet["nb_lignes"],
             "part": None,
             "detail": rejet["diagnostic"],
+        })
+    for reparation in repaired_cells():
+        lignes.append({
+            "categorie": "Cellule réparée",
+            "sujet": f"{reparation['colonne']} = {reparation['valeur'] or '(vide)'}",
+            "nb": reparation["nb_lignes"],
+            "part": None,
+            "detail": reparation["diagnostic"],
         })
     for manque in missing_values():
         lignes.append({
