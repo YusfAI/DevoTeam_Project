@@ -24,7 +24,7 @@ def fixture_df(monkeypatch):
         _row(id=1, country="France", practice="Risk Advisory", status="Offre gagnée",
              budget=100000.0, financial_offer=90000.0, win_probability=0.8, weighted_amount=72000.0,
              days_remaining=10, deadline_month="2026-09"),
-        _row(id=2, country="France", practice="Data Management", status="Offre perdue",
+        _row(id=2, country="France", practice="Data Management", status="En cours de qualification",
              budget=50000.0, financial_offer=None, win_probability=None, weighted_amount=None,
              days_remaining=-5, deadline_month="2026-08"),
         _row(id=3, country="Maroc", practice="Risk Advisory", status="Lead",
@@ -91,14 +91,14 @@ def test_between_range_filter(fixture_df):
 def test_exclude_statuses_removes_matching_rows(fixture_df):
     intent = {
         "dimension": "", "metric": "budget", "filters": {}, "range_filters": {},
-        "use_raw_table": True, "exclude_statuses": ["Offre gagnée", "Offre perdue"],
+        "use_raw_table": True, "exclude_statuses": ["Offre gagnée", "En cours de qualification"],
     }
     result = db_layer.build_and_execute_query(intent)
     assert len(result) == 1
     assert result[0]["country"] == "Maroc"
 
 
-def test_no_exclude_statuses_keeps_all_rows(fixture_df):
+def test_open_statuses_are_all_kept_when_nothing_is_excluded(fixture_df):
     intent = {"dimension": "", "metric": "budget", "filters": {}, "range_filters": {}, "use_raw_table": True}
     result = db_layer.build_and_execute_query(intent)
     assert len(result) == 3
@@ -154,3 +154,63 @@ def test_empty_dataframe_returns_empty_list(monkeypatch):
     monkeypatch.setattr(db_layer, "get_dataframe", lambda: pd.DataFrame(columns=list(db_layer.RAW_TABLE_COLUMNS)))
     intent = {"dimension": "country", "metric": "budget", "filters": {}, "range_filters": {}}
     assert db_layer.build_and_execute_query(intent) == []
+
+
+# ---------------------------------------------------------------------------
+# Exclusion par défaut des affaires perdues (règle métier)
+# ---------------------------------------------------------------------------
+
+from backend.business_rules import LOST_STATUSES
+
+
+@pytest.fixture
+def df_avec_perdues(monkeypatch):
+    """Un gagné, un ouvert, et un de chaque statut d'échec."""
+    rows = [
+        _row(id=1, status="Offre gagnée", budget=100.0, country="France"),
+        _row(id=2, status="Lead", budget=200.0, country="France"),
+    ]
+    for i, perdu in enumerate(LOST_STATUSES, start=3):
+        rows.append(_row(id=i, status=perdu, budget=1000.0, country="France"))
+    df = pd.DataFrame(rows)
+    monkeypatch.setattr(db_layer, "get_dataframe", lambda: df)
+    return df
+
+
+def test_lost_opportunities_are_excluded_from_totals(df_avec_perdues):
+    # 5 statuts d'échec à 1000 chacun ne doivent pas gonfler le total : il ne reste
+    # que le gagné (100) et l'ouvert (200).
+    intent = {"dimension": "", "metric": "budget", "filters": {}, "range_filters": {}}
+    assert db_layer.build_and_execute_query(intent)[0]["budget"] == 300.0
+
+
+def test_won_opportunities_are_kept(df_avec_perdues):
+    # Une affaire gagnée est un succès, pas une perte : elle reste comptée.
+    intent = {"dimension": "", "metric": "nb_opportunities", "filters": {}, "range_filters": {}}
+    assert db_layer.build_and_execute_query(intent)[0]["nb_opportunities"] == 2
+
+
+def test_asking_explicitly_about_a_lost_status_still_returns_it(df_avec_perdues):
+    # L'exclusion est un défaut, pas une censure : « liste des offres perdues » doit
+    # répondre, sinon la donnée devient inatteignable.
+    intent = {"dimension": "", "metric": "budget",
+              "filters": {"status": "Offre perdue"}, "range_filters": {}}
+    assert db_layer.build_and_execute_query(intent)[0]["budget"] == 1000.0
+
+
+def test_every_lost_status_is_actually_excluded(df_avec_perdues):
+    intent = {"dimension": "status", "metric": "budget", "filters": {}, "range_filters": {},
+              "use_raw_table": True}
+    statuts = {r["status"] for r in db_layer.build_and_execute_query(intent)}
+    assert not (statuts & set(LOST_STATUSES)), f"statut perdu resté : {statuts}"
+
+
+def test_pandas_and_sql_engines_agree_on_the_exclusion(df_avec_perdues):
+    # Les deux moteurs doivent produire le même périmètre, sinon le message du chat
+    # et les graphiques annonceraient deux totaux différents pour la même question.
+    from backend.sql_builder import build_sql
+    intent = {"dimension": "", "metric": "budget", "filters": {}, "range_filters": {},
+              "chart_type": "kpi_card"}
+    sql = build_sql(intent)
+    for perdu in LOST_STATUSES:
+        assert f"'{perdu}'" in sql, f"{perdu} absent de la clause SQL"

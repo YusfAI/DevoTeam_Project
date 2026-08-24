@@ -18,21 +18,37 @@ affiché. Exemple utilisé : **« budget par pays pour Risk Advisory »**.
 Chat (frontend)                                          │
   → POST /dashboard { query, previous_intent }           │
   → backend/llm.py :: parse_user_query()                 │
-      → chemin rapide (mots-clés) OU appel Gemini        │
+      → RETOUCHE reconnue ? (« en camembert », « top 5 »)│
+        → appliquée sur l'intention précédente, sans LLM │
+      → sinon : chemin rapide (mots-clés) OU appel Gemini│
       → validation Pydantic + liste blanche              │
       → résolution des filtres contre les vraies valeurs │
   → backend/intent_refiner.py :: refine_intent()         │
       → dates relatives, garde-fous déterministes        │
+      → choose_chart_type() : la forme demandée est      │
+        confrontée à la cardinalité réelle des données   │
   → backend/db_layer.py (pandas)  →  message texte       │
   → backend/dac_composer.py                              │
       → compose 5-7 widgets (règles déterministes)       │
       → backend/sql_builder.py génère le SQL de chacun ──┘
-      → écrit dac/dashboards/_analyse.yml
-  → réponse { ai_message, dac_dashboard, intent }
+      → réécrit dac/dashboards/_principal.yml (travail)
+      → écrit dac/dashboards/_analyse_<hash>.yml (instantané)
+  → réponse { ai_message, dac_dashboard, dashboard_snapshot, intent }
   → Frontend :: iframe → Bruin DAC (port 8321)
       → DAC exécute le SQL de chaque widget sur DuckDB
       → affiche le dashboard multi-widgets
 ```
+
+## Deux fichiers, deux rôles
+
+`_principal.yml` porte TOUJOURS le même nom de dashboard (« Tableau de bord »), donc
+toujours la même URL : chaque question le réécrit, et l'utilisateur voit son tableau
+de bord se transformer au lieu d'en voir apparaître un de plus. `_analyse_<hash>.yml`
+fige le résultat de cette question précise, ce qui permet à la liste déroulante du chat
+de rouvrir une analyse passée telle qu'elle était — sans repasser par le modèle.
+
+Les deux sont des artefacts d'exécution, hors suivi git (voir `.gitignore`). Seuls
+`accueil.yml` et `qualite.yml`, écrits à la main, sont versionnés.
 
 ## Étape par étape, avec l'exemple
 
@@ -96,15 +112,23 @@ Chaque widget est traduit depuis son intention validée :
 SELECT country, SUM(budget) AS budget
 FROM opportunities
 WHERE practice = 'Risk Advisory'
+  AND status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
 GROUP BY country
 ORDER BY budget DESC
-LIMIT 12
 ```
 Les noms de colonnes viennent de la liste blanche, et les valeurs sont échappées
 (`'Côte d''Ivoire'`) — les vraies données contiennent des apostrophes.
 
-**8. L'écriture du dashboard.** Le tout est écrit en YAML dans
-`dac/dashboards/_analyse.yml`, en bloc littéral pour rester relisible :
+La clause `status NOT IN (...)` est ajoutée automatiquement : les affaires
+définitivement perdues sont exclues de tous les chiffres par défaut, parce qu'un
+« budget total » qui additionne 66 M€ d'affaires mortes n'aide personne à décider.
+L'exclusion est levée dès que la question porte elle-même sur un statut — « liste des
+offres perdues » doit répondre, pas renvoyer un tableau vide.
+
+**8. L'écriture du dashboard.** Le tout est écrit deux fois en YAML — dans
+`dac/dashboards/_principal.yml` (le tableau de bord de travail, réécrit sur place) et
+dans `dac/dashboards/_analyse_<hash>.yml` (l'instantané de cette question) — en bloc
+littéral pour rester relisible :
 ```yaml
 name: Budget par pays pour risk advisory
 connection: devoteam_duckdb
@@ -121,7 +145,12 @@ rows:
 
 **9. La réponse.** FastAPI renvoie :
 ```json
-{ "ai_message": "...", "dac_dashboard": "Budget par pays pour risk advisory", "intent": {...} }
+{
+  "ai_message": "...",
+  "dac_dashboard": "Tableau de bord",
+  "dashboard_snapshot": "Budget par pays — Risk Advisory",
+  "intent": {...}
+}
 ```
 
 **10. L'affichage.** Le frontend pointe son iframe sur

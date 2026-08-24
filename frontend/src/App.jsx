@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import ChatPanel from './components/ChatPanel'
 import DashboardPanel from './components/DashboardPanel'
 import AlertBanner from './components/AlertBanner'
@@ -23,22 +23,40 @@ export default function App() {
   const [theme, toggleTheme] = useTheme()
   const inputRef = useRef(null)
 
+  // Toutes les demandes ayant produit un tableau de bord, de la plus récente à la
+  // plus ancienne. Aucune n'est fusionnée : deux formulations qui aboutissent à la
+  // même analyse restent deux entrées, parce que la liste retrace ce que
+  // l'utilisateur a écrit — c'est par là qu'il retrouve une analyse, pas par le nom
+  // que le backend lui a donné.
+  const history = useMemo(
+    () =>
+      messages
+        .filter((m) => m.dashboardName)
+        .map((m) => ({ id: m.id, name: m.dashboardName, question: m.question || m.dashboardName }))
+        .reverse(),
+    [messages],
+  )
+
   async function handleSubmit(text) {
     addMessage({ type: 'user', text })
     setLoading(true)
 
     try {
       const data = await postDashboardQuery(text, lastIntent)
-      // Le nom du dashboard est attaché au message : cliquer une réponse passée y
-      // ramène, au lieu de n'avoir accès qu'au tout dernier résultat.
+      // La question est attachée à la réponse : c'est elle qu'affiche la liste
+      // déroulante, et c'est le seul endroit où le lien question → dashboard existe.
+      // dashboardName porte l'INSTANTANÉ, pas le dashboard de travail : ce dernier
+      // sera réécrit par la question suivante, rouvrir une analyse passée doit
+      // afficher ce qu'elle montrait alors, pas l'analyse en cours.
       addMessage({
         type: 'system',
         text: data.ai_message || 'Voici le résultat de votre demande :',
-        dashboardName: data.dac_dashboard || null,
+        dashboardName: data.dashboard_snapshot || data.dac_dashboard || null,
+        question: text,
       })
-      // dac_dashboard porte le dashboard multi-widgets généré pour cette question.
-      // Une réponse de clarification n'en a pas : on garde alors le dashboard
-      // précédent à l'écran plutôt que de le vider pour un tour sans résultat.
+      // dac_dashboard désigne le tableau de bord de travail, réécrit sur place par
+      // cette question. Une réponse de clarification n'en a pas : on garde alors
+      // l'affichage précédent plutôt que de le vider pour un tour sans résultat.
       if (data.dac_dashboard) {
         setDashboard(data)
         setDashboardKey((k) => k + 1)
@@ -56,8 +74,11 @@ export default function App() {
     }
   }
 
-  function handleOpenDashboard(name) {
-    setDashboard({ dac_dashboard: name, goal: name })
+  function handleOpenDashboard(name, question) {
+    // « replay » distingue une analyse ROUVERTE du tableau de bord de travail : les
+    // deux s'affichent dans le même cadre, mais l'une est figée et l'autre suit les
+    // questions. Le sous-titre le dit, sinon rien ne les différencie à l'écran.
+    setDashboard({ dac_dashboard: name, goal: question || name, replay: true })
     setDashboardKey((k) => k + 1)
   }
 
@@ -96,6 +117,8 @@ export default function App() {
         <ChatPanel
           messages={messages}
           loading={loading}
+          history={history}
+          currentDashboardName={dashboard?.dac_dashboard || null}
           onOpenDashboard={handleOpenDashboard}
           onSubmit={handleSubmit}
           theme={theme}

@@ -25,10 +25,14 @@ VALID_AGGREGATIONS = ["sum", "avg", "count"]
 KNOWN_VALUES = {
     "practice": ["Digital Transformation", "Risk Advisory", "Data Management"],
     "opp_type": ["AO", "DP", "AMI", "Consultation", "Prospection", "Gré à gré", "Avant-vente"],
+    # « En attente du plan de charge » figure sur 8 lignes du Sheet et a été confirmé
+    # comme un statut légitime : une étape réelle du pipeline, pas une faute de saisie.
+    # « Non renseigné » recueille les lignes dont la colonne statut contient en fait un
+    # type d'opportunité (AMI, DP) — voir data_store._normalize_status.
     "status": [
         "Lead", "Opportunité détectée", "En cours de qualification", "Complément d'information",
         "En cours de préparation", "Propal shortlistée", "Manif shortlistée", "Manifestation remise",
-        "Offre remise", "Offre gagnée", "Offre perdue", "Offre signée", "Non shortlisté",
-        "Infructueux", "NO GO", "Hors scope",
+        "Offre remise", "En attente du plan de charge", "Offre gagnée", "Offre perdue",
+        "Offre signée", "Non shortlisté", "Infructueux", "NO GO", "Hors scope", "Non renseigné",
     ],
 }

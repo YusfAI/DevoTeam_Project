@@ -22,7 +22,32 @@ FUNNEL_STAGE_ORDER = [
     "Manif shortlistée",
     "Manifestation remise",
     "Offre remise",
+    # Confirmé côté métier : la capacité à staffer se vérifie une fois l'offre remise,
+    # avant de pouvoir confirmer le gain.
+    "En attente du plan de charge",
     "Offre gagnée",
+    # La signature est l'étape finale, postérieure au gain : 32 opportunités signées
+    # restaient invisibles dans l'entonnoir tant qu'il s'arrêtait à « Offre gagnée »,
+    # et le cumul « ayant atteint au moins gagnée » les sous-comptait d'autant.
+    "Offre signée",
+]
+
+# Opportunités définitivement perdues. Elles sont exclues PAR DÉFAUT de toutes les
+# métriques et de tous les graphiques : additionner 66 M€ d'affaires mortes dans un
+# « budget total » donnait un chiffre que personne ne peut utiliser pour décider.
+#
+# Les gagnées et signées restent comptabilisées : ce sont des succès, pas des pertes.
+#
+# Attention : l'exclusion est un DÉFAUT, pas une censure. Une question portant
+# explicitement sur ces statuts (« liste des offres perdues ») doit continuer d'y
+# répondre — voir sql_builder._where_clause et db_layer._apply_filters, qui lèvent
+# l'exclusion dès que la question filtre elle-même sur le statut.
+LOST_STATUSES = [
+    "Offre perdue",
+    "Infructueux",
+    "NO GO",
+    "Hors scope",
+    "Non shortlisté",
 ]
 
 # Au-delà, un croisement dimension × practice devient illisible. On garde les N
@@ -48,3 +73,120 @@ def cap_heatmap_rows(data: list, dimension: str, metric: str,
     kept = set(ordered_keys)
     filtered = [row for row in data if row.get(dimension) in kept]
     return filtered, ordered_keys
+
+
+# ---------------------------------------------------------------------------
+# Choix du type de graphique
+#
+# Le LLM propose une forme à partir des mots de la question ; ces règles la
+# valident ensuite contre la FORME RÉELLE des données. Les deux signaux sont
+# complémentaires : « répartition par pays » contient bien le mot qui appelle un
+# camembert, mais il y a 21 pays — les angles ne se comparent plus à l'œil et la
+# forme demandée dessert la question qu'elle est censée servir.
+# ---------------------------------------------------------------------------
+
+# Un camembert reste lisible jusqu'à ~6 parts ; au-delà, comparer deux angles
+# voisins devient impossible et le graphique ne se lit plus que par sa légende.
+MAX_PIE_SLICES = 6
+
+# Métriques dont les valeurs NE S'ADDITIONNENT PAS : une moyenne de moyennes n'a
+# pas de sens statistique. Un camembert les représenterait comme des parts d'un
+# tout, alors que leur somme ne veut rien dire.
+AVERAGED_METRICS = {"win_probability"}
+
+# Dimensions ordonnées dans le temps : seules elles peuvent porter une courbe.
+TEMPORAL_DIMENSIONS = {"deadline_month", "deadline_year"}
+
+# Formes que l'utilisateur demande nommément et qui répondent à un besoin précis
+# (une liste, un entonnoir, une corrélation, un croisement). On ne les révise pas :
+# les substituer trahirait la question au lieu de l'améliorer.
+EXPLICIT_CHART_TYPES = {"table", "funnel", "scatter", "heatmap"}
+
+
+def distinct_count(dimension: str, filters: dict | None = None,
+                    exclude_statuses: list | None = None) -> int | None:
+    """Nombre de valeurs distinctes de `dimension` réellement présentes une fois les
+    filtres de la question appliqués. Renvoie None si le compte est indéterminable.
+
+    C'est bien la cardinalité APRÈS filtrage qui décide : `country` compte 21 valeurs
+    dans le portefeuille entier, mais souvent trois seulement sur un périmètre donné —
+    et là, le camembert redevient le bon choix.
+    """
+    try:
+        from .data_store import get_dataframe
+        df = get_dataframe()
+        if df is None or df.empty or dimension not in df.columns:
+            return None
+
+        filters = filters or {}
+        for column, value in filters.items():
+            if column not in df.columns:
+                continue
+            if isinstance(value, (list, tuple)):
+                df = df[df[column].isin(list(value))]
+            else:
+                df = df[df[column] == value]
+
+        # Les affaires perdues sont exclues des graphiques (LOST_STATUSES) : les
+        # compter ici annoncerait des parts que le camembert n'afficherait jamais.
+        excluded = list(exclude_statuses or [])
+        if "status" not in filters:
+            excluded += [s for s in LOST_STATUSES if s not in excluded]
+        if excluded and "status" in df.columns:
+            df = df[~df["status"].isin(excluded)]
+
+        return int(df[dimension].nunique())
+    except Exception:  # pragma: no cover - dépend de l'état du cache de données
+        return None
+
+
+def choose_chart_type(intent: dict) -> tuple[str, str]:
+    """Type de graphique retenu, et la raison SI il diffère de celui demandé.
+
+    La raison n'est pas décorative : elle est affichée sous le graphique. Voir une
+    forme différente de celle qu'on a demandée sans explication donne le sentiment
+    que l'outil n'a pas compris ; avec l'explication, il apprend quelque chose.
+    """
+    chart = intent.get("chart_type") or "bar"
+    dimension = intent.get("dimension") or ""
+    metric = intent.get("metric") or "budget"
+    limit = int(intent.get("limit") or 0)
+
+    if chart in EXPLICIT_CHART_TYPES or intent.get("use_raw_table"):
+        return chart, ""
+
+    # Sans dimension il n'y a qu'un seul chiffre : aucune forme graphique ne peut le
+    # tracer, et un « graphique » à une barre est plus pauvre que le nombre lui-même.
+    if not dimension:
+        if chart != "kpi_card":
+            return "kpi_card", "Un seul chiffre à afficher : le nombre se lit mieux qu'un graphique à une valeur."
+        return "kpi_card", ""
+
+    # À l'inverse, un KPI sur une question qui pose un axe d'analyse écraserait en un
+    # nombre unique la répartition que l'utilisateur demande précisément à voir.
+    if chart == "kpi_card":
+        return "bar", ""
+
+    if chart == "pie":
+        if metric in AVERAGED_METRICS:
+            return "bar", ("Barres plutôt qu'un camembert : une moyenne ne s'additionne pas, "
+                            "elle ne forme donc pas des parts d'un tout.")
+        if limit > 0:
+            return "bar", (f"Barres plutôt qu'un camembert : un top {limit} ne montre pas le tout, "
+                            "les parts d'un camembert n'y additionneraient pas 100 %.")
+        n = distinct_count(dimension, intent.get("filters"), intent.get("exclude_statuses"))
+        if n is not None and n > MAX_PIE_SLICES:
+            return "bar", (f"Barres plutôt qu'un camembert : {n} valeurs à comparer, "
+                            "au-delà de six parts les angles ne se distinguent plus.")
+        return "pie", ""
+
+    if chart in ("line", "area") and dimension not in TEMPORAL_DIMENSIONS:
+        return "bar", ("Barres plutôt qu'une courbe : relier des catégories entre elles "
+                        "suggérerait une progression qui n'existe pas.")
+
+    # Une dimension temporelle appelle une courbe : des barres côte à côte se comparent
+    # deux à deux, là où la question porte sur le mouvement d'ensemble.
+    if chart == "bar" and dimension in TEMPORAL_DIMENSIONS:
+        return "line", ""
+
+    return chart, ""

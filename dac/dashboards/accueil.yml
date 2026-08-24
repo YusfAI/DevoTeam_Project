@@ -1,11 +1,24 @@
 schema: https://getbruin.com/schemas/dac/dashboard/v1
 name: Vue d'ensemble commerciale
-description: Les cinq questions les plus fréquentes sur le portefeuille d'opportunités
+description: Les questions les plus fréquentes sur le portefeuille d'opportunités
 connection: devoteam_duckdb
 
 # Dashboard "as code" : versionné dans git, relu en revue, reproductible à
 # l'identique sur n'importe quelle machine. Les données proviennent du fichier
 # DuckDB réécrit à chaque rafraîchissement du Google Sheet (backend/duckdb_export.py).
+#
+# RÈGLE APPLIQUÉE À TOUS LES WIDGETS : les affaires définitivement perdues (Offre
+# perdue, Infructueux, NO GO, Hors scope, Non shortlisté) sont exclues. Elles
+# représentent 66,1 M€ sur 164,4 M€ : les additionner dans un « budget total »
+# donnait un chiffre inutilisable pour décider. Les gagnées et signées restent
+# comptées — ce sont des succès, pas des pertes.
+# La même règle est appliquée automatiquement aux dashboards générés par le chat
+# (voir backend/business_rules.py::LOST_STATUSES), pour que les deux concordent.
+#
+# Les 12 étapes de l'entonnoir sont la transcription exacte de
+# business_rules.FUNNEL_STAGE_ORDER : les deux widgets qui s'en servent doivent
+# rester d'accord, sans quoi les taux de passage porteraient sur un pipeline
+# différent de celui que l'entonnoir affiche.
 #
 # Le filtre ci-dessous est injecté en Jinja dans CHAQUE requête : changer la
 # practice recalcule tout le dashboard côté SQL, sans rechargement de page.
@@ -18,63 +31,94 @@ filters:
       values: ["Toutes", "Digital Transformation", "Risk Advisory", "Data Management"]
 
 rows:
-  # --- Ligne 1 : les chiffres clés, lisibles d'un coup d'œil ---
+  # --- Ligne 1 : les trois montants. Budget et offre financière côte à côte parce
+  # qu'ils diffèrent sur 349 des 350 lignes d'origine : n'en montrer qu'un laissait
+  # croire qu'il n'y en avait qu'un. L'écart dit si l'on chiffre au-dessus ou en
+  # dessous du budget annoncé par le client. ---
   - widgets:
-      - name: Budget total
+      - name: Budget actif
         type: metric
-        col: 3
+        col: 4
+        description: Budget estimé côté client, hors affaires perdues, infructueuses, NO GO, hors scope et non shortlistées.
         sql: |
-          SELECT SUM(budget) AS total FROM opportunities
-          WHERE 1 = 1
+          SELECT SUM(budget) AS value FROM opportunities
+          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
           {% endif %}
-        value: { field: total, type: number, format: ",.0f" }
+        value: { field: value, type: number, format: ",.0f" }
 
+      - name: Offre financière
+        type: metric
+        col: 4
+        description: Montant réellement proposé par DevoTeam, sur le même périmètre.
+        sql: |
+          SELECT SUM(financial_offer) AS value FROM opportunities
+          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+        value: { field: value, type: number, format: ",.0f" }
+
+      - name: Écart offre / budget
+        type: metric
+        col: 4
+        description: Négatif = nous chiffrons en dessous du budget annoncé par le client.
+        sql: |
+          SELECT (SUM(financial_offer) - SUM(budget)) / NULLIF(SUM(budget), 0) AS value FROM opportunities
+          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+        value: { field: value, type: number, format: "+.1%" }
+
+  # --- Ligne 2 : le volume et la qualité du portefeuille ---
+  - widgets:
       - name: Opportunités
         type: metric
-        col: 3
+        col: 4
         sql: |
-          SELECT COUNT(*) AS total FROM opportunities
-          WHERE 1 = 1
+          SELECT COUNT(*) AS value FROM opportunities
+          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
           {% endif %}
-        value: { field: total, type: number, format: ",.0f" }
+        value: { field: value, type: number, format: ",.0f" }
 
       - name: Montant pondéré
         type: metric
-        col: 3
-        description: Offre financière × probabilité de gain
+        col: 4
+        description: Offre financière × probabilité de gain, sur les seules opportunités où elle est renseignée — environ la moitié du portefeuille.
         sql: |
-          SELECT SUM(weighted_amount) AS total FROM opportunities
-          WHERE 1 = 1
+          SELECT SUM(weighted_amount) AS value FROM opportunities
+          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
           {% endif %}
-        value: { field: total, type: number, format: ",.0f" }
+        value: { field: value, type: number, format: ",.0f" }
 
       - name: Probabilité de gain moyenne
         type: metric
-        col: 3
+        col: 4
         sql: |
-          SELECT AVG(win_probability) AS taux FROM opportunities
-          WHERE win_probability IS NOT NULL
+          SELECT AVG(win_probability) AS value FROM opportunities
+          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+            AND win_probability IS NOT NULL
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
           {% endif %}
-        value: { field: taux, type: number, format: ".1%" }
+        value: { field: value, type: number, format: ".1%" }
 
-  # --- Ligne 2 : « Où est l'argent ? » (Q1) et « comment se répartit-il ? » (Q2) ---
+  # --- Ligne 3 : « Où est l'argent ? » et « comment se répartit-il ? » ---
   - widgets:
       - name: Budget par pays
         type: chart
         chart: bar
         col: 7
-        description: Les 10 pays au budget le plus élevé
+        description: Les 10 pays au budget actif le plus élevé.
         sql: |
           SELECT country, SUM(budget) AS budget FROM opportunities
-          WHERE 1 = 1
+          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
           {% endif %}
@@ -83,15 +127,20 @@ rows:
           LIMIT 10
         x: { field: country, type: category, title: Pays }
         y: { field: budget, type: number, title: Budget, format: ",.0f" }
+        # Une couleur par pays plutôt qu'une teinte unique : chaque catégorie se
+        # distingue immédiatement, et la légende relie les graphiques entre eux.
+        color: { field: country }
 
       - name: Répartition par practice
         type: chart
         chart: pie
+        # Élargi à 5 colonnes : le camembert affiche « nom NN% » à côté de chaque
+        # part, et ces étiquettes sont rognées si le widget est trop étroit.
         col: 5
-        description: Nombre d'opportunités par practice
+        description: Nombre d'opportunités actives par practice.
         sql: |
           SELECT practice, COUNT(*) AS nb FROM opportunities
-          WHERE 1 = 1
+          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
           {% endif %}
@@ -100,68 +149,105 @@ rows:
         label: practice
         value: { field: nb }
 
-  # --- Ligne 3 : « Où en est le pipeline ? » (Q3) et « quelles practices convertissent ? » (Q4) ---
+  # --- Ligne 4 : « Où en est le pipeline ? » et « où perd-on les affaires ? » ---
   - widgets:
       - name: Entonnoir de vente
         type: chart
         chart: funnel
         col: 6
-        description: Étapes du pipeline dans l'ordre réel du cycle de vente
-        # ORDER BY sur l'ordre du pipeline, jamais sur la valeur : un entonnoir trié
-        # par volume ne raconterait rien du parcours réel d'une opportunité. Les
-        # statuts de SORTIE (perdu, NO GO, infructueux…) sont exclus — ce sont des
-        # sorties du pipeline, pas des étapes que chaque opportunité traverse.
+        description: Nombre d'opportunités ayant atteint au moins chaque étape.
+        # Cumul depuis la fin : une opportunité signée a nécessairement franchi les
+        # étapes précédentes. Compter les statuts bruts ne décroîtrait pas et ne
+        # formerait donc pas un entonnoir (voir backend/sql_builder.funnel_sql).
+        # Les statuts de sortie sont déjà absents de la liste des étapes.
         sql: |
-          SELECT status, COUNT(*) AS nb,
-            CASE status
-              WHEN 'Lead' THEN 1
-              WHEN 'Opportunité détectée' THEN 2
-              WHEN 'En cours de qualification' THEN 3
-              WHEN 'Complément d''information' THEN 4
-              WHEN 'En cours de préparation' THEN 5
-              WHEN 'Propal shortlistée' THEN 6
-              WHEN 'Manif shortlistée' THEN 7
-              WHEN 'Manifestation remise' THEN 8
-              WHEN 'Offre remise' THEN 9
-              WHEN 'Offre gagnée' THEN 10
-            END AS etape
-          FROM opportunities
-          WHERE status IN (
-            'Lead', 'Opportunité détectée', 'En cours de qualification',
-            'Complément d''information', 'En cours de préparation',
-            'Propal shortlistée', 'Manif shortlistée', 'Manifestation remise',
-            'Offre remise', 'Offre gagnée'
-          )
+          WITH etapes AS (
+            SELECT status, COUNT(*) AS nb,
+              CASE status
+                WHEN 'Lead' THEN 1
+                WHEN 'Opportunité détectée' THEN 2
+                WHEN 'En cours de qualification' THEN 3
+                WHEN 'Complément d''information' THEN 4
+                WHEN 'En cours de préparation' THEN 5
+                WHEN 'Propal shortlistée' THEN 6
+                WHEN 'Manif shortlistée' THEN 7
+                WHEN 'Manifestation remise' THEN 8
+                WHEN 'Offre remise' THEN 9
+                WHEN 'En attente du plan de charge' THEN 10
+                WHEN 'Offre gagnée' THEN 11
+                WHEN 'Offre signée' THEN 12
+              END AS rang
+            FROM opportunities
+            WHERE status IN (
+              'Lead', 'Opportunité détectée', 'En cours de qualification',
+              'Complément d''information', 'En cours de préparation', 'Propal shortlistée',
+              'Manif shortlistée', 'Manifestation remise', 'Offre remise',
+              'En attente du plan de charge', 'Offre gagnée', 'Offre signée'
+            )
           {% if filters.practice != 'Toutes' %}
-            AND practice = '{{ filters.practice }}'
+              AND practice = '{{ filters.practice }}'
           {% endif %}
-          GROUP BY 1
-          ORDER BY etape
+            GROUP BY status
+          )
+          SELECT status, SUM(nb) OVER (ORDER BY rang DESC ROWS UNBOUNDED PRECEDING) AS atteint
+          FROM etapes
+          ORDER BY rang
         label: status
-        value: { field: nb }
+        value: { field: atteint }
 
-      - name: Probabilité de gain par practice
+      - name: Taux de passage entre étapes
         type: chart
         chart: bar
         col: 6
-        description: Moyenne des probabilités renseignées
+        description: Part des opportunités ayant atteint une étape qui franchissent la suivante.
         sql: |
-          SELECT practice, AVG(win_probability) AS taux FROM opportunities
-          WHERE win_probability IS NOT NULL
+          WITH etapes AS (
+            SELECT status, COUNT(*) AS nb,
+              CASE status
+                WHEN 'Lead' THEN 1
+                WHEN 'Opportunité détectée' THEN 2
+                WHEN 'En cours de qualification' THEN 3
+                WHEN 'Complément d''information' THEN 4
+                WHEN 'En cours de préparation' THEN 5
+                WHEN 'Propal shortlistée' THEN 6
+                WHEN 'Manif shortlistée' THEN 7
+                WHEN 'Manifestation remise' THEN 8
+                WHEN 'Offre remise' THEN 9
+                WHEN 'En attente du plan de charge' THEN 10
+                WHEN 'Offre gagnée' THEN 11
+                WHEN 'Offre signée' THEN 12
+              END AS rang
+            FROM opportunities
+            WHERE status IN (
+              'Lead', 'Opportunité détectée', 'En cours de qualification',
+              'Complément d''information', 'En cours de préparation', 'Propal shortlistée',
+              'Manif shortlistée', 'Manifestation remise', 'Offre remise',
+              'En attente du plan de charge', 'Offre gagnée', 'Offre signée'
+            )
           {% if filters.practice != 'Toutes' %}
-            AND practice = '{{ filters.practice }}'
+              AND practice = '{{ filters.practice }}'
           {% endif %}
-          GROUP BY 1
-          ORDER BY 2 DESC
-        x: { field: practice, type: category, title: Practice }
-        y: { field: taux, type: number, title: Probabilité de gain, format: ".1%" }
+            GROUP BY status
+          ),
+          cumul AS (
+            SELECT status, rang,
+              SUM(nb) OVER (ORDER BY rang DESC ROWS UNBOUNDED PRECEDING) AS atteint
+            FROM etapes
+          )
+          SELECT status,
+            atteint * 1.0 / NULLIF(LAG(atteint) OVER (ORDER BY rang), 0) AS taux
+          FROM cumul
+          ORDER BY rang
+        x: { field: status, type: category, title: Étape }
+        y: { field: taux, type: number, title: Taux de passage, format: ".0%" }
+        color: { field: status }
 
-  # --- Ligne 4 : « Qu'est-ce qui est urgent ? » (Q5) ---
+  # --- Ligne 5 : « Qu'est-ce qui est urgent ? » ---
   - widgets:
       - name: Opportunités urgentes (échéance ≤ 7 jours)
         type: table
         col: 12
-        description: Opportunités actives uniquement — les statuts clos sont exclus
+        description: Opportunités encore ouvertes uniquement — les affaires closes ou perdues sont exclues.
         sql: |
           SELECT buyer, country, practice, status, deadline, days_remaining, budget
           FROM opportunities

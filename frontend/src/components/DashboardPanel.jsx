@@ -39,10 +39,19 @@ export default function DashboardPanel({ dashboard, dashboardKey }) {
   const [frameLoaded, setFrameLoaded] = useState(false)
   useEffect(() => { setFrameLoaded(false) }, [frameUrl, dashboardKey])
 
+  // Trois états à distinguer, sans quoi rien à l'écran ne dit lequel on regarde :
+  // la vue d'ensemble (versionnée, jamais réécrite), le tableau de bord de travail
+  // (réécrit par chaque question) et une analyse rouverte depuis la liste (figée).
+  const isReplay = Boolean(dashboard?.replay)
   const title = overviewVisible ? 'Vue d’ensemble commerciale' : dashboard?.goal || 'Analyse'
-  const subtitle = overviewVisible
-    ? 'Dashboard versionné (Bruin DAC) — filtres interactifs, données à jour'
-    : 'Dashboard généré à partir de votre question — mêmes filtres sur tous les widgets'
+  let subtitle
+  if (overviewVisible) {
+    subtitle = 'Dashboard versionné (Bruin DAC) — filtres interactifs, données à jour'
+  } else if (isReplay) {
+    subtitle = 'Analyse enregistrée — figée telle qu’elle était lors de cette question'
+  } else {
+    subtitle = 'Tableau de bord de travail — mis à jour à chaque question, mêmes filtres partout'
+  }
 
   return (
     <div className="dashboard-panel">
@@ -66,7 +75,7 @@ export default function DashboardPanel({ dashboard, dashboardKey }) {
                 className={!overviewVisible ? 'active' : ''}
                 onClick={() => setShowOverview(false)}
               >
-                Ma question
+                {isReplay ? 'Analyse' : 'Mon tableau de bord'}
               </button>
             </div>
           </div>

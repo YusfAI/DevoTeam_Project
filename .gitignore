@@ -35,5 +35,8 @@ dac/data/*.db
 # éphémère réécrit en permanence, sans intérêt en revue — contrairement aux
 # dashboards écrits à la main (dac/dashboards/accueil.yml), eux versionnés.
 dac/dashboards/_analyse_*.yml
+# Le tableau de bord de travail, reecrit par CHAQUE question : meme raison, c'est un
+# artefact d'execution et non une source. Seul accueil.yml est versionne.
+dac/dashboards/_principal.yml
 
 logs/queries

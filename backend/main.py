@@ -21,7 +21,7 @@ from .data_store import get_dataframe, get_last_refresh_summary, refresh_datafra
 # pyrefly: ignore [missing-import]
 from .duckdb_export import export_dataframe
 # pyrefly: ignore [missing-import]
-from .dac_composer import write_generated_dashboard
+from .dac_composer import write_generated_dashboard, write_main_dashboard
 
 logger = logging.getLogger(__name__)
 
@@ -92,17 +92,32 @@ async def generate_dashboard(request: ChatRequest):
         # affiché en iframe par le frontend. Jamais bloquant : si la génération ou
         # l'écriture échoue, on renvoie quand même la réponse classique (message +
         # graphique unique) plutôt que de faire échouer toute la requête.
+        # Deux écritures, deux rôles. Le dashboard de TRAVAIL garde toujours le même
+        # nom : la question le réécrit sur place, sous les yeux de l'utilisateur.
+        # L'INSTANTANÉ fige le résultat de cette question précise, pour que la liste
+        # déroulante puisse le rouvrir plus tard sans repasser par le modèle.
         try:
-            dac_dashboard = write_generated_dashboard(request.query, intent)
+            dac_dashboard = write_main_dashboard(request.query, intent)
         except Exception:
-            logger.exception("Génération du dashboard DAC en échec pour %r", request.query)
+            logger.exception("Écriture du dashboard de travail en échec pour %r", request.query)
             dac_dashboard = None
+
+        try:
+            dashboard_snapshot = write_generated_dashboard(request.query, intent)
+        except Exception:
+            logger.exception("Écriture de l'instantané en échec pour %r", request.query)
+            dashboard_snapshot = None
+
+        # Si le dashboard de travail n'a pas pu être écrit, on affiche l'instantané
+        # plutôt que rien : l'utilisateur perd la mise à jour en place, pas sa réponse.
+        if dac_dashboard is None:
+            dac_dashboard = dashboard_snapshot
 
         # La réponse ne transporte plus de spécification de graphique : tout ce qui
         # s'affiche vient du dashboard DAC désigné par dac_dashboard. Le frontend n'a
         # besoin que du message, du titre et de l'intention (contexte multi-tour).
         return {"ai_message": ai_message, "goal": goal, "intent": intent,
-                "dac_dashboard": dac_dashboard}
+                "dac_dashboard": dac_dashboard, "dashboard_snapshot": dashboard_snapshot}
 
     except ValueError as e:
         # Expected errors (validation failed, dimension not supported, etc)

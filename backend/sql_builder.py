@@ -12,7 +12,22 @@ plutôt qu'une opération pandas. Les deux doivent rester d'accord — c'est vé
 par les tests (même filtre => même total).
 """
 from .schema_and_whitelist import VALID_DIMENSIONS, VALID_FILTERS, VALID_METRICS
-from .business_rules import FUNNEL_STAGE_ORDER
+from .business_rules import FUNNEL_STAGE_ORDER, LOST_STATUSES
+
+
+def _question_targets_status(intent: dict) -> bool:
+    """La question porte-t-elle explicitement sur un statut ?
+
+    Seul un FILTRE sur `status` lève l'exclusion par défaut des affaires perdues :
+    l'utilisateur a nommé le statut qui l'intéresse, lui renvoyer un résultat vide
+    serait absurde.
+
+    Une simple répartition PAR statut (dimension = status) ne la lève pas : le
+    graphique doit rester cohérent avec le total affiché juste au-dessus, sans quoi
+    les barres ne se réconcilieraient plus avec le KPI — c'est exactement le défaut
+    de lisibilité qu'on a corrigé ailleurs avec le regroupement « Autres ».
+    """
+    return "status" in (intent.get("filters") or {})
 
 TABLE = "opportunities"
 
@@ -137,7 +152,17 @@ def _where_clause(intent: dict) -> str:
         else:
             conditions.append(f"{column} {op} {_literal(column, value)}")
 
-    excluded = intent.get("exclude_statuses") or []
+    excluded = list(intent.get("exclude_statuses") or [])
+
+    # Exclusion par défaut des affaires perdues. Elle s'ajoute à toute exclusion déjà
+    # demandée (ex. « opportunités urgentes », qui écarte aussi les statuts clos).
+    #
+    # Elle est LEVÉE si la question filtre elle-même sur le statut : demander « la
+    # liste des offres perdues » doit renvoyer ces offres, pas un tableau vide. Le
+    # défaut sert à ne pas gonfler les totaux, jamais à rendre une donnée inatteignable.
+    if not _question_targets_status(intent):
+        excluded += [s for s in LOST_STATUSES if s not in excluded]
+
     if excluded:
         values = ", ".join(_literal("status", s) for s in excluded)
         conditions.append(f"status NOT IN ({values})")

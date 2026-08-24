@@ -304,3 +304,142 @@ def test_proportion_keyword_triggers_pie_via_refine_intent():
     intent = _base_intent(chart_type="bar", dimension="practice")
     result = refine_intent("quelle proportion du budget par practice", intent)
     assert result["chart_type"] == "pie"
+
+
+# ---------------------------------------------------------------------------
+# choose_chart_type — la forme demandée est confrontée à la forme des données
+# ---------------------------------------------------------------------------
+
+from backend import business_rules
+from backend.business_rules import choose_chart_type
+
+
+def _chart(monkeypatch, cardinalite=3, **overrides):
+    """Intention minimale, avec une cardinalité imposée : les tests ne doivent pas
+    dépendre du contenu réel du Google Sheet du jour."""
+    monkeypatch.setattr(business_rules, "distinct_count", lambda *a, **k: cardinalite)
+    intent = {"metric": "budget", "dimension": "country", "chart_type": "bar",
+              "filters": {}, "limit": 0}
+    intent.update(overrides)
+    return choose_chart_type(intent)
+
+
+def test_a_pie_survives_when_there_are_few_slices(monkeypatch):
+    chart, raison = _chart(monkeypatch, cardinalite=3, chart_type="pie")
+    assert chart == "pie"
+    assert raison == ""
+
+
+def test_a_pie_becomes_bars_when_there_are_too_many_slices(monkeypatch):
+    # 19 pays : au-delà de six parts, deux angles voisins ne se comparent plus.
+    chart, raison = _chart(monkeypatch, cardinalite=19, chart_type="pie")
+    assert chart == "bar"
+    assert "19" in raison
+
+
+def test_a_pie_of_averages_becomes_bars(monkeypatch):
+    # Une moyenne ne s'additionne pas : elle ne forme pas des parts d'un tout, et un
+    # camembert la présenterait pourtant comme telle.
+    chart, raison = _chart(monkeypatch, cardinalite=3, chart_type="pie",
+                            metric="win_probability")
+    assert chart == "bar"
+    assert "moyenne" in raison
+
+
+def test_a_pie_of_a_top_n_becomes_bars(monkeypatch):
+    # Les parts d'un top 5 ne totalisent pas le portefeuille : le camembert
+    # afficherait des pourcentages d'un tout qu'il ne montre pas.
+    chart, raison = _chart(monkeypatch, cardinalite=3, chart_type="pie", limit=5)
+    assert chart == "bar"
+    assert "top 5" in raison
+
+
+def test_a_curve_on_a_non_temporal_dimension_becomes_bars(monkeypatch):
+    chart, raison = _chart(monkeypatch, chart_type="line", dimension="practice")
+    assert chart == "bar"
+    assert raison
+
+
+def test_a_temporal_dimension_gets_a_curve(monkeypatch):
+    chart, _ = _chart(monkeypatch, chart_type="bar", dimension="deadline_month")
+    assert chart == "line"
+
+
+def test_without_a_dimension_there_is_only_a_number(monkeypatch):
+    chart, raison = _chart(monkeypatch, chart_type="bar", dimension="")
+    assert chart == "kpi_card"
+    assert raison
+
+
+def test_a_kpi_on_a_question_with_an_axis_becomes_a_chart(monkeypatch):
+    # Écraser en un seul chiffre la répartition que la question demande à voir.
+    chart, _ = _chart(monkeypatch, chart_type="kpi_card", dimension="country")
+    assert chart == "bar"
+
+
+def test_explicitly_requested_forms_are_never_revised(monkeypatch):
+    # table, funnel, scatter et heatmap répondent à un besoin précis et nommé :
+    # les remplacer trahirait la question au lieu de l'améliorer.
+    for demande in ("table", "funnel", "scatter", "heatmap"):
+        chart, raison = _chart(monkeypatch, cardinalite=99, chart_type=demande)
+        assert chart == demande
+        assert raison == ""
+
+
+# ---------------------------------------------------------------------------
+# try_followup_parse — retoucher sans perdre le contexte, ni en inventer
+# ---------------------------------------------------------------------------
+
+from backend.intent_refiner import try_followup_parse
+
+_PRECEDENT = {
+    "goal": "Budget par pays — Risk Advisory", "metric": "budget", "dimension": "country",
+    "filters": {"practice": "Risk Advisory"}, "range_filters": {}, "chart_type": "bar",
+    "aggregation": "sum", "use_raw_table": False, "limit": 0,
+}
+
+
+def test_an_adjustment_keeps_everything_it_does_not_change():
+    suite = try_followup_parse("top 5", _PRECEDENT)
+    assert suite["limit"] == 5
+    assert suite["metric"] == "budget"
+    assert suite["dimension"] == "country"
+    assert suite["filters"] == {"practice": "Risk Advisory"}
+
+
+def test_changing_the_axis_drops_the_filter_that_pinned_it():
+    # Grouper PAR practice alors qu'un filtre fige UNE practice donnerait un
+    # graphique à une seule barre — le filtre fait double emploi avec l'axe.
+    suite = try_followup_parse("par practice", _PRECEDENT)
+    assert suite["dimension"] == "practice"
+    assert "practice" not in suite["filters"]
+
+
+def test_a_comparison_keeps_its_multi_value_filter():
+    # « compare la France et le Maroc » veut précisément cet axe ET cette
+    # restriction : la règle précédente ne doit pas s'y appliquer.
+    precedent = dict(_PRECEDENT, dimension="practice",
+                      filters={"country": ["France", "Maroc"]})
+    suite = try_followup_parse("par pays", precedent)
+    assert suite["filters"]["country"] == ["France", "Maroc"]
+
+
+def test_an_unrecognised_word_cancels_the_whole_adjustment():
+    # Le garde-fou central : hériter en silence du contexte alors qu'un mot n'a pas
+    # été compris revient à répondre à une autre question que celle posée.
+    assert try_followup_parse("budget par pays au Maroc", _PRECEDENT) is None
+
+
+def test_a_request_that_adjusts_nothing_is_not_an_adjustment():
+    assert try_followup_parse("bonjour", _PRECEDENT) is None
+
+
+def test_nothing_is_inherited_when_there_is_no_previous_question():
+    assert try_followup_parse("en camembert", None) is None
+
+
+def test_the_title_follows_the_adjustment():
+    # Garder l'ancien titre laisserait croire que la retouche n'a pas été prise en
+    # compte ; reprendre la phrase tapée donnerait « Par practice » comme intitulé.
+    suite = try_followup_parse("par practice", _PRECEDENT)
+    assert suite["goal"] == "Budget par practice"

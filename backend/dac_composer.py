@@ -66,7 +66,8 @@ def _prune_generated(keep: str) -> None:
     `keep` est toujours conservé : c'est celui qu'on vient d'écrire."""
     try:
         fichiers = sorted(
-            (f for f in DASHBOARDS_DIR.glob(f"{GENERATED_PREFIX}*.yml") if f.name != keep),
+            (f for f in DASHBOARDS_DIR.glob(f"{GENERATED_PREFIX}*.yml")
+             if f.name not in (keep, MAIN_FILENAME)),
             key=lambda f: f.stat().st_mtime,
             reverse=True,
         )
@@ -78,6 +79,16 @@ def _prune_generated(keep: str) -> None:
         logger.warning("Nettoyage des dashboards générés impossible.", exc_info=True)
 
 CONNECTION = "devoteam_duckdb"
+
+# LE dashboard de travail : un seul, toujours au même nom, donc toujours à la même
+# URL. Chaque question le RÉÉCRIT plutôt que d'ouvrir un tableau de bord de plus —
+# l'utilisateur affine une analyse en place au lieu d'accumuler des onglets qu'il
+# faut ensuite retrouver. Le nom est fixe parce que DAC route par nom : le faire
+# varier changerait l'URL de l'iframe à chaque question, ce qui est précisément
+# l'effet « nouveau dashboard » qu'on cherche à supprimer. La question posée
+# s'affiche dans le sous-titre, où DAC rend la description.
+MAIN_DASHBOARD_NAME = "Tableau de bord"
+MAIN_FILENAME = "_principal.yml"
 
 # Ordre de préférence pour la dimension complémentaire : la plus parlante d'abord.
 # On ne prend jamais la dimension déjà affichée, NI une dimension figée par un filtre
@@ -176,11 +187,21 @@ def _widget_from_intent(intent: dict, title: str, col: int) -> dict:
 
     # bar / line / area : même structure x/y, seul le type de tracé change.
     chart = chart_type if chart_type in ("bar", "line", "area") else "bar"
-    return {
+    widget = {
         "name": title, "type": "chart", "chart": chart, "col": col, "sql": sql,
         "x": {"field": dimension, "type": "category", "title": _dimension_label(dimension)},
         "y": {"field": metric, "type": "number", "title": _metric_label(metric), "format": fmt},
     }
+    if chart == "bar" and dimension:
+        # Une couleur par catégorie plutôt qu'une teinte unique pour toutes les
+        # barres : chaque valeur se distingue immédiatement et garde la même couleur
+        # que dans les autres graphiques du dashboard.
+        #
+        # Réservé aux barres : sur une courbe ou une aire, colorer par catégorie
+        # découperait la série en segments isolés et détruirait la tendance, qui est
+        # justement ce que ces formes servent à montrer.
+        widget["color"] = {"field": dimension}
+    return widget
 
 
 def _kpi_intent(intent: dict, metric: str) -> dict:
@@ -292,11 +313,25 @@ def _kpi_row(intent: dict, metric: str) -> list:
             "— environ la moitié du portefeuille."
         )
         widgets.append(widget)
+
+    # Les KPI occupent la ligne entière, répartis à parts égales. Avec une largeur
+    # fixe, deux KPI n'en remplissaient que la moitié : le graphique suivant venait
+    # se glisser à côté d'eux, écrasé sur une hauteur de tuile de chiffre.
+    largeur = 12 // len(widgets)
+    for w in widgets:
+        w["col"] = largeur
     return widgets
 
 
 def _primary(intent: dict, col: int) -> dict:
-    return _widget_from_intent(intent, intent.get("goal") or "Résultat", col=col)
+    widget = _widget_from_intent(intent, intent.get("goal") or "Résultat", col=col)
+    # Quand la forme retenue diffère de celle demandée, la raison s'affiche sous le
+    # graphique : voir des barres après avoir demandé un camembert, sans explication,
+    # donne le sentiment que l'outil n'a pas compris la question.
+    raison = intent.get("chart_type_reason")
+    if raison and "description" not in widget:
+        widget["description"] = raison
+    return widget
 
 
 def _complement_widget(intent: dict, metric: str, col: int, exclude: set | None = None):
@@ -404,6 +439,9 @@ def _share_of_total_widget(intent: dict, metric: str, col: int) -> dict:
         "type": "chart", "chart": "bar", "col": col, "sql": sql,
         "x": {"field": dimension, "type": "category", "title": _dimension_label(dimension)},
         "y": {"field": "part", "type": "number", "title": "Part du total", "format": ".1%"},
+        # Même code couleur que le graphique principal, qui porte la même dimension :
+        # l'œil relie les deux lectures d'une catégorie sans relire les étiquettes.
+        "color": {"field": dimension},
     }
 
 
@@ -422,6 +460,9 @@ def _conversion_widget(intent: dict, col: int) -> dict:
         "description": "Part des opportunités ayant atteint une étape qui franchissent la suivante.",
         "x": {"field": "status", "type": "category", "title": "Étape"},
         "y": {"field": "taux", "type": "number", "title": "Taux de passage", "format": ".0%"},
+        # Une couleur par étape, identique à celle de l'entonnoir affiché à côté :
+        # les deux graphiques parlent des mêmes étapes, ils doivent les peindre pareil.
+        "color": {"field": "status"},
     }
 
 
@@ -429,8 +470,11 @@ def _compose_breakdown(intent: dict) -> list:
     """« budget par pays » : la répartition, plus un second axe de lecture."""
     metric = intent.get("metric") or "budget"
     widgets = _kpi_row(intent, metric)
-    widgets.append(_primary(intent, col=7))
-    complement = _complement_widget(intent, metric, col=5)
+    # Moitiés égales plutôt que 7/5 : quand le complément est un camembert, DAC
+    # affiche « nom NN% » à côté de chaque part et ces étiquettes sont tronquées
+    # dans une colonne étroite.
+    widgets.append(_primary(intent, col=6))
+    complement = _complement_widget(intent, metric, col=6)
     if complement:
         widgets.append(complement)
     widgets.append(_share_of_total_widget(intent, metric, col=6))
@@ -569,11 +613,35 @@ def _pack_rows(widgets: list) -> list:
         used += col
     if current:
         rows.append({"widgets": current})
+
+    # Une ligne incomplète laisse une bande vide au milieu du dashboard : le dernier
+    # widget d'une composition impaire s'affichait sur une demi-largeur, sans rien à
+    # côté. On répartit la place restante entre les widgets de la ligne.
+    for row in rows:
+        occupe = sum(w.get("col", 6) for w in row["widgets"])
+        if occupe < 12:
+            largeur = 12 // len(row["widgets"])
+            for w in row["widgets"]:
+                w["col"] = largeur
+            row["widgets"][0]["col"] += 12 - largeur * len(row["widgets"])
     return rows
 
 
+def _analysis_title(query: str, intent: dict) -> str:
+    """Intitulé de l'analyse : l'objectif résolu de préférence à la phrase tapée.
+
+    Une retouche ne se décrit pas elle-même — nommer un dashboard « En camembert »
+    ne dit rien de ce qu'il montre, et deux retouches successives produiraient deux
+    tableaux de bord aux noms également muets. L'objectif, lui, est reconstruit à
+    partir de la métrique, de l'axe et des filtres réellement appliqués : deux
+    demandes qui aboutissent à la même analyse portent donc le même nom, et se
+    partagent le même instantané au lieu d'en accumuler deux identiques.
+    """
+    return ((intent.get("goal") or "").strip() or query)
+
+
 def _dashboard_name(query: str) -> str:
-    """Nom affiché = la question posée. C'est aussi la route DAC (/d/<nom>), donc
+    """Nom affiché, dérivé de l'intitulé. C'est aussi la route DAC (/d/<nom>), donc
     on retire les caractères qui casseraient une URL ou un nom de dashboard."""
     cleaned = re.sub(r"[^\w\s'À-ÿ-]", " ", query).strip()
     cleaned = re.sub(r"\s+", " ", cleaned)
@@ -582,29 +650,51 @@ def _dashboard_name(query: str) -> str:
     return cleaned.capitalize() or "Analyse"
 
 
-def write_generated_dashboard(query: str, intent: dict) -> str:
-    """Écrit le dashboard répondant à la question et renvoie son nom (= sa route
-    DAC). Lève une exception si l'écriture échoue — l'appelant décide alors de
-    retomber sur l'affichage classique."""
-    widgets = compose_widgets(intent)
-    name = _dashboard_name(query)
+def _write_dashboard(filename: str, name: str, description: str, widgets: list) -> None:
     dashboard = {
         "schema": "https://getbruin.com/schemas/dac/dashboard/v1",
         "name": name,
-        "description": "Dashboard généré à partir de votre question — mêmes filtres sur tous les widgets.",
+        "description": description,
         "connection": CONNECTION,
         "rows": _pack_rows(widgets),
     }
-
     DASHBOARDS_DIR.mkdir(parents=True, exist_ok=True)
-    filename = _generated_filename(name)
-    path = DASHBOARDS_DIR / filename
     # allow_unicode : les titres et valeurs sont en français (accents) et doivent
     # rester lisibles dans le YAML versionné, pas être échappés en \uXXXX.
-    path.write_text(
+    (DASHBOARDS_DIR / filename).write_text(
         yaml.dump(dashboard, Dumper=_LiteralDumper, allow_unicode=True,
                    sort_keys=False, width=120),
         encoding="utf-8",
+    )
+
+
+def write_main_dashboard(query: str, intent: dict) -> str:
+    """Réécrit LE dashboard de travail et renvoie son nom — toujours le même, donc
+    la même URL d'iframe d'une question à l'autre. C'est ce qui fait qu'une demande
+    modifie le tableau de bord sous les yeux de l'utilisateur au lieu d'en ouvrir un
+    autre. Lève si l'écriture échoue : l'appelant retombe alors sur l'instantané."""
+    widgets = compose_widgets(intent)
+    _write_dashboard(MAIN_FILENAME, MAIN_DASHBOARD_NAME,
+                      _dashboard_name(_analysis_title(query, intent)), widgets)
+    logger.info("Dashboard de travail réécrit pour %r (%d widgets)", query, len(widgets))
+    return MAIN_DASHBOARD_NAME
+
+
+def write_generated_dashboard(query: str, intent: dict) -> str:
+    """Écrit l'INSTANTANÉ de la question et renvoie son nom (= sa route DAC).
+
+    Le dashboard de travail est réécrit à chaque question ; cet instantané, lui,
+    fige le résultat de CETTE question-là. C'est ce qui permet à la liste déroulante
+    de rouvrir une analyse passée telle qu'elle était, sans repasser par le modèle.
+    Lève une exception si l'écriture échoue — l'appelant décide alors de retomber
+    sur l'affichage classique."""
+    widgets = compose_widgets(intent)
+    name = _dashboard_name(_analysis_title(query, intent))
+    filename = _generated_filename(name)
+    _write_dashboard(
+        filename, name,
+        "Instantané de votre question — mêmes filtres sur tous les widgets.",
+        widgets,
     )
     _prune_generated(keep=filename)
     logger.info("Dashboard DAC généré : %r (%d widgets)", name, len(widgets))

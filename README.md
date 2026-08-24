@@ -20,13 +20,29 @@ données à installer.
 - Chat en français libre, avec contexte multi-tour, dates relatives et requêtes de
   comparaison ("compare la France et le Maroc") ; l'historique de conversation persiste
   entre les rechargements de page (localStorage).
-- **Un dashboard par question** : chaque question génère 5 à 7 widgets (totaux du
-  périmètre, graphique principal, angle complémentaire, pipeline, détail), tous
-  filtrés à l'identique — voir `Documentation/WORKFLOW.md` pour le traçage complet.
+- **Un tableau de bord modifié sur place** : chaque question réécrit LE dashboard de
+  travail (5 à 7 widgets — totaux du périmètre, graphique principal, angle
+  complémentaire, pipeline, détail, tous filtrés à l'identique) au lieu d'en ouvrir un
+  de plus. Voir `Documentation/WORKFLOW.md` pour le traçage complet.
+- **Retouches assistées** : « en camembert », « top 5 », « par practice », « sans
+  filtre » ajustent le dashboard affiché en héritant du contexte, sans appel au
+  modèle. Une demande dont un seul mot n'est pas compris repart par le chemin complet
+  plutôt que d'hériter d'un filtre que l'utilisateur n'a pas redemandé.
+- **Liste des analyses** : chaque question posée reste accessible dans une liste
+  déroulante et rouvre son tableau de bord tel qu'il était.
+- **Affaires perdues exclues par défaut** : les statuts d'échec (Offre perdue,
+  Infructueux, NO GO, Hors scope, Non shortlisté) — 66 M€ sur 164 M€ — sortent de tous
+  les chiffres et de tous les graphiques, sauf si la question porte explicitement sur
+  un statut. Un « budget total » incluant les affaires mortes n'aide pas à décider.
+- **Type de graphique arbitré sur les données**, pas sur les mots : un camembert
+  demandé sur 19 pays devient des barres, et l'explication s'affiche sous le
+  graphique. Une moyenne ne forme jamais des parts d'un tout.
 - **Vue d'ensemble versionnée** : la page d'accueil est un dashboard YAML relu en
   revue (`dac/dashboards/accueil.yml`), avec filtre interactif.
-- 9 types de rendu : barres, courbes, aires, camemberts, cartes KPI, tableaux,
-  entonnoir de vente, nuage de points et carte de chaleur.
+- 9 types de rendu : barres, courbes, aires, camemberts (pourcentage affiché sur
+  chaque part), cartes KPI, tableaux, entonnoir de vente, nuage de points et carte de
+  chaleur. Les catégories d'un graphique ont chacune leur couleur, la même d'un
+  graphique à l'autre du même tableau de bord.
 - Alertes deadlines : email quotidien (Gmail SMTP) + bannière dans le dashboard pour
   les opportunités actives (statuts clos exclus) à échéance ≤ 7 jours. Rattrapée
   automatiquement au redémarrage si le serveur était éteint pile à l'heure planifiée.
@@ -38,7 +54,9 @@ données à installer.
   sur demande (`POST /sheets/sync`). Le Sheet sert aussi de formulaire d'ajout/
   modification d'opportunités — plus simple à éditer qu'une base de données. Une
   ligne invalide (statut inconnu, date illisible…) est journalisée et sautée sans
-  bloquer les autres.
+  bloquer les autres. Une ligne dont la colonne statut contient en fait un type
+  d'opportunité (« AMI », « DP ») est récupérée avec le statut « Non renseigné »
+  plutôt que perdue en entier pour une cellule mal remplie.
 
 ## Prérequis
 
@@ -199,20 +217,22 @@ backend/
   duckdb_export.py       projection du DataFrame vers DuckDB (pour DAC)
   alerts.py              alertes deadlines (email + endpoint)
   response_builder.py    messages texte déterministes
-  business_rules.py      règles métier indépendantes de l'affichage (ordre du pipeline)
+  business_rules.py      règles métier indépendantes de l'affichage : ordre du pipeline,
+                         exclusion des affaires perdues, choix du type de graphique
   data_quality.py        rapport des lignes rejetées et des valeurs manquantes
 dac/
   .bruin.yml             connexion DuckDB (aucun secret, versionnée volontairement)
   themes/devoteam.yml    thème aux couleurs de l'application (palette CVD comprise)
   dashboards/accueil.yml vue d'ensemble écrite à la main, versionnée
   dashboards/qualite.yml  dashboard de qualité des données, versionné
-  dashboards/_analyse_*.yml dashboards générés par question (gitignorés)
+  dashboards/_principal.yml tableau de bord de travail, réécrit à chaque question (gitignoré)
+  dashboards/_analyse_*.yml instantanés par question, pour les rouvrir (gitignorés)
   data/devoteam.db       projection DuckDB (gitignorée, régénérée)
 frontend/              Vite + React (build servi par FastAPI en local)
 credentials/           clé de compte de service Google (gitignoré, absent par défaut)
 data/                  scheduler_state.json (état local, gitignoré) ; dump SQL
                        historique de l'ancienne base MySQL, conservé pour référence
-tests/                 suite pytest (mock Gemini/Sheets), 158 tests
+tests/                 suite pytest (mock Gemini/Sheets), 168 tests
 Documentation/
   WORKFLOW.md            traçage concret d'une question, du prompt au dashboard affiché
   reports/              rapport professionnel + guide technique (.docx) et leur générateur

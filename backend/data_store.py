@@ -155,6 +155,28 @@ def _normalize_choice(raw: str, field: str) -> str:
                     field=field, value=raw)
 
 
+# Statut des lignes récupérées : la colonne contenait un type d'opportunité, donc le
+# statut réel est inconnu. Une catégorie explicite vaut mieux qu'un statut inventé —
+# elle reste visible dans les graphiques, et la ligne cesse d'être perdue.
+UNKNOWN_STATUS = "Non renseigné"
+
+
+def _normalize_status(raw: str) -> str:
+    """Comme _normalize_choice, mais rattrape le mélange de colonnes constaté dans le
+    Sheet : 4 lignes portent « AMI » ou « DP » — des valeurs de `opp_type` — dans la
+    colonne statut. Les rejeter faisait disparaître l'opportunité entière (budget
+    compris) à cause d'une seule cellule mal remplie. Toute AUTRE valeur inconnue reste
+    rejetée : on récupère une erreur de colonne identifiable, jamais n'importe quoi.
+    """
+    try:
+        return _normalize_choice(raw, "status")
+    except RowError:
+        value = (raw or "").strip()
+        if value and any(c.lower() == value.lower() for c in _CHOICE_FIELDS["opp_type"]):
+            return UNKNOWN_STATUS
+        raise
+
+
 def _parse_row(headers: list, values: list) -> dict:
     """Transforme une ligne brute du Sheet en dict validé, champs dérivés déjà
     calculés. Lève RowError (message précis) si la ligne est invalide."""
@@ -180,7 +202,7 @@ def _parse_row(headers: list, values: list) -> dict:
 
     row["practice"] = _normalize_choice(get("practice"), "practice")
     row["opp_type"] = _normalize_choice(get("opp_type"), "opp_type")
-    row["status"] = _normalize_choice(get("status"), "status")
+    row["status"] = _normalize_status(get("status"))
 
     row["description"] = get("description") or None
     row["buyer"] = get("buyer") or None

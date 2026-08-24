@@ -15,7 +15,7 @@ from .schema_and_whitelist import (
 )
 from pydantic import BaseModel, ValidationError, field_validator
 from dotenv import load_dotenv
-from .intent_refiner import try_rule_based_parse, refine_intent
+from .intent_refiner import try_followup_parse, try_rule_based_parse, refine_intent
 
 load_dotenv()
 
@@ -311,6 +311,17 @@ indépendante, ignore ce contexte.
 def parse_user_query(query: str, previous_intent: Optional[dict] = None) -> dict:
     db_ctx = _load_db_context()
     today = date.today()
+
+    # Retouche du dashboard courant (« en camembert », « top 5 », « enlève le filtre ») :
+    # l'intention précédente est reprise et modifiée, ce que le code fait mieux qu'un
+    # appel au modèle — le contexte est conservé exactement, sans risque de le voir
+    # réinterprété, et sans consommer le quota. Rendu None dès que la demande n'est
+    # pas une retouche reconnue : on repasse alors par le chemin normal.
+    if previous_intent is not None:
+        suite = try_followup_parse(query, previous_intent)
+        if suite is not None:
+            logger.info("Retouche appliquée sans appel au modèle : %r", query)
+            return refine_intent(query, suite, today=today)
 
     if previous_intent is None:
         # Le parseur rapide n'a aucune notion de contexte conversationnel — lui faire

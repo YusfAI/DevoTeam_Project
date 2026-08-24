@@ -43,8 +43,13 @@ def test_between_range_filter():
 
 
 def test_exclude_statuses_becomes_not_in():
+    # Les exclusions demandées s'AJOUTENT à celle, par défaut, des affaires perdues :
+    # on vérifie donc leur présence dans la clause, pas une chaîne exacte qui casserait
+    # au moindre ajout à la règle métier.
     sql = build_sql(_intent(exclude_statuses=["Offre gagnée", "NO GO"]))
-    assert "status NOT IN ('Offre gagnée', 'NO GO')" in sql
+    assert "status NOT IN (" in sql
+    assert "'Offre gagnée'" in sql
+    assert "'NO GO'" in sql
 
 
 def test_kpi_intent_without_dimension_selects_a_single_value():
@@ -58,7 +63,10 @@ def test_funnel_orders_by_pipeline_stage_not_by_value():
     # vient du rang de l'étape dans le pipeline (voir sql_builder.funnel_sql).
     sql = build_sql(_intent(dimension="status", chart_type="funnel"))
     assert "ORDER BY rang" in sql
-    assert "'Offre perdue'" not in sql  # statut de sortie, jamais une étape
+    # « Offre perdue » n'est jamais une ÉTAPE du pipeline. Elle apparaît bien dans la
+    # requête, mais uniquement dans la clause d'exclusion — d'où la vérification sur
+    # le WHEN du CASE, qui énumère les étapes, plutôt que sur le texte entier.
+    assert "WHEN 'Offre perdue'" not in sql
 
 
 def test_unknown_metric_falls_back_instead_of_injecting_it():
@@ -146,18 +154,38 @@ def test_sql_is_written_as_a_readable_literal_block(tmp_path, monkeypatch):
     assert "sql: |" in written
 
 
-def test_dashboard_name_stays_url_safe_and_bounded(tmp_path, monkeypatch):
-    monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path)
-    name = write_generated_dashboard("budget par pays ? / avec des #caractères% bizarres", _intent())
-
+def test_dashboard_name_stays_url_safe_and_bounded():
+    # Le nom est aussi la route DAC (/d/<nom>) : un caractère d'URL qui passerait
+    # rendrait le dashboard inatteignable.
+    name = dac_composer._dashboard_name("budget par pays ? / avec des #caractères% bizarres")
     for forbidden in ("/", "?", "#", "%"):
         assert forbidden not in name
 
 
-def test_very_long_question_is_truncated(tmp_path, monkeypatch):
+def test_very_long_question_is_truncated():
+    assert len(dac_composer._dashboard_name("budget " * 60)) <= 75
+
+
+def test_a_written_dashboard_is_named_after_the_resolved_goal(tmp_path, monkeypatch):
+    # « en camembert » est une retouche : elle ne décrit pas l'analyse produite.
+    # C'est l'objectif résolu qui nomme le dashboard, sinon la liste des analyses
+    # se remplirait d'intitulés muets.
     monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path)
-    name = write_generated_dashboard("budget " * 60, _intent())
-    assert len(name) <= 75
+    name = write_generated_dashboard("en camembert", _intent(goal="Budget par pays — Risk Advisory"))
+    assert name.startswith("Budget par pays")
+
+
+def test_the_working_dashboard_keeps_a_constant_name(tmp_path, monkeypatch):
+    # Deux questions différentes doivent réécrire LE MÊME dashboard, donc conserver
+    # la même route : c'est ce qui fait que l'affichage est modifié sur place au
+    # lieu d'ouvrir un tableau de bord de plus.
+    monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path)
+    premier = dac_composer.write_main_dashboard("budget par pays", _intent())
+    second = dac_composer.write_main_dashboard("budget par practice", _intent(dimension="practice"))
+
+    assert premier == second == dac_composer.MAIN_DASHBOARD_NAME
+    ecrits = list(tmp_path.glob("*.yml"))
+    assert [f.name for f in ecrits] == [dac_composer.MAIN_FILENAME]
 
 
 # ---------------------------------------------------------------------------
@@ -280,11 +308,24 @@ def test_each_question_keeps_its_own_dashboard_file(tmp_path, monkeypatch):
     # la question précédente, rendant tout retour en arrière impossible.
     monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path)
     un = write_generated_dashboard("budget par pays", _intent())
-    deux = write_generated_dashboard("budget par practice", _intent(dimension="practice"))
+    deux = write_generated_dashboard(
+        "budget par practice", _intent(dimension="practice", goal="Budget par practice"))
 
     assert un != deux
     assert (tmp_path / dac_composer._generated_filename(un)).exists()
     assert (tmp_path / dac_composer._generated_filename(deux)).exists()
+
+
+def test_two_phrasings_of_the_same_analysis_share_one_file(tmp_path, monkeypatch):
+    # Le nom vient de l'analyse produite, pas de la phrase tapée : demander deux fois
+    # la même chose autrement ne doit pas laisser deux fichiers identiques derrière
+    # soi, ni deux entrées indiscernables dans la liste des analyses.
+    monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path)
+    un = write_generated_dashboard("budget par pays", _intent())
+    deux = write_generated_dashboard("montre-moi le budget par pays", _intent())
+
+    assert un == deux
+    assert len(list(tmp_path.glob("*.yml"))) == 1
 
 
 def test_old_generated_dashboards_are_pruned(tmp_path, monkeypatch):
@@ -292,7 +333,9 @@ def test_old_generated_dashboards_are_pruned(tmp_path, monkeypatch):
     monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path)
     monkeypatch.setattr(dac_composer, "MAX_GENERATED_DASHBOARDS", 3)
     for i in range(6):
-        write_generated_dashboard(f"question numero {i}", _intent())
+        # Des objectifs distincts : ce sont bien six analyses différentes, pas six
+        # formulations de la même (qui, elles, partagent volontairement un fichier).
+        write_generated_dashboard(f"question numero {i}", _intent(goal=f"Analyse numero {i}"))
 
     restants = list(tmp_path.glob(f"{dac_composer.GENERATED_PREFIX}*.yml"))
     assert len(restants) == 3

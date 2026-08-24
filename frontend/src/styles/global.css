@@ -431,11 +431,90 @@ body::before {
   }
 }
 
+/* Bloc de saisie, en TÊTE de panneau (sous l'en-tête) : c'est le point de départ
+   de chaque interaction. En pied, il descendait avec la conversation et obligeait à
+   faire défiler pour le retrouver. Le trait de séparation passe donc en bas. */
+.chat-composer {
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
 .chat-form {
-  padding: 16px;
-  border-top: 1px solid var(--border);
+  padding: 0;
   display: flex;
   gap: 8px;
+}
+
+/* Retouches du tableau de bord affiché. Volontairement au même endroit que la
+   saisie : ce sont des raccourcis vers ce qu'on pourrait taper, pas une autre
+   fonctionnalité. Elles rendent visible que l'assistant MODIFIE le tableau de bord,
+   là où une zone de texte seule laisse croire qu'il ne sait qu'en créer. */
+.chat-adjustments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chat-adjustment {
+  background: var(--surface-page);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.chat-adjustment:hover:not(:disabled) {
+  border-color: var(--brand-primary);
+  color: var(--text-primary);
+}
+
+.chat-adjustment:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Liste des analyses déjà produites. */
+.prompt-history {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.prompt-history-label {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.prompt-history select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-page);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  /* Une question longue ne doit pas élargir le panneau : le <select> reste borné
+     et le navigateur tronque l'intitulé, qui reste lisible en entier une fois
+     la liste ouverte. */
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+.prompt-history select:focus {
+  outline: none;
+  border-color: var(--brand-primary);
 }
 
 .chat-form input {

@@ -175,32 +175,72 @@ def test_rule_based_path_defers_to_llm_when_multiple_countries_named(monkeypatch
 
 # --- Contexte multi-tour ---
 
-def test_previous_intent_skips_the_fast_path_and_reaches_gemini(monkeypatch):
-    # Even a query that would normally resolve via the offline fast path ("budget
-    # par pays") must go through the LLM once there's conversational context to
-    # interpret, since the fast path has no notion of context.
+_PREVIOUS = {
+    "goal": "Budget par pays — Risk Advisory", "metric": "budget", "dimension": "country",
+    "filters": {"practice": "Risk Advisory"}, "chart_type": "bar", "aggregation": "sum",
+    "range_filters": {}, "use_raw_table": False, "limit": 0,
+}
+
+
+def test_a_follow_up_the_code_cannot_resolve_reaches_gemini_with_the_context(monkeypatch):
+    # « et pour le Maroc ? » nomme un pays : la liste des pays est dynamique (elle
+    # vient des données), donc hors de portée du traitement déterministe. Ce genre de
+    # suite DOIT atteindre le modèle, avec le contexte de la question précédente —
+    # sans quoi le filtre pays serait silencieusement ignoré.
     monkeypatch.setattr(llm, "_load_db_context", lambda: {
-        "countries": [], "funding_sources": [], "partners": [],
+        "countries": ["Maroc"], "funding_sources": [], "partners": [],
     })
     captured = {}
 
     def _create(*, model, contents, config):
         captured["system_prompt"] = config.system_instruction
         return _FakeGeminiResponse(json.dumps(_base_payload(
-            dimension="country", chart_type="bar", filters={"practice": "Data Management"},
+            dimension="country", chart_type="bar", filters={"country": "Maroc"},
         )))
 
     monkeypatch.setattr(llm.client.models, "generate_content", _create)
-    previous = {
-        "goal": "Budget par pays — Risk Advisory", "metric": "budget", "dimension": "country",
-        "filters": {"practice": "Risk Advisory"}, "chart_type": "bar", "aggregation": "sum",
-        "range_filters": {}, "use_raw_table": False,
-    }
-    result = llm.parse_user_query("et pour Data Management ?", previous_intent=previous)
+    result = llm.parse_user_query("et pour le Maroc ?", previous_intent=_PREVIOUS)
+
     assert "system_prompt" in captured
     assert "Risk Advisory" in captured["system_prompt"]
     assert "CONTEXTE" in captured["system_prompt"]
+    assert result["filters"]["country"] == "Maroc"
+
+
+def test_a_recognised_adjustment_is_applied_without_calling_gemini(monkeypatch):
+    # « et pour Data Management ? » ne nomme qu'une practice, dont les valeurs sont
+    # connues et fixes : le code sait l'appliquer seul. Passer par le modèle coûterait
+    # une requête du quota et rouvrirait la porte à une réinterprétation du contexte.
+    def _fail(*a, **kw):
+        raise AssertionError("Une retouche reconnue ne doit pas appeler le modèle")
+
+    monkeypatch.setattr(llm.client.models, "generate_content", _fail)
+    result = llm.parse_user_query("et pour Data Management ?", previous_intent=_PREVIOUS)
+
     assert result["filters"]["practice"] == "Data Management"
+    # Le reste du contexte est conservé à l'identique : c'est tout l'intérêt.
+    assert result["metric"] == "budget"
+    assert result["dimension"] == "country"
+
+
+def test_an_adjustment_containing_an_unrecognised_word_falls_back_to_gemini(monkeypatch):
+    # Garde-fou central : une retouche hérite en silence du contexte précédent. Si un
+    # mot n'a pas été compris, hériter reviendrait à répondre à une autre question —
+    # ici, servir « Risk Advisory » à quelqu'un qui demande le Maroc.
+    monkeypatch.setattr(llm, "_load_db_context", lambda: {
+        "countries": ["Maroc"], "funding_sources": [], "partners": [],
+    })
+    appels = []
+
+    def _create(*, model, contents, config):
+        appels.append(contents)
+        return _FakeGeminiResponse(json.dumps(_base_payload(
+            dimension="country", chart_type="bar", filters={"country": "Maroc"},
+        )))
+
+    monkeypatch.setattr(llm.client.models, "generate_content", _create)
+    llm.parse_user_query("budget par pays au Maroc", previous_intent=_PREVIOUS)
+    assert appels, "un mot non reconnu doit renvoyer vers le modèle"
 
 
 def test_no_previous_intent_still_uses_fast_path(monkeypatch):

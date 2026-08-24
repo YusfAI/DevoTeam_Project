@@ -12,6 +12,7 @@ import datetime
 
 import pandas as pd
 
+from .business_rules import LOST_STATUSES
 from .data_store import get_dataframe
 
 INT_COLS = {"deadline_year", "days_remaining", "id"}
@@ -54,8 +55,16 @@ def _apply_filters(df: pd.DataFrame, filters: dict, range_filters: dict, exclude
         else:
             mask &= df[col] == _cast(col, val)
 
-    if exclude_statuses and "status" in df.columns:
-        mask &= ~df["status"].isin(exclude_statuses)
+    # Exclusion par défaut des affaires perdues, identique à celle du SQL des widgets
+    # (sql_builder._where_clause) : sans cette symétrie, le message du chat et les
+    # graphiques annonceraient deux totaux différents pour la même question.
+    # Levée si la question filtre elle-même sur le statut — voir _question_targets_status.
+    excluded = list(exclude_statuses or [])
+    if "status" not in filters:
+        excluded += [s for s in LOST_STATUSES if s not in excluded]
+
+    if excluded and "status" in df.columns:
+        mask &= ~df["status"].isin(excluded)
 
     for col, rule in range_filters.items():
         if col not in df.columns:
