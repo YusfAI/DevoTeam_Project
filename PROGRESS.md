@@ -35,6 +35,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 28 — Affaire chaude = probabilité ≥ 80 %, sans condition de statut
 - [x] Phase 29 — Une phrase d'explication sous chaque visuel
 - [x] Phase 30 — Tableau des affaires chaudes défilant, rendu par l'application faute de défilement vertical dans DAC
+- [x] Phase 31 — Proxy du serveur de développement corrigé, et trois tests qui empêchent l'oubli de se reproduire
 
 ## 📝 Journaux
 
@@ -235,6 +236,16 @@ Suite `pytest` : 221 tests. `dac check` : 15 dashboards, 122 widgets, tous verts
 *Un piège de DuckDB trouvé en écrivant le test croisé.* Le tableau passe par pandas, les KPI par du SQL : un test confronte les deux sur les mêmes lignes. Il a d'abord échoué — 3 contre 2 — et l'écart venait de **« NaN >= 0.8 » qui vaut VRAI en DuckDB**. Le vrai export écrit bien des NULL (vérifié : 170 NULL, 0 NaN), donc aucun bug en production ; mais si un jour il écrivait des NaN, le KPI passerait de 105 à 275 sans qu'aucune requête n'échoue. Un test l'interdit désormais. Au passage : sur une colonne flottante, pandas recoerce un `None` en `NaN`, et `where(notnull, None)` n'y change rien — la conversion doit se faire valeur par valeur.
 
 Suite `pytest` : 224 tests (était 221). `dac check` : 15 dashboards, 121 widgets, tous verts.
+
+**Phase 31** : Terminée. Correction du tableau des affaires chaudes resté sur « Chargement… ».
+
+*La panne.* `Unexpected token '<', "<!doctype "... is not valid JSON`. L'endpoint `GET /hot-deals` fonctionnait, mais son préfixe manquait dans le proxy du serveur de développement : Vite répondait donc l'index.html du SPA à la place du JSON. Défaut entièrement de ma main — ajouter un endpoint sur un préfixe neuf sans toucher à `vite.config.js`.
+
+*Le garde-fou, plus utile que le correctif.* Un préfixe oublié ne casse rien au démarrage et ne se voit qu'à l'usage. Trois tests confrontent désormais les fichiers qui doivent rester d'accord : chaque `fetch()` de `src/api.js` a un préfixe dans le proxy Vite, chaque `fetch()` correspond à une route déclarée dans `main.py`, et le montage statique reste la DERNIÈRE déclaration — placé avant une route d'API, il la masquerait et produirait exactement la même réponse HTML en production. Vérifié en remettant l'ancienne configuration : le test échoue en nommant `/hot-deals`.
+
+*Et le message.* Une réponse HTML là où on attend du JSON a une cause précise et récurrente. Laisser remonter « Unexpected token '<' » n'aide personne : l'appel nomme maintenant la piste — backend arrêté, ou préfixe absent du proxy.
+
+Suite `pytest` : 227 tests (était 224).
 
 ## 📊 Bilan du Produit
 
