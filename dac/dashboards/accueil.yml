@@ -536,23 +536,26 @@ rows:
         color: { field: practice }
 
 
-  # Le tableau occupe sa propre ligne, sur toute la largeur.
+  # Le détail des affaires chaudes, réparti sur TROIS colonnes côte à côte.
   #
-  # Aucune hauteur n'est posée sur cette ligne, et c'est délibéré : le tableau de
-  # Bruin DAC ne défile pas verticalement — son élément externe porte
-  # `overflow-x-auto`, sans hauteur ni `overflow-y`, à l'intérieur d'un cadre
-  # `overflow-hidden`. Borner la ligne CLIPPERAIT donc les affaires suivantes au lieu
-  # de les rendre atteignables. Le widget s'étire avec son contenu et c'est la page
-  # qui défile : c'est la seule mise en page où les 105 affaires restent lisibles
-  # depuis le dashboard lui-même.
+  # Le tableau de Bruin DAC ne défile pas verticalement : son élément externe porte
+  # `overflow-x-auto`, sans hauteur ni `overflow-y`, dans un cadre `overflow-hidden`.
+  # Borner la hauteur de la ligne clipperait donc les affaires suivantes. Le nombre de
+  # lignes étant ce qui fait la hauteur, la répartir en trois la divise par trois —
+  # sans en retirer une seule, ce qui était la contrainte.
+  #
+  # NTILE(3) plutôt qu'un découpage à rang fixe : le nombre d'affaires change avec le
+  # filtre de période (105 sur tout l'historique, 55 par défaut), et un seuil en dur
+  # laisserait une colonne vide dès que le total baisse.
+  #
+  # La lecture va de gauche à droite : la colonne 1 porte les plus fortes espérances
+  # de gain, d'où le rang affiché — sans lui, trois listes triées côte à côte ne
+  # diraient pas laquelle vient en premier.
   - widgets:
-      - name: Détail des affaires chaudes
+      - name: Affaires chaudes (1/3)
         type: table
-        col: 12
-        # À savoir en lisant les montants : dans ces données 100 % n'est pas une
-        # prévision mais un constat — les 88 opportunités à 100 % sont exactement les
-        # 88 déjà gagnées ou signées.
-        description: Toutes les affaires chaudes, la plus forte espérance de gain d'abord.
+        col: 4
+        description: Les plus fortes espérances de gain. La suite se lit dans les colonnes à droite.
         sql: |
           WITH chaudes AS (
             SELECT * FROM opportunities
@@ -567,20 +570,92 @@ rows:
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
           {% endif %}
+          ),
+          classees AS (
+            SELECT description, buyer, weighted_amount,
+              ROW_NUMBER() OVER (ORDER BY weighted_amount DESC) AS rang,
+              NTILE(3) OVER (ORDER BY weighted_amount DESC) AS colonne
+            FROM chaudes
           )
-          SELECT description, buyer, practice, budget,
-                 ROUND(win_probability * 100) AS ponderation,
-                 weighted_amount, deadline
-          FROM chaudes
-          ORDER BY weighted_amount DESC
+          SELECT rang, description, buyer, weighted_amount
+          FROM classees
+          WHERE colonne = 1
+          ORDER BY rang
         columns:
+          - { name: rang, label: "N°", number: number }
           - { name: description, label: Opportunité }
           - { name: buyer, label: Client }
-          - { name: practice, label: Practice }
-          - { name: budget, label: Budget, number: currency }
-          - { name: ponderation, label: Pondération %, number: number }
           - { name: weighted_amount, label: Montant pondéré, number: currency }
-          - { name: deadline, label: Échéance }
+
+      - name: Affaires chaudes (2/3)
+        type: table
+        col: 4
+        description: Suite du classement, par espérance de gain décroissante.
+        sql: |
+          WITH chaudes AS (
+            SELECT * FROM opportunities
+            WHERE win_probability >= 0.8
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          ),
+          classees AS (
+            SELECT description, buyer, weighted_amount,
+              ROW_NUMBER() OVER (ORDER BY weighted_amount DESC) AS rang,
+              NTILE(3) OVER (ORDER BY weighted_amount DESC) AS colonne
+            FROM chaudes
+          )
+          SELECT rang, description, buyer, weighted_amount
+          FROM classees
+          WHERE colonne = 2
+          ORDER BY rang
+        columns:
+          - { name: rang, label: "N°", number: number }
+          - { name: description, label: Opportunité }
+          - { name: buyer, label: Client }
+          - { name: weighted_amount, label: Montant pondéré, number: currency }
+
+      - name: Affaires chaudes (3/3)
+        type: table
+        col: 4
+        description: Fin du classement — aucune affaire chaude n'est laissée de côté.
+        sql: |
+          WITH chaudes AS (
+            SELECT * FROM opportunities
+            WHERE win_probability >= 0.8
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          ),
+          classees AS (
+            SELECT description, buyer, weighted_amount,
+              ROW_NUMBER() OVER (ORDER BY weighted_amount DESC) AS rang,
+              NTILE(3) OVER (ORDER BY weighted_amount DESC) AS colonne
+            FROM chaudes
+          )
+          SELECT rang, description, buyer, weighted_amount
+          FROM classees
+          WHERE colonne = 3
+          ORDER BY rang
+        columns:
+          - { name: rang, label: "N°", number: number }
+          - { name: description, label: Opportunité }
+          - { name: buyer, label: Client }
+          - { name: weighted_amount, label: Montant pondéré, number: currency }
 
   # === Santé du portefeuille — affaires perdues exclues ===
   - widgets:

@@ -108,26 +108,53 @@ def test_an_opportunity_without_a_probability_stays_out():
     assert _kpi_affaires_chaudes(df) == 1
 
 
-def test_the_table_shows_every_hot_deal_biggest_first():
-    # Aucune ligne n'est retirée : la liste entière est dans le dashboard, la plus
-    # forte espérance de gain en tête. Un LIMIT rendrait les suivantes inatteignables.
+def _detail_complet(df):
+    """Les trois colonnes du détail, remises bout à bout dans l'ordre de lecture."""
+    con = _duckdb_avec(df)
+    lignes = []
+    for rang in (1, 2, 3):
+        lignes += con.execute(
+            _sans_jinja(_widget("Affaires chaudes (%d/3)" % rang)["sql"])).fetchall()
+    return lignes
+
+
+def test_the_three_columns_hold_every_hot_deal_exactly_once():
+    # C'était la contrainte : diviser la hauteur SANS perdre une opportunité. Un
+    # découpage qui doublonne ou qui saute une ligne échouerait ici, alors qu'aucune
+    # requête n'aurait échoué.
     df = _df([{"buyer": "C%02d" % i, "weighted_amount": float(1000 - i)} for i in range(30)])
+    lignes = _detail_complet(df)
 
-    lignes = _duckdb_avec(df).execute(
-        _sans_jinja(_widget("Détail des affaires chaudes")["sql"])).fetchall()
+    rangs = [l[0] for l in lignes]
     assert len(lignes) == 30
-    assert [l[1] for l in lignes] == ["C%02d" % i for i in range(30)]
+    assert sorted(rangs) == list(range(1, 31))
+    # Et l'ordre de lecture suit l'espérance de gain décroissante, colonne après colonne.
+    assert [l[2] for l in lignes] == ["C%02d" % i for i in range(30)]
 
 
-def test_the_detail_table_sits_alone_on_its_row():
-    # Demandé explicitement, et pas seulement cosmétique : partagée, la ligne
-    # imposerait sa hauteur au widget voisin, qui s'étirerait avec la liste.
+def test_the_split_adapts_to_how_many_deals_there_are():
+    # Un découpage à rang fixe laisserait une colonne vide dès que le filtre de
+    # période fait baisser le total. NTILE répartit au plus juste.
+    for total in (5, 17, 55):
+        df = _df([{"buyer": "C%02d" % i, "weighted_amount": float(1000 - i)}
+                   for i in range(total)])
+        con = _duckdb_avec(df)
+        tailles = [len(con.execute(_sans_jinja(_widget("Affaires chaudes (%d/3)" % r)["sql"])).fetchall())
+                    for r in (1, 2, 3)]
+        assert sum(tailles) == total
+        assert max(tailles) - min(tailles) <= 1, tailles
+
+
+def test_the_detail_occupies_one_row_of_its_own():
+    # Trois tables côte à côte, et rien d'autre sur la ligne : un widget voisin
+    # s'étirerait à la hauteur de la liste.
     doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
     ligne = next(r for r in doc["rows"]
-                  if any(w["name"] == "Détail des affaires chaudes" for w in r["widgets"]))
+                  if any(w["name"].startswith("Affaires chaudes (") for w in r["widgets"]))
 
-    assert len(ligne["widgets"]) == 1
-    assert ligne["widgets"][0]["col"] == 12
+    assert [w["name"] for w in ligne["widgets"]] == [
+        "Affaires chaudes (1/3)", "Affaires chaudes (2/3)", "Affaires chaudes (3/3)"]
+    assert all(w["col"] == 4 for w in ligne["widgets"])
     # Aucune hauteur : le tableau de DAC ne défile pas verticalement, la borner
     # clipperait les affaires suivantes au lieu de les rendre atteignables.
     assert "height" not in ligne

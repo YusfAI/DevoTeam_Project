@@ -133,6 +133,41 @@ CHAUDES_CTE = """          WITH chaudes AS (
           )""" % (HOT_DEAL_MIN_PROBABILITY, FILTRES)
 
 
+# Nombre de colonnes du détail des affaires chaudes. Trois divisent la hauteur par
+# trois tout en laissant à chaque table les ~400 px dont le tableau de DAC a besoin
+# au minimum (`min-w-[400px]` dans son bundle).
+COLONNES_CHAUDES = 3
+
+
+def table_chaudes(rang, description):
+    """Une des colonnes du détail. Toutes partagent le même découpage NTILE."""
+    return (
+        "      - name: Affaires chaudes (%d/%d)\n"
+        "        type: table\n"
+        "        col: %d\n"
+        "        description: %s\n"
+        "        sql: |\n"
+        "%s,\n"
+        "          classees AS (\n"
+        "            SELECT description, buyer, weighted_amount,\n"
+        "              ROW_NUMBER() OVER (ORDER BY weighted_amount DESC) AS rang,\n"
+        "              NTILE(%d) OVER (ORDER BY weighted_amount DESC) AS colonne\n"
+        "            FROM chaudes\n"
+        "          )\n"
+        "          SELECT rang, description, buyer, weighted_amount\n"
+        "          FROM classees\n"
+        "          WHERE colonne = %d\n"
+        "          ORDER BY rang\n"
+        "        columns:\n"
+        "          - { name: rang, label: \"N°\", number: number }\n"
+        "          - { name: description, label: Opportunité }\n"
+        "          - { name: buyer, label: Client }\n"
+        "          - { name: weighted_amount, label: Montant pondéré, number: currency }"
+        % (rang, COLONNES_CHAUDES, 12 // COLONNES_CHAUDES, description,
+            CHAUDES_CTE, COLONNES_CHAUDES, rang)
+    )
+
+
 def kpi_chaudes(name, col, expr, fmt, desc=None):
     return kpi(name, col, CHAUDES_CTE + "\n          SELECT %s AS value FROM chaudes" % expr, fmt, desc)
 
@@ -341,38 +376,23 @@ __CHAUDES__
         color: { field: practice }
 
 
-  # Le tableau occupe sa propre ligne, sur toute la largeur.
+  # Le détail des affaires chaudes, réparti sur TROIS colonnes côte à côte.
   #
-  # Aucune hauteur n'est posée sur cette ligne, et c'est délibéré : le tableau de
-  # Bruin DAC ne défile pas verticalement — son élément externe porte
-  # `overflow-x-auto`, sans hauteur ni `overflow-y`, à l'intérieur d'un cadre
-  # `overflow-hidden`. Borner la ligne CLIPPERAIT donc les affaires suivantes au lieu
-  # de les rendre atteignables. Le widget s'étire avec son contenu et c'est la page
-  # qui défile : c'est la seule mise en page où les 105 affaires restent lisibles
-  # depuis le dashboard lui-même.
+  # Le tableau de Bruin DAC ne défile pas verticalement : son élément externe porte
+  # `overflow-x-auto`, sans hauteur ni `overflow-y`, dans un cadre `overflow-hidden`.
+  # Borner la hauteur de la ligne clipperait donc les affaires suivantes. Le nombre de
+  # lignes étant ce qui fait la hauteur, la répartir en trois la divise par trois —
+  # sans en retirer une seule, ce qui était la contrainte.
+  #
+  # NTILE(3) plutôt qu'un découpage à rang fixe : le nombre d'affaires change avec le
+  # filtre de période (105 sur tout l'historique, 55 par défaut), et un seuil en dur
+  # laisserait une colonne vide dès que le total baisse.
+  #
+  # La lecture va de gauche à droite : la colonne 1 porte les plus fortes espérances
+  # de gain, d'où le rang affiché — sans lui, trois listes triées côte à côte ne
+  # diraient pas laquelle vient en premier.
   - widgets:
-      - name: Détail des affaires chaudes
-        type: table
-        col: 12
-        # À savoir en lisant les montants : dans ces données 100 % n'est pas une
-        # prévision mais un constat — les 88 opportunités à 100 % sont exactement les
-        # 88 déjà gagnées ou signées.
-        description: Toutes les affaires chaudes, la plus forte espérance de gain d'abord.
-        sql: |
-__CHAUDES__
-          SELECT description, buyer, practice, budget,
-                 ROUND(win_probability * 100) AS ponderation,
-                 weighted_amount, deadline
-          FROM chaudes
-          ORDER BY weighted_amount DESC
-        columns:
-          - { name: description, label: Opportunité }
-          - { name: buyer, label: Client }
-          - { name: practice, label: Practice }
-          - { name: budget, label: Budget, number: currency }
-          - { name: ponderation, label: Pondération %, number: number }
-          - { name: weighted_amount, label: Montant pondéré, number: currency }
-          - { name: deadline, label: Échéance }
+__CHAUDES_COLONNES__
 
   # === Santé du portefeuille — affaires perdues exclues ===
   - widgets:
@@ -490,7 +510,14 @@ chaudes_kpi = "\n\n".join([
 ])
 
 doc = HEADER + ligne1 + NOUVELLE_LIGNE + ligne2 + BODY + ligne3 + FOOTER
-doc = (doc.replace("__CHAUDES_KPI__", chaudes_kpi)
+chaudes_colonnes = "\n\n".join([
+    table_chaudes(1, "Les plus fortes espérances de gain. La suite se lit dans les colonnes à droite."),
+    table_chaudes(2, "Suite du classement, par espérance de gain décroissante."),
+    table_chaudes(3, "Fin du classement — aucune affaire chaude n'est laissée de côté."),
+])
+
+doc = (doc.replace("__CHAUDES_COLONNES__", chaudes_colonnes)
+          .replace("__CHAUDES_KPI__", chaudes_kpi)
           .replace("__CHAUDES__", CHAUDES_CTE)
           .replace("__REMISES__", REMISES_CTE)
           .replace("__ISSUES__", ISSUES)
@@ -517,7 +544,8 @@ attendus = [
     "Issue des offres remises", "Offres remises par practice",
     "Issue par practice", "Offres remises par mois",
     "Affaires chaudes", "Budget à forte confiance", "Montant pondéré associé",
-    "Affaires chaudes par practice", "Détail des affaires chaudes",
+    "Affaires chaudes par practice",
+    "Affaires chaudes (1/3)", "Affaires chaudes (2/3)", "Affaires chaudes (3/3)",
     "Budget actif", "Offre financière", "Écart offre / budget", "Montant pondéré",
     "Entonnoir de vente", "Taux de passage entre étapes", "Budget actif par pays",
     "Opportunités urgentes (échéance ≤ 7 jours)",

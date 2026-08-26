@@ -490,7 +490,7 @@ def build_rapport_professionnel():
              "(alertes deadlines, rafraîchissement des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (226 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
+            ["Tests", "pytest (227 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
              "(mocks), garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -509,7 +509,7 @@ def build_rapport_professionnel():
                      "explicite — il n'écrit jamais lui-même de requête.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "226 tests automatisés couvrent la compréhension du langage, le requêtage des "
+    add_bullet(doc, "227 tests automatisés couvrent la compréhension du langage, le requêtage des "
                      "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -1162,9 +1162,14 @@ def build_guide_technique():
         "« Budget à forte confiance » plutôt que « Budget en jeu », qui laissait "
         "entendre une affaire encore ouverte.")
     add_body(doc,
-        "Le tableau de détail occupe sa propre ligne, en pleine largeur, sans hauteur "
-        "imposée. Aucune ligne n'est retirée de la requête : les 105 affaires y sont, "
-        "et l'on atteint les dernières en faisant défiler la page.")
+        "Le détail occupe sa propre ligne, répartie en TROIS tables côte à côte. Le "
+        "tableau de DAC ne défilant pas verticalement, sa hauteur est son nombre de "
+        "lignes : la répartir en trois la divise par trois sans en retirer une seule, "
+        "ce qui était la contrainte. NTILE(3) plutôt qu'un seuil de rang en dur, le "
+        "total changeant avec le filtre de période — 35/35/35 sur l'historique, "
+        "19/18/18 par défaut, rangs continus et sans doublon. Le rang est affiché : "
+        "trois listes triées côte à côte ne diraient pas, sinon, laquelle vient en "
+        "premier.")
     add_cue(doc,
         "Le widget tableau de Bruin DAC ne défile pas verticalement : son élément "
         "externe est un simple overflow-x-auto, sans hauteur ni overflow-y, dans un "
@@ -1567,7 +1572,7 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "15. Tests automatisés")
     add_body(doc,
-        "226 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
+        "227 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
         "et le client Google Sheets (gspread) sont simulés (monkeypatch), et les données "
         "sont un petit DataFrame construit dans le test. La suite tourne donc hors ligne, "
         "en quelques secondes.")
@@ -1599,7 +1604,7 @@ def build_guide_technique():
             ["test_response_builder.py", "26", "Formatage des unités, messages texte déterministes, "
              "cohérence texte/graphique pour funnel et heatmap, description de ce qui a changé "
              "dans le tableau de bord."],
-            ["test_hot_deals.py", "7", "Le critere des affaires chaudes de bout en bout : seuil inclusif, statut sans effet, ponderation absente ecartee, accord entre la definition pandas et le SQL des KPI, et NULL plutot que NaN a l export."],
+            ["test_hot_deals.py", "9", "Le critere des affaires chaudes de bout en bout : seuil inclusif, statut sans effet, ponderation absente ecartee, accord entre la definition pandas et le SQL des KPI, et NULL plutot que NaN a l export."],
             ["test_accueil_dashboard.py", "8", "SQL de la vue d'ensemble exécuté sur des lignes "
              "fabriquées : seuil des affaires chaudes inclusif, issues qui totalisent les offres "
              "remises, taux de réussite calculé sur les seules offres décidées."],
@@ -1881,7 +1886,7 @@ def build_presentation_script():
     add_h1(doc, "Les chiffres à retenir")
     add_bullet(doc, "1 question = 1 tableau de bord complet, généré automatiquement.")
     add_bullet(doc, "9 types de visualisations choisis automatiquement selon la question.")
-    add_bullet(doc, "226 tests automatisés, aucune dépendance à des données réelles.")
+    add_bullet(doc, "227 tests automatisés, aucune dépendance à des données réelles.")
     add_bullet(doc, "21 phases de développement livrées, de bout en bout, en autonomie.")
     add_bullet(doc, "0 base de données à administrer — le Google Sheet est la source de vérité.")
     add_bullet(doc, "0 hallucination tolérée : donnée non fiable = question posée en retour, jamais un chiffre inventé.")

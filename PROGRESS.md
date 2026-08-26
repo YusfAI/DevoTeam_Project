@@ -37,6 +37,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 30 — Tableau des affaires chaudes défilant, rendu par l'application faute de défilement vertical dans DAC
 - [x] Phase 31 — Proxy du serveur de développement corrigé, et trois tests qui empêchent l'oubli de se reproduire
 - [x] Phase 32 — Tableau des affaires chaudes replacé dans le dashboard DAC, seul sur sa ligne
+- [x] Phase 33 — Détail réparti sur trois colonnes : hauteur divisée par trois, aucune opportunité perdue
 
 ## 📝 Journaux
 
@@ -257,6 +258,18 @@ Suite `pytest` : 227 tests (était 224).
 *Ce que les tests conservent.* Ils visaient le helper Python supprimé ; ils visent désormais les deux chemins qui existent réellement — le SQL du dashboard et le pandas du chat — et vérifient toujours ce qui compte : seuil inclusif (90 % et 100 % entrent), statut sans effet, pondération absente écartée, aucune ligne tronquée, tableau seul sur sa ligne et sans hauteur imposée. Le contrôle croisé entre les deux moteurs et le garde-fou sur les NaN à l'export sont conservés.
 
 Suite `pytest` : 226 tests. `dac check` : 15 dashboards, 121 widgets, tous verts.
+
+**Phase 33** : Terminée. Le détail des affaires chaudes tient sur un tiers de la hauteur, sans qu'une seule opportunité disparaisse.
+
+*La contrainte, enfin comprise correctement.* Réduire la longueur ET conserver toutes les opportunités. Le tableau de Bruin DAC ne défilant pas verticalement, la hauteur d'un tableau est son nombre de lignes — un plafond l'aurait raccourci en amputant la liste, et une hauteur de ligne l'aurait clippé. La seule voie qui satisfait les deux termes est de répartir la liste sur plusieurs colonnes côte à côte : trois tables de 35 lignes tiennent la place d'une de 35, pas d'une de 105.
+
+*Le découpage.* `NTILE(3)` plutôt qu'un seuil de rang en dur : le total change avec le filtre de période (105 sur tout l'historique, 55 par défaut) et un seuil fixe laisserait une colonne vide dès qu'il baisse. Mesuré : 35/35/35 sur l'historique, 19/18/18 sur la période par défaut, rangs continus de 1 à N, aucun doublon. Un numéro de rang est affiché — sans lui, trois listes triées côte à côte ne diraient pas laquelle vient en premier.
+
+*Ce que ça coûte.* Chaque table dispose d'un tiers de la largeur, soit à peine les 400 px que le tableau de DAC réclame au minimum. Les colonnes sont donc réduites à l'essentiel : rang, opportunité, client, montant pondéré. Budget, practice, pondération et échéance sortent de ce tableau — la pondération vaut 80 ou 100 % par construction, la practice a son propre graphique juste au-dessus, et les montants globaux sont dans les KPI de la ligne précédente.
+
+*Trois tests tiennent l'invariant qui compte* : les trois colonnes contiennent chaque affaire exactement une fois, dans l'ordre des espérances de gain décroissantes, et le découpage se répartit au plus juste quel que soit le total. Un découpage qui doublonnerait ou sauterait une ligne échouerait là, alors qu'aucune requête n'aurait échoué.
+
+Suite `pytest` : 227 tests. `dac check` : 15 dashboards, 123 widgets, tous verts.
 
 ## 📊 Bilan du Produit
 
