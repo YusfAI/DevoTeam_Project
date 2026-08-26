@@ -37,19 +37,22 @@ STAGES = ",\n".join(
     for i in range(0, len(FUNNEL_STAGE_ORDER), 3)
 )
 
-# Les deux filtres de tête, injectés en Jinja dans CHAQUE requête.
+# Les deux filtres de tête, injectés en Jinja dans CHAQUE requête — sauf le
+# tableau des urgences, qui échappe à la période (voir son commentaire).
 PRACTICE = (
     "          {% if filters.practice != 'Toutes' %}\n"
     "            AND practice = '{{ filters.practice }}'\n"
     "          {% endif %}"
 )
+# Les deux bornes sont posées séparément et chacune sous condition : le raccourci
+# « tout l'historique » laisse la plage vide, et un `BETWEEN` sur des bornes absentes
+# ne renverrait plus rien. Chacune ne s'applique donc que si elle existe.
 PERIODE = (
-    "          {% if filters.periode == 'Depuis novembre 2025' %}\n"
-    "            AND deadline >= DATE '2025-11-01'\n"
-    "          {% elif filters.periode == '12 derniers mois' %}\n"
-    "            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH\n"
-    "          {% elif filters.periode == 'Depuis janvier 2026' %}\n"
-    "            AND deadline >= DATE '2026-01-01'\n"
+    "          {% if filters.periode.start %}\n"
+    "            AND deadline >= DATE '{{ filters.periode.start }}'\n"
+    "          {% endif %}\n"
+    "          {% if filters.periode.end %}\n"
+    "            AND deadline <= DATE '{{ filters.periode.end }}'\n"
     "          {% endif %}"
 )
 FILTRES = PERIODE + "\n" + PRACTICE
@@ -235,12 +238,18 @@ connection: devoteam_duckdb
 # jointes en LEFT JOIN pour rester dans un ordre constant même à zéro, et ce sont les
 # étiquettes — pas la couleur — qui portent le sens.
 filters:
+  # Sélecteur de plage natif : liste de raccourcis (aujourd'hui, 7/30/90 derniers
+  # jours, ce mois, mois dernier, ce trimestre, cette année, depuis le 1er janvier,
+  # tout l'historique) ET calendrier pour une période libre. Sa valeur passe dans
+  # l'URL, donc un dashboard filtré se partage par lien.
+  #
+  # La borne haute par défaut dépasse volontairement la dernière échéance des données
+  # (2026-12-29) : plusieurs widgets regardent vers l'AVENIR — budget actif, entonnoir,
+  # pipeline — et une borne fixée à aujourd'hui les amputerait de tout le portefeuille
+  # en cours. À étendre le jour où des échéances iront au-delà.
   - name: periode
-    type: select
-    multiple: false
-    default: "Depuis novembre 2025"
-    options:
-      values: ["Depuis novembre 2025", "12 derniers mois", "Depuis janvier 2026", "Tout l'historique"]
+    type: date-range
+    default: "2025-11-01..2026-12-31"
 
   - name: practice
     type: select
@@ -474,6 +483,10 @@ __FILTRES__
         col: 12
         # Seul widget tourné vers l'avenir : la borne « à date » des offres remises ne
         # s'y applique pas, sinon il serait toujours vide.
+        # Volontairement HORS du filtre de période : sa fenêtre est « les 7 prochains
+        # jours », elle se définit toute seule. Une plage se terminant aujourd'hui le
+        # viderait entièrement, ce qui est exactement le contraire de son propos.
+        # Le filtre de practice, lui, s'applique normalement.
         description: Affaires encore ouvertes dont l'échéance tombe dans les 7 jours.
         sql: |
           SELECT buyer, country, practice, status, deadline, days_remaining, budget
@@ -483,7 +496,7 @@ __FILTRES__
               'Offre gagnée', 'Offre perdue', 'Offre signée', 'Infructueux',
               'NO GO', 'Hors scope', 'Non shortlisté'
             )
-__FILTRES__
+__PRACTICE_SEULE__
           ORDER BY days_remaining ASC
         columns:
           - { name: buyer, label: Client }
@@ -523,6 +536,7 @@ doc = (doc.replace("__CHAUDES_COLONNES__", chaudes_colonnes)
           .replace("__ISSUES__", ISSUES)
           .replace("__ETAPES__", etapes_cte())
           .replace("__PERDUS__", PERDUS)
+          .replace("__PRACTICE_SEULE__", PRACTICE)
           .replace("__FILTRES__", FILTRES))
 
 pathlib.Path("dac/dashboards/accueil.yml").write_text(doc, encoding="utf-8")

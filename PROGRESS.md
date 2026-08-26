@@ -39,6 +39,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 32 — Tableau des affaires chaudes replacé dans le dashboard DAC, seul sur sa ligne
 - [x] Phase 33 — Détail réparti sur trois colonnes : hauteur divisée par trois, aucune opportunité perdue
 - [x] Phase 34 — Palette revalidée sans avertissement, garde-fou contre la divergence, et taille d'affichage réglable
+- [x] Phase 35 — Sélecteur de plage de dates natif : raccourcis + calendrier, valeur partageable par l'URL
 
 ## 📝 Journaux
 
@@ -283,6 +284,18 @@ Suite `pytest` : 227 tests. `dac check` : 15 dashboards, 123 widgets, tous verts
 *La taille du texte, rendue à l'utilisateur.* Faute de jeton de typographie, un réglage de zoom (90 % à 140 %) agit sur le cadre et produit le même effet. La largeur et la hauteur compensent le facteur, sans quoi le cadre grandirait avec son contenu et déborderait. Le choix est mémorisé. C'est un réglage plutôt qu'une valeur imposée parce que je ne vois pas l'écran : c'est à celui qui le regarde de trancher.
 
 Suite `pytest` : 230 tests (était 227). `dac check` : 15 dashboards, 124 widgets, tous verts.
+
+**Phase 35** : Terminée. Le filtre de période devient un vrai sélecteur de plage.
+
+*Ce que DAC offrait sans qu'on le sache.* Le menu à quatre choix figés ne permettait pas de borner une période à la main. DAC fournit pourtant `type: date-range` en natif : un calendrier (react-day-picker, vue multi-mois) accompagné de onze raccourcis — aujourd'hui, hier, 7/30/90 derniers jours, ce mois, mois dernier, ce trimestre, cette année, depuis le 1er janvier, tout l'historique. Il est thémé par nos jetons, donc aux couleurs de l'application. Sa documentation apprend au passage que **les valeurs de filtre passent dans l'URL** (`?periode=2025-11-01..2026-08-26`) : un dashboard filtré se partage par lien, et pourrait être piloté de l'extérieur de l'iframe si le besoin s'en présentait.
+
+*Deux bornes, deux conditions séparées.* Le raccourci « tout l'historique » laisse la plage vide ; un `BETWEEN` sur des bornes absentes ne renverrait plus une seule ligne. Chaque borne est donc posée dans son propre bloc conditionnel et ne s'applique que si elle existe.
+
+*La borne haute par défaut dépasse volontairement les données.* Plusieurs widgets regardent vers l'AVENIR — budget actif, entonnoir, pipeline — et une borne fixée à aujourd'hui les amputerait de tout le portefeuille en cours. Vérifié : la plage par défaut redonne exactement les chiffres du menu précédent (57 offres remises, 55 affaires chaudes, 80,68 M€ de budget actif), sans aucune régression.
+
+*Une exemption assumée.* Le tableau des urgences échappe à la période : sa fenêtre est « les 7 prochains jours », elle se définit toute seule, et une plage se terminant aujourd'hui le viderait entièrement — le contraire de son propos. Le filtre de practice, lui, continue de s'y appliquer. Quatre tests tiennent ce contrat, dont un qui vérifie qu'aucun AUTRE widget n'a été oublié : un widget hors période afficherait un chiffre d'un autre périmètre que ses voisins, sans qu'aucune requête n'échoue.
+
+Suite `pytest` : 234 tests (était 230). `dac check` : 15 dashboards, 124 widgets, tous verts.
 
 ## 📊 Bilan du Produit
 

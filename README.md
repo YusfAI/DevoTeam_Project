@@ -53,6 +53,10 @@ données à installer.
   remises sur la période, comment elles se répartissent par practice, et ce qu'elles
   sont devenues (gagnées / perdues / en attente) — puis donne l'état du portefeuille,
   le pipeline et les échéances urgentes. 19 widgets.
+- **Période choisie à la main** : sélecteur de plage natif — liste de raccourcis
+  (aujourd'hui, 7/30/90 derniers jours, ce mois, mois dernier, ce trimestre, cette
+  année, tout) et calendrier pour une période libre. La valeur passe dans l'URL, donc
+  un dashboard filtré se partage par lien.
 - **Palette revalidée** : huit teintes qui passent tous les contrôles du validateur
   daltonien sans avertissement, contraste compris — les trois teintes claires de la
   version précédente passaient sous 3:1. Un test empêche la régression et vérifie que
@@ -271,7 +275,7 @@ frontend/              Vite + React (build servi par FastAPI en local)
 credentials/           clé de compte de service Google (gitignoré, absent par défaut)
 data/                  scheduler_state.json (état local, gitignoré) ; dump SQL
                        historique de l'ancienne base MySQL, conservé pour référence
-tests/                 suite pytest (mock Gemini/Sheets), 230 tests
+tests/                 suite pytest (mock Gemini/Sheets), 234 tests
 Documentation/
   WORKFLOW.md            traçage concret d'une question, du prompt au dashboard affiché
   reports/              rapport professionnel + guide technique (.docx) et leur générateur

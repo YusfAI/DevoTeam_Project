@@ -43,12 +43,18 @@ connection: devoteam_duckdb
 # jointes en LEFT JOIN pour rester dans un ordre constant même à zéro, et ce sont les
 # étiquettes — pas la couleur — qui portent le sens.
 filters:
+  # Sélecteur de plage natif : liste de raccourcis (aujourd'hui, 7/30/90 derniers
+  # jours, ce mois, mois dernier, ce trimestre, cette année, depuis le 1er janvier,
+  # tout l'historique) ET calendrier pour une période libre. Sa valeur passe dans
+  # l'URL, donc un dashboard filtré se partage par lien.
+  #
+  # La borne haute par défaut dépasse volontairement la dernière échéance des données
+  # (2026-12-29) : plusieurs widgets regardent vers l'AVENIR — budget actif, entonnoir,
+  # pipeline — et une borne fixée à aujourd'hui les amputerait de tout le portefeuille
+  # en cours. À étendre le jour où des échéances iront au-delà.
   - name: periode
-    type: select
-    multiple: false
-    default: "Depuis novembre 2025"
-    options:
-      values: ["Depuis novembre 2025", "12 derniers mois", "Depuis janvier 2026", "Tout l'historique"]
+    type: date-range
+    default: "2025-11-01..2026-12-31"
 
   - name: practice
     type: select
@@ -76,12 +82,11 @@ rows:
             FROM opportunities
             WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
               AND deadline <= CURRENT_DATE
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -106,12 +111,11 @@ rows:
             FROM opportunities
             WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
               AND deadline <= CURRENT_DATE
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -136,12 +140,11 @@ rows:
             FROM opportunities
             WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
               AND deadline <= CURRENT_DATE
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -166,12 +169,11 @@ rows:
             FROM opportunities
             WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
               AND deadline <= CURRENT_DATE
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -198,12 +200,11 @@ rows:
             FROM opportunities
             WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
               AND deadline <= CURRENT_DATE
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -229,12 +230,11 @@ rows:
             FROM opportunities
             WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
               AND deadline <= CURRENT_DATE
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -259,12 +259,11 @@ rows:
             FROM opportunities
             WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
               AND deadline <= CURRENT_DATE
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -290,12 +289,11 @@ rows:
             FROM opportunities
             WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
               AND deadline <= CURRENT_DATE
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -328,12 +326,11 @@ rows:
             FROM opportunities
             WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
               AND deadline <= CURRENT_DATE
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -366,12 +363,11 @@ rows:
             FROM opportunities
             WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
               AND deadline <= CURRENT_DATE
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -410,12 +406,11 @@ rows:
             FROM opportunities
             WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
               AND deadline <= CURRENT_DATE
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -446,12 +441,11 @@ rows:
           WITH chaudes AS (
             SELECT * FROM opportunities
             WHERE win_probability >= 0.8
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -469,12 +463,11 @@ rows:
           WITH chaudes AS (
             SELECT * FROM opportunities
             WHERE win_probability >= 0.8
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -492,12 +485,11 @@ rows:
           WITH chaudes AS (
             SELECT * FROM opportunities
             WHERE win_probability >= 0.8
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -516,12 +508,11 @@ rows:
           WITH chaudes AS (
             SELECT * FROM opportunities
             WHERE win_probability >= 0.8
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -560,12 +551,11 @@ rows:
           WITH chaudes AS (
             SELECT * FROM opportunities
             WHERE win_probability >= 0.8
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -595,12 +585,11 @@ rows:
           WITH chaudes AS (
             SELECT * FROM opportunities
             WHERE win_probability >= 0.8
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -630,12 +619,11 @@ rows:
           WITH chaudes AS (
             SELECT * FROM opportunities
             WHERE win_probability >= 0.8
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -667,12 +655,11 @@ rows:
         sql: |
           SELECT SUM(budget) AS value FROM opportunities
           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -687,12 +674,11 @@ rows:
         sql: |
           SELECT SUM(financial_offer) AS value FROM opportunities
           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -707,12 +693,11 @@ rows:
         sql: |
           SELECT (SUM(financial_offer) - SUM(budget)) / NULLIF(SUM(budget), 0) AS value FROM opportunities
           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -727,12 +712,11 @@ rows:
         sql: |
           SELECT SUM(weighted_amount) AS value FROM opportunities
           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -773,12 +757,11 @@ rows:
               'Manif shortlistée', 'Manifestation remise', 'Offre remise',
               'En attente du plan de charge', 'Offre gagnée', 'Offre signée'
             )
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -820,12 +803,11 @@ rows:
               'Manif shortlistée', 'Manifestation remise', 'Offre remise',
               'En attente du plan de charge', 'Offre gagnée', 'Offre signée'
             )
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -854,12 +836,11 @@ rows:
         sql: |
           SELECT country, SUM(budget) AS budget FROM opportunities
           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
+          {% if filters.periode.start %}
+            AND deadline >= DATE '{{ filters.periode.start }}'
+          {% endif %}
+          {% if filters.periode.end %}
+            AND deadline <= DATE '{{ filters.periode.end }}'
           {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
@@ -878,6 +859,10 @@ rows:
         col: 12
         # Seul widget tourné vers l'avenir : la borne « à date » des offres remises ne
         # s'y applique pas, sinon il serait toujours vide.
+        # Volontairement HORS du filtre de période : sa fenêtre est « les 7 prochains
+        # jours », elle se définit toute seule. Une plage se terminant aujourd'hui le
+        # viderait entièrement, ce qui est exactement le contraire de son propos.
+        # Le filtre de practice, lui, s'applique normalement.
         description: Affaires encore ouvertes dont l'échéance tombe dans les 7 jours.
         sql: |
           SELECT buyer, country, practice, status, deadline, days_remaining, budget
@@ -887,13 +872,6 @@ rows:
               'Offre gagnée', 'Offre perdue', 'Offre signée', 'Infructueux',
               'NO GO', 'Hors scope', 'Non shortlisté'
             )
-          {% if filters.periode == 'Depuis novembre 2025' %}
-            AND deadline >= DATE '2025-11-01'
-          {% elif filters.periode == '12 derniers mois' %}
-            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
-          {% elif filters.periode == 'Depuis janvier 2026' %}
-            AND deadline >= DATE '2026-01-01'
-          {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
           {% endif %}

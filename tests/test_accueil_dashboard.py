@@ -162,3 +162,55 @@ def test_every_widget_explains_itself_briefly():
 
     assert not sans_description, sans_description
     assert not bavardes, bavardes
+
+
+# ---------------------------------------------------------------------------
+# Le filtre de période
+# ---------------------------------------------------------------------------
+
+def test_the_period_is_a_real_date_range_picker():
+    # Un menu à quatre choix ne permettait pas de borner une période à la main.
+    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
+    periode = next(f for f in doc["filters"] if f["name"] == "periode")
+
+    assert periode["type"] == "date-range"
+    # Une plage explicite plutôt qu'un raccourci : aucun des raccourcis intégrés ne
+    # correspond au point de départ retenu par le métier.
+    assert ".." in str(periode["default"])
+
+
+def test_each_bound_applies_only_if_it_exists():
+    """Le raccourci « tout l'historique » laisse la plage vide.
+
+    Un BETWEEN sur des bornes absentes ne renverrait plus une seule ligne. Chaque
+    borne est donc posée dans son propre bloc conditionnel.
+    """
+    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
+    sql = next(w for row in doc["rows"] for w in row["widgets"]
+                if w["name"] == "Budget actif")["sql"]
+
+    assert "{% if filters.periode.start %}" in sql
+    assert "{% if filters.periode.end %}" in sql
+    assert "BETWEEN DATE" not in sql
+
+
+def test_the_urgent_table_ignores_the_period():
+    # Sa fenêtre est « les 7 prochains jours » : une plage se terminant aujourd'hui
+    # la viderait entièrement, ce qui est le contraire de son propos. Le filtre de
+    # practice, lui, doit continuer de s'appliquer.
+    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
+    sql = next(w for row in doc["rows"] for w in row["widgets"]
+                if w["name"].startswith("Opportunités urgentes"))["sql"]
+
+    assert "filters.periode" not in sql
+    assert "filters.practice" in sql
+
+
+def test_every_other_widget_follows_the_period():
+    # Un widget oublié afficherait un chiffre d'un autre périmètre que ses voisins,
+    # sans qu'aucune requête n'échoue.
+    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
+    oublis = [w["name"] for row in doc["rows"] for w in row["widgets"]
+               if "filters.periode" not in w["sql"]
+               and not w["name"].startswith("Opportunités urgentes")]
+    assert not oublis, oublis
