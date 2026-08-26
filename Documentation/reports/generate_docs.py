@@ -490,7 +490,7 @@ def build_rapport_professionnel():
              "(alertes deadlines, rafraîchissement des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (227 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
+            ["Tests", "pytest (226 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
              "(mocks), garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -509,7 +509,7 @@ def build_rapport_professionnel():
                      "explicite — il n'écrit jamais lui-même de requête.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "227 tests automatisés couvrent la compréhension du langage, le requêtage des "
+    add_bullet(doc, "226 tests automatisés couvrent la compréhension du langage, le requêtage des "
                      "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -1162,19 +1162,18 @@ def build_guide_technique():
         "« Budget à forte confiance » plutôt que « Budget en jeu », qui laissait "
         "entendre une affaire encore ouverte.")
     add_body(doc,
-        "Le tableau de détail des affaires chaudes est le SEUL bloc du tableau de bord "
-        "rendu par l'application et non par Bruin DAC. Le tableau de DAC ne défile pas "
-        "verticalement : son élément externe est un simple overflow-x-auto, sans "
-        "hauteur ni overflow-y, à l'intérieur d'un cadre h-full overflow-hidden. "
-        "Borner la hauteur de la ligne le CLIPPE donc au lieu de le rendre défilable, "
-        "et aucun réglage n'existe — le schéma refuse height sur un widget, le thème "
-        "refuse le CSS, et le TSX partage le même modèle que le YAML.")
+        "Le tableau de détail occupe sa propre ligne, en pleine largeur, sans hauteur "
+        "imposée. Aucune ligne n'est retirée de la requête : les 105 affaires y sont, "
+        "et l'on atteint les dernières en faisant défiler la page.")
     add_cue(doc,
-        "Sortir ce seul tableau de l'iframe était la seule façon d'obtenir la molette "
-        "sans amputer la liste. Contrepartie assumée et écrite dans son en-tête : il "
-        "ne peut pas suivre le filtre de période du dashboard, qui vit dans l'iframe "
-        "et lui est inaccessible. Il montre donc toujours l'ensemble. Un filtre "
-        "silencieusement ignoré serait un piège ; annoncé, c'est une portée.")
+        "Le widget tableau de Bruin DAC ne défile pas verticalement : son élément "
+        "externe est un simple overflow-x-auto, sans hauteur ni overflow-y, dans un "
+        "cadre overflow-hidden. Borner la hauteur de la ligne le CLIPPE au lieu de le "
+        "rendre défilable, et aucun contournement n'existe — le schéma refuse height "
+        "sur un widget, le thème refuse le CSS, le TSX partage le même modèle que le "
+        "YAML, et le markdown d'un widget text est rendu sans rehype-raw, donc sans "
+        "HTML brut. Un rendu React hors de l'iframe a été essayé puis retiré : il "
+        "donnait la molette mais sortait le tableau du dashboard.")
     add_body(doc,
         "Le tableau passant par pandas et les KPI par du SQL, un test confronte les "
         "deux définitions sur les mêmes lignes. Il a révélé un piège de DuckDB : "
@@ -1568,7 +1567,7 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "15. Tests automatisés")
     add_body(doc,
-        "227 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
+        "226 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
         "et le client Google Sheets (gspread) sont simulés (monkeypatch), et les données "
         "sont un petit DataFrame construit dans le test. La suite tourne donc hors ligne, "
         "en quelques secondes.")
@@ -1600,7 +1599,7 @@ def build_guide_technique():
             ["test_response_builder.py", "26", "Formatage des unités, messages texte déterministes, "
              "cohérence texte/graphique pour funnel et heatmap, description de ce qui a changé "
              "dans le tableau de bord."],
-            ["test_hot_deals.py", "8", "Le critere des affaires chaudes de bout en bout : seuil inclusif, statut sans effet, ponderation absente ecartee, accord entre la definition pandas et le SQL des KPI, et NULL plutot que NaN a l export."],
+            ["test_hot_deals.py", "7", "Le critere des affaires chaudes de bout en bout : seuil inclusif, statut sans effet, ponderation absente ecartee, accord entre la definition pandas et le SQL des KPI, et NULL plutot que NaN a l export."],
             ["test_accueil_dashboard.py", "8", "SQL de la vue d'ensemble exécuté sur des lignes "
              "fabriquées : seuil des affaires chaudes inclusif, issues qui totalisent les offres "
              "remises, taux de réussite calculé sur les seules offres décidées."],
@@ -1882,7 +1881,7 @@ def build_presentation_script():
     add_h1(doc, "Les chiffres à retenir")
     add_bullet(doc, "1 question = 1 tableau de bord complet, généré automatiquement.")
     add_bullet(doc, "9 types de visualisations choisis automatiquement selon la question.")
-    add_bullet(doc, "227 tests automatisés, aucune dépendance à des données réelles.")
+    add_bullet(doc, "226 tests automatisés, aucune dépendance à des données réelles.")
     add_bullet(doc, "21 phases de développement livrées, de bout en bout, en autonomie.")
     add_bullet(doc, "0 base de données à administrer — le Google Sheet est la source de vérité.")
     add_bullet(doc, "0 hallucination tolérée : donnée non fiable = question posée en retour, jamais un chiffre inventé.")

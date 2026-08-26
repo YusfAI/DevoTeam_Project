@@ -243,38 +243,6 @@ async def data_quality_report():
     return report()
 
 
-@app.get("/hot-deals")
-async def hot_deals_list():
-    """Toutes les affaires chaudes, pour le tableau défilant de l'interface.
-
-    Ce tableau est rendu par l'application et non par Bruin DAC, pour une raison
-    précise : le tableau de DAC ne défile pas verticalement. Son élément externe
-    porte `overflow-x-auto` sans hauteur ni `overflow-y`, à l'intérieur d'un cadre
-    `overflow-hidden` — borner la hauteur de la ligne le CLIPPE au lieu de le rendre
-    défilable, et le schéma n'accepte ni hauteur de widget ni CSS de thème. Rendre ce
-    seul tableau côté React est la seule façon d'obtenir un défilement à la molette
-    sans amputer la liste.
-    """
-    from .business_rules import HOT_DEAL_MIN_PROBABILITY, hot_deals
-    from .data_store import get_dataframe
-    from .db_layer import _to_records
-
-    colonnes = ["description", "buyer", "practice", "country", "status",
-                 "budget", "win_probability", "weighted_amount", "deadline"]
-    chaudes = hot_deals(get_dataframe())
-    if chaudes is None or chaudes.empty:
-        return {"seuil": HOT_DEAL_MIN_PROBABILITY, "total": 0, "affaires": []}
-
-    presentes = [c for c in colonnes if c in chaudes.columns]
-    return {
-        "seuil": HOT_DEAL_MIN_PROBABILITY,
-        "total": int(len(chaudes)),
-        "budget_total": float(chaudes["budget"].sum(skipna=True) or 0),
-        "pondere_total": float(chaudes["weighted_amount"].sum(skipna=True) or 0),
-        "affaires": _to_records(chaudes[presentes]),
-    }
-
-
 @app.post("/sheets/sync")
 async def trigger_sheets_sync():
     """Rafraîchissement manuel des données depuis le Google Sheet, en plus du job

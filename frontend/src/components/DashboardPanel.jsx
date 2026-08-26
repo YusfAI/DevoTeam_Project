@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { OVERVIEW_DASHBOARD_NAME, dacDashboardUrl } from '../dac'
 import { getHealth } from '../api'
 import DevoteamLogo from './DevoteamLogo'
-import HotDealsTable from './HotDealsTable'
 
 // Durée du fondu entre deux états du tableau de bord. Doit rester égale à la
 // transition d'opacité de .dac-frame : l'ancien cadre n'est retiré qu'une fois le
@@ -146,11 +145,6 @@ export default function DashboardPanel({
           </>
         )}
       </div>
-
-      {/* Seul bloc du tableau de bord rendu hors de l'iframe, et pour une seule
-          raison : le tableau de Bruin DAC ne défile pas verticalement. Il occupe sa
-          propre ligne, sous le dashboard, avec une hauteur bornée et la molette. */}
-      {surLaVueDEnsemble && <HotDealsTable />}
     </div>
   )
 }

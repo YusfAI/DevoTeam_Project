@@ -11,7 +11,6 @@ export default defineConfig({
     // (tests/test_frontend_proxy.py) : l'oubli ne se voit qu'à l'exécution.
     proxy: {
       '/dashboard': 'http://127.0.0.1:8000',
-      '/hot-deals': 'http://127.0.0.1:8000',
       '/alerts': 'http://127.0.0.1:8000',
       '/sheets': 'http://127.0.0.1:8000',
       '/health': 'http://127.0.0.1:8000',

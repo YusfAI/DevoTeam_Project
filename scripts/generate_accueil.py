@@ -324,11 +324,6 @@ __ISSUES__,
   - widgets:
 __CHAUDES_KPI__
 
-  # Le tableau de détail ne figure PAS ici : le tableau de Bruin DAC ne défile pas
-  # verticalement (son élément externe porte `overflow-x-auto`, sans hauteur ni
-  # `overflow-y`, dans un cadre `overflow-hidden`), si bien que borner la hauteur de
-  # la ligne le clippe au lieu de le rendre défilable. Il est rendu par l'application,
-  # sous le dashboard — voir frontend/src/components/HotDealsTable.jsx.
   - widgets:
       - name: Affaires chaudes par practice
         type: chart
@@ -345,6 +340,39 @@ __CHAUDES__
         y: { field: nb, type: number, title: Affaires chaudes, format: ",.0f" }
         color: { field: practice }
 
+
+  # Le tableau occupe sa propre ligne, sur toute la largeur.
+  #
+  # Aucune hauteur n'est posée sur cette ligne, et c'est délibéré : le tableau de
+  # Bruin DAC ne défile pas verticalement — son élément externe porte
+  # `overflow-x-auto`, sans hauteur ni `overflow-y`, à l'intérieur d'un cadre
+  # `overflow-hidden`. Borner la ligne CLIPPERAIT donc les affaires suivantes au lieu
+  # de les rendre atteignables. Le widget s'étire avec son contenu et c'est la page
+  # qui défile : c'est la seule mise en page où les 105 affaires restent lisibles
+  # depuis le dashboard lui-même.
+  - widgets:
+      - name: Détail des affaires chaudes
+        type: table
+        col: 12
+        # À savoir en lisant les montants : dans ces données 100 % n'est pas une
+        # prévision mais un constat — les 88 opportunités à 100 % sont exactement les
+        # 88 déjà gagnées ou signées.
+        description: Toutes les affaires chaudes, la plus forte espérance de gain d'abord.
+        sql: |
+__CHAUDES__
+          SELECT description, buyer, practice, budget,
+                 ROUND(win_probability * 100) AS ponderation,
+                 weighted_amount, deadline
+          FROM chaudes
+          ORDER BY weighted_amount DESC
+        columns:
+          - { name: description, label: Opportunité }
+          - { name: buyer, label: Client }
+          - { name: practice, label: Practice }
+          - { name: budget, label: Budget, number: currency }
+          - { name: ponderation, label: Pondération %, number: number }
+          - { name: weighted_amount, label: Montant pondéré, number: currency }
+          - { name: deadline, label: Échéance }
 
   # === Santé du portefeuille — affaires perdues exclues ===
   - widgets:
@@ -489,7 +517,7 @@ attendus = [
     "Issue des offres remises", "Offres remises par practice",
     "Issue par practice", "Offres remises par mois",
     "Affaires chaudes", "Budget à forte confiance", "Montant pondéré associé",
-    "Affaires chaudes par practice",
+    "Affaires chaudes par practice", "Détail des affaires chaudes",
     "Budget actif", "Offre financière", "Écart offre / budget", "Montant pondéré",
     "Entonnoir de vente", "Taux de passage entre étapes", "Budget actif par pays",
     "Opportunités urgentes (échéance ≤ 7 jours)",

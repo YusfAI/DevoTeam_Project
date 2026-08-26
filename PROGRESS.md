@@ -36,6 +36,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 29 — Une phrase d'explication sous chaque visuel
 - [x] Phase 30 — Tableau des affaires chaudes défilant, rendu par l'application faute de défilement vertical dans DAC
 - [x] Phase 31 — Proxy du serveur de développement corrigé, et trois tests qui empêchent l'oubli de se reproduire
+- [x] Phase 32 — Tableau des affaires chaudes replacé dans le dashboard DAC, seul sur sa ligne
 
 ## 📝 Journaux
 
@@ -246,6 +247,16 @@ Suite `pytest` : 224 tests (était 221). `dac check` : 15 dashboards, 121 widget
 *Et le message.* Une réponse HTML là où on attend du JSON a une cause précise et récurrente. Laisser remonter « Unexpected token '<' » n'aide personne : l'appel nomme maintenant la piste — backend arrêté, ou préfixe absent du proxy.
 
 Suite `pytest` : 227 tests (était 224).
+
+**Phase 32** : Terminée. Le tableau des affaires chaudes revient dans le dashboard DAC, seul sur sa ligne.
+
+*Deux exigences incompatibles, et l'arbitrage rendu.* Le tableau devait être défilable à la molette ET faire partie du dashboard DAC. Bruin DAC ne permet pas le premier : son widget tableau a pour élément externe un simple `overflow-x-auto`, sans hauteur ni `overflow-y`, dans un cadre `overflow-hidden` — borner la hauteur de la ligne le clippe. La dernière piste restante a été fermée par la lecture du bundle : le markdown d'un widget `text` est rendu **sans `rehype-raw`**, donc le HTML brut est retiré et aucun conteneur défilant ne peut y être injecté. Le second point a donc été retenu, comme demandé : le tableau est dans DAC, sur sa propre ligne en pleine largeur, avec ses 105 affaires. On atteint les dernières en faisant défiler la PAGE, pas le widget.
+
+*Retour en arrière propre.* Le bloc React livré à la phase précédente est retiré en entier — composant, styles, appel d'API, entrée de proxy, endpoint `GET /hot-deals` et helper `business_rules.hot_deals`. Rien n'est laissé sans appelant.
+
+*Ce que les tests conservent.* Ils visaient le helper Python supprimé ; ils visent désormais les deux chemins qui existent réellement — le SQL du dashboard et le pandas du chat — et vérifient toujours ce qui compte : seuil inclusif (90 % et 100 % entrent), statut sans effet, pondération absente écartée, aucune ligne tronquée, tableau seul sur sa ligne et sans hauteur imposée. Le contrôle croisé entre les deux moteurs et le garde-fou sur les NaN à l'export sont conservés.
+
+Suite `pytest` : 226 tests. `dac check` : 15 dashboards, 121 widgets, tous verts.
 
 ## 📊 Bilan du Produit
 
