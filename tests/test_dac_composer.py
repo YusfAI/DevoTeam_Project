@@ -346,3 +346,75 @@ def test_asking_the_same_question_twice_reuses_one_file(tmp_path, monkeypatch):
     write_generated_dashboard("budget par pays", _intent())
     write_generated_dashboard("budget par pays", _intent())
     assert len(list(tmp_path.glob(f"{dac_composer.GENERATED_PREFIX}*.yml"))) == 1
+
+
+# ---------------------------------------------------------------------------
+# « Ajoute … » complète le tableau de bord au lieu de le remplacer
+# ---------------------------------------------------------------------------
+
+def _widgets_du_principal(tmp_path):
+    contenu = yaml.safe_load((tmp_path / dac_composer.MAIN_FILENAME).read_text(encoding="utf-8"))
+    return [w for row in contenu["rows"] for w in row["widgets"]]
+
+
+def test_there_is_nothing_to_complete_before_a_first_question(tmp_path, monkeypatch):
+    # « ajoute … » en tout début de session n'a rien à compléter : l'appelant doit
+    # pouvoir le voir et retomber sur une composition normale, plutôt que d'échouer.
+    monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path)
+    assert dac_composer.append_to_main_dashboard("ajoute le budget par pays", _intent()) == (None, False)
+
+
+def test_appending_keeps_the_existing_widgets(tmp_path, monkeypatch):
+    monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path)
+    dac_composer.write_main_dashboard("budget par pays", _intent())
+    avant = _widgets_du_principal(tmp_path)
+
+    nom, ajoute = dac_composer.append_to_main_dashboard(
+        "ajoute le nombre par statut",
+        _intent(metric="nb_opportunities", dimension="status", goal="Nombre par statut"))
+
+    apres = _widgets_du_principal(tmp_path)
+    assert nom == dac_composer.MAIN_DASHBOARD_NAME and ajoute is True
+    assert len(apres) == len(avant) + 1
+    assert [w["name"] for w in apres][:len(avant)] == [w["name"] for w in avant]
+
+
+def test_appending_the_same_widget_twice_changes_nothing(tmp_path, monkeypatch):
+    # Et le dit : annoncer un ajout qui n'a pas eu lieu vaudrait tout autant que de
+    # ne rien dire du tout.
+    monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path)
+    dac_composer.write_main_dashboard("budget par pays", _intent())
+    ajout = _intent(metric="nb_opportunities", dimension="status", goal="Nombre par statut")
+
+    dac_composer.append_to_main_dashboard("ajoute le nombre par statut", ajout)
+    compte = len(_widgets_du_principal(tmp_path))
+    nom, ajoute = dac_composer.append_to_main_dashboard("ajoute le nombre par statut", ajout)
+
+    assert (nom, ajoute) == (dac_composer.MAIN_DASHBOARD_NAME, False)
+    assert len(_widgets_du_principal(tmp_path)) == compte
+
+
+def test_a_dashboard_stops_growing_past_the_readable_limit(tmp_path, monkeypatch):
+    # Sans plafond, ajouter sans fin produirait une page complète où l'on ne trouve
+    # plus rien — l'inverse du but recherché.
+    monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path)
+    monkeypatch.setattr(dac_composer, "MAX_MAIN_WIDGETS", 9)
+    dac_composer.write_main_dashboard("budget par pays", _intent())
+
+    for i, dimension in enumerate(["status", "practice", "funding_source", "opp_type"]):
+        dac_composer.append_to_main_dashboard(
+            "ajoute", _intent(dimension=dimension, goal="Analyse %d" % i))
+
+    assert len(_widgets_du_principal(tmp_path)) == 9
+
+
+def test_the_working_dashboard_keeps_its_name_when_completed(tmp_path, monkeypatch):
+    # C'est ce qui fait qu'un ajout se voit apparaître sur le tableau de bord affiché
+    # plutôt que d'ouvrir une page de plus.
+    monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path)
+    dac_composer.write_main_dashboard("budget par pays", _intent())
+    nom, _ = dac_composer.append_to_main_dashboard(
+        "ajoute le nombre par statut", _intent(dimension="status", goal="Nombre par statut"))
+
+    contenu = yaml.safe_load((tmp_path / dac_composer.MAIN_FILENAME).read_text(encoding="utf-8"))
+    assert nom == contenu["name"] == dac_composer.MAIN_DASHBOARD_NAME

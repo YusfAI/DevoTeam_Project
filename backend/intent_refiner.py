@@ -27,6 +27,12 @@ _WEIGHTED_OFFER_PATTERN = re.compile(r"\b(?:offres?|opportunit\w*)\s+(?:\w+\s+){
 # deux chiffres selon le mot employé.
 _HOT_DEAL_PATTERN = re.compile(r"\b(?:affaires?|deals?|opportunit\w*)\s+(?:[\w'-]+\s+){0,2}chaud")
 
+# « ajoute le budget par pays » : compléter le tableau de bord affiché, pas le
+# remplacer. Le verbe ne change RIEN à l'analyse demandée — même métrique, même axe,
+# mêmes filtres — seulement la façon dont le résultat rejoint l'écran. D'où un
+# simple drapeau porté par l'intention, plutôt qu'un chemin de composition distinct.
+_APPEND_PATTERN = re.compile(r"\b(?:ajoute\w*|rajoute\w*|joins?|complete\w*)\b")
+
 # « offres remises » est un terme MÉTIER, pas le statut du même nom. Le statut décrit
 # l'état courant : une offre partie chez le client et gagnée depuis n'y figure plus.
 # Sans cette règle, la question « combien d'offres a-t-on remises ? » répondait 4 —
@@ -289,6 +295,9 @@ _FOLLOWUP_STOPWORDS = {
     "montre", "montres", "affiche", "affiches", "donne", "donnes", "mets", "met",
     "passe", "change", "changer", "fais", "fait", "refais", "plutot", "maintenant",
     "juste", "seulement", "uniquement", "aussi", "encore", "toujours", "alors",
+    # Verbes d'ajout : ils pilotent la façon d'appliquer le résultat, pas son
+    # contenu, et ne doivent donc pas faire échouer la vérification de couverture.
+    "ajoute", "ajoutes", "ajouter", "rajoute", "rajouter", "complete", "completer",
     "puis", "ensuite", "svp", "stp", "merci", "voir", "graphique", "graphe",
     "dashboard", "tableau de bord", "practice", "plait", "il", "sous", "forme",
 }
@@ -531,6 +540,11 @@ def refine_intent(query: str, intent: dict, today: Optional[date] = None) -> dic
         if hints.get("use_raw_table"):
             intent["use_raw_table"] = True
             intent["chart_type"] = "table"
+
+    # Détecté ici plutôt que dans le seul parseur de retouches : « ajoute … » doit
+    # être compris qu'il passe par le modèle ou par le chemin déterministe.
+    if _APPEND_PATTERN.search(q):
+        intent["append"] = True
 
     if not intent.get("limit"):
         m_top = re.search(r"top\s*(\d+)|(\d+)\s*premier", q)

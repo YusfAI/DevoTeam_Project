@@ -1,23 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { OVERVIEW_DASHBOARD_NAME, dacDashboardUrl } from '../dac'
 import { getHealth } from '../api'
 import DevoteamLogo from './DevoteamLogo'
 
+// Durée du fondu entre deux états du tableau de bord. Doit rester égale à la
+// transition d'opacité de .dac-frame : l'ancien cadre n'est retiré qu'une fois le
+// nouveau complètement opaque, sinon le fond apparaîtrait entre les deux.
+const FONDU_MS = 320
+
 export default function DashboardPanel({
   dashboard, dashboardKey, historyOpen, onToggleHistory,
 }) {
-  // Nom du dashboard DAC généré pour la dernière question (backend/dac_composer.py).
-  // Absent tant qu'aucune question n'a été posée, ou si sa génération a échoué —
-  // dans ce cas on retombe simplement sur la vue d'ensemble.
-  const generatedName = dashboard?.dac_dashboard || null
-
-  const [showOverview, setShowOverview] = useState(true)
-  useEffect(() => {
-    if (generatedName) setShowOverview(false)
-  }, [dashboardKey, generatedName])
-
-  const overviewVisible = !generatedName || showOverview
-  const currentName = overviewVisible ? OVERVIEW_DASHBOARD_NAME : generatedName
+  // UN SEUL tableau de bord affiché. Il montre la vue d'ensemble tant qu'aucune
+  // question n'a été posée, puis ce que les questions en ont fait. Il n'y a plus de
+  // bascule entre deux pages : le prompt modifie ce tableau de bord, il n'en ouvre
+  // pas un second à côté.
+  const currentName = dashboard?.dac_dashboard || OVERVIEW_DASHBOARD_NAME
   const frameUrl = dacDashboardUrl(currentName)
 
   // État du serveur de dashboards. null = vérification en cours ; false = injoignable,
@@ -32,27 +30,59 @@ export default function DashboardPanel({
     return () => { cancelled = true }
   }, [dashboardKey])
 
-  // Le premier affichage d'un widget déclenche un démarrage à froid du moteur de
-  // requête (une douzaine de secondes) : sans ce voile, l'utilisateur fait face à un
-  // cadre blanc qu'il interprète comme une panne.
-  // Réinitialisé sur dashboardKey ET sur l'URL : reposer la même question régénère
-  // le dashboard sans changer son nom, donc l'URL seule ne suffirait pas à détecter
-  // qu'un nouveau chargement commence.
-  const [frameLoaded, setFrameLoaded] = useState(false)
-  useEffect(() => { setFrameLoaded(false) }, [frameUrl, dashboardKey])
+  // --- Fondu enchaîné entre deux états ------------------------------------
+  //
+  // Recharger l'iframe en place la vidait le temps du chargement : l'écran passait
+  // au blanc à chaque question. On garde donc DEUX cadres au maximum — celui qu'on
+  // regarde, et le suivant qui charge par-dessus, invisible. Quand il est prêt il
+  // devient opaque, puis seulement après le fondu l'ancien est retiré. À aucun
+  // instant l'utilisateur ne voit du vide.
+  //
+  // Le jeton inclut dashboardKey : reposer la même question régénère le tableau de
+  // bord sans changer son nom, l'URL seule ne suffirait donc pas à détecter qu'un
+  // nouveau chargement commence.
+  const token = `${currentName}::${dashboardKey}`
+  const [frames, setFrames] = useState(() => [{ token, src: frameUrl }])
+  const [ready, setReady] = useState({})
+  const timers = useRef([])
 
-  // Trois états à distinguer, sans quoi rien à l'écran ne dit lequel on regarde :
-  // la vue d'ensemble (versionnée, jamais réécrite), le tableau de bord de travail
-  // (réécrit par chaque question) et une analyse rouverte depuis la liste (figée).
+  useEffect(() => {
+    setFrames((prev) => {
+      if (prev.some((f) => f.token === token)) return prev
+      // Au plus deux : le cadre affiché et le nouveau. Si une troisième demande
+      // arrive pendant un chargement, elle remplace celui qui n'est pas encore visible.
+      return [prev[0], { token, src: frameUrl }]
+    })
+  }, [token, frameUrl])
+
+  useEffect(() => () => timers.current.forEach(window.clearTimeout), [])
+
+  function handleLoad(chargé) {
+    setReady((prev) => ({ ...prev, [chargé]: true }))
+    const timer = window.setTimeout(() => {
+      setFrames((prev) => (prev.length > 1 ? prev.filter((f) => f.token === chargé) : prev))
+      // Sans ce ménage, la table des cadres prêts grossirait à chaque question.
+      setReady((prev) => (prev[chargé] ? { [chargé]: true } : prev))
+    }, FONDU_MS)
+    timers.current.push(timer)
+  }
+
+  // Le squelette ne sert qu'au tout premier affichage, quand il n'y a rien à montrer
+  // en attendant (démarrage à froid du moteur de requête, une douzaine de secondes).
+  // Les fois suivantes, le tableau de bord précédent tient ce rôle bien mieux.
+  const rienDePret = !frames.some((f) => ready[f.token])
+  const chargementEnCours = frames.length > 1
+
   const isReplay = Boolean(dashboard?.replay)
-  const title = overviewVisible ? 'Vue d’ensemble commerciale' : dashboard?.goal || 'Analyse'
+  const surLaVueDEnsemble = currentName === OVERVIEW_DASHBOARD_NAME
+  const title = surLaVueDEnsemble ? 'Vue d’ensemble commerciale' : dashboard?.goal || 'Analyse'
   let subtitle
-  if (overviewVisible) {
-    subtitle = 'Dashboard versionné (Bruin DAC) — filtres interactifs, données à jour'
+  if (surLaVueDEnsemble) {
+    subtitle = 'Point de départ — posez une question pour le transformer'
   } else if (isReplay) {
     subtitle = 'Analyse enregistrée — figée telle qu’elle était lors de cette question'
   } else {
-    subtitle = 'Tableau de bord de travail — mis à jour à chaque question, mêmes filtres partout'
+    subtitle = 'Modifié par vos questions — mêmes filtres sur tous les widgets'
   }
 
   return (
@@ -62,11 +92,6 @@ export default function DashboardPanel({
           <h2>{title}</h2>
           <p>{subtitle}</p>
         </div>
-        {/* Les commandes de vue vivent au-dessus du tableau de bord, pas dans le
-            chat : elles agissent sur ce qui est affiché ici. L'historique est le
-            premier, avant le sélecteur — c'est par lui qu'on choisit QUELLE analyse
-            regarder, le sélecteur ne fait ensuite que basculer entre elle et la vue
-            d'ensemble. */}
         <div className="dashboard-header-actions">
           <button
             type="button"
@@ -77,28 +102,15 @@ export default function DashboardPanel({
           >
             🕘 Historique
           </button>
-          {generatedName && (
-            <div className="view-toggle">
-              <button
-                type="button"
-                className={overviewVisible ? 'active' : ''}
-                onClick={() => setShowOverview(true)}
-              >
-                Vue d’ensemble
-              </button>
-              <button
-                type="button"
-                className={!overviewVisible ? 'active' : ''}
-                onClick={() => setShowOverview(false)}
-              >
-                {isReplay ? 'Analyse' : 'Mon tableau de bord'}
-              </button>
-            </div>
-          )}
         </div>
       </div>
 
       <div className="dashboard-body align-top">
+        {/* Le tableau de bord reste lisible pendant qu'il se met à jour : un fil
+            d'attente en tête vaut mieux qu'un écran vidé, mais il faut tout de même
+            dire que quelque chose est en train de se passer. */}
+        {chargementEnCours && <div className="dashboard-progress" aria-hidden="true" />}
+
         {dacStatus && !dacStatus.ok ? (
           <div className="dashboard-unavailable">
             <DevoteamLogo size={56} className="placeholder-mark" />
@@ -110,7 +122,7 @@ export default function DashboardPanel({
           </div>
         ) : (
           <>
-            {!frameLoaded && (
+            {rienDePret && (
               <div className="dac-skeleton" aria-hidden="true">
                 <div className="dac-skeleton-row">
                   <span /><span /><span /><span />
@@ -121,13 +133,15 @@ export default function DashboardPanel({
                 <div className="dac-skeleton-caption">Préparation du tableau de bord…</div>
               </div>
             )}
-            <iframe
-              key={`${currentName}-${overviewVisible ? 'overview' : dashboardKey}`}
-              className={`dac-frame${frameLoaded ? '' : ' loading'}`}
-              src={frameUrl}
-              title={currentName}
-              onLoad={() => setFrameLoaded(true)}
-            />
+            {frames.map((frame) => (
+              <iframe
+                key={frame.token}
+                className={`dac-frame${ready[frame.token] ? '' : ' loading'}`}
+                src={frame.src}
+                title={currentName}
+                onLoad={() => handleLoad(frame.token)}
+              />
+            ))}
           </>
         )}
       </div>

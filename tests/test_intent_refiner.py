@@ -509,3 +509,36 @@ def test_the_three_outcome_lists_partition_the_submitted_ones():
     assert gagnees | attente | perdues == set(SUBMITTED_STATUSES)
     assert not (gagnees & attente) and not (gagnees & perdues) and not (attente & perdues)
     assert perdues == {"Offre perdue"}
+
+
+# ---------------------------------------------------------------------------
+# « Ajoute … » : compléter plutôt que remplacer
+# ---------------------------------------------------------------------------
+
+def test_an_add_verb_flags_the_intent_without_changing_the_analysis():
+    # Le verbe pilote la façon dont le résultat rejoint l'écran, pas son contenu :
+    # même métrique, même axe, mêmes filtres qu'une question sans le verbe.
+    avec = refine_intent("ajoute le budget par pays", _intent_vierge(dimension="country"))
+    sans = refine_intent("le budget par pays", _intent_vierge(dimension="country"))
+
+    assert avec.get("append") is True
+    assert not sans.get("append")
+    for cle in ("metric", "dimension", "chart_type", "filters"):
+        assert avec[cle] == sans[cle]
+
+
+def test_an_add_verb_does_not_break_the_coverage_check():
+    # Sans être reconnu comme mot d'application, « ajoute » resterait un mot non
+    # compris et la retouche repartirait inutilement par le modèle.
+    precedent = dict(_PRECEDENT, dimension="country")
+    suite = try_followup_parse("ajoute par practice", precedent)
+    assert suite is not None
+    assert suite["dimension"] == "practice"
+    assert suite.get("append") is not False
+
+
+def test_a_status_named_complement_is_not_mistaken_for_an_add_verb():
+    # « Complément d'information » est un statut du pipeline ; « compléter » un verbe
+    # d'ajout. Les deux commencent pareil.
+    intent = refine_intent("opportunités en complément d'information", _intent_vierge())
+    assert not intent.get("append")

@@ -20,10 +20,17 @@ données à installer.
 - Chat en français libre, avec contexte multi-tour, dates relatives et requêtes de
   comparaison ("compare la France et le Maroc") ; l'historique de conversation persiste
   entre les rechargements de page (localStorage).
-- **Un tableau de bord modifié sur place** : chaque question réécrit LE dashboard de
-  travail (5 à 7 widgets — totaux du périmètre, graphique principal, angle
-  complémentaire, pipeline, détail, tous filtrés à l'identique) au lieu d'en ouvrir un
-  de plus. Voir `Documentation/WORKFLOW.md` pour le traçage complet.
+- **Un seul tableau de bord, jamais deux pages** : il s'ouvre sur la vue d'ensemble
+  et chaque question le transforme (5 à 7 widgets — totaux du périmètre, graphique
+  principal, angle complémentaire, pipeline, détail, tous filtrés à l'identique). Au
+  rechargement de la page, retour à la vue d'ensemble. Voir
+  `Documentation/WORKFLOW.md` pour le traçage complet.
+- **Transitions en fondu** : deux cadres se superposent le temps d'un changement, le
+  nouveau ne devenant visible qu'une fois chargé. L'écran n'est jamais vidé ; un fil
+  d'attente en tête indique le travail en cours.
+- **« Ajoute … » complète au lieu de remplacer** : « ajoute le budget par pays »
+  place un widget de plus sur le tableau de bord affiché. Un ajout déjà présent est
+  signalé comme tel plutôt qu'annoncé à tort.
 - **Tout se pilote par la phrase tapée** : « en camembert », « top 5 », « par
   practice », « sans filtre » ajustent le dashboard affiché en héritant du contexte,
   sans appel au modèle et sans bouton à cliquer. Une demande dont un seul mot n'est
@@ -253,7 +260,7 @@ frontend/              Vite + React (build servi par FastAPI en local)
 credentials/           clé de compte de service Google (gitignoré, absent par défaut)
 data/                  scheduler_state.json (état local, gitignoré) ; dump SQL
                        historique de l'ancienne base MySQL, conservé pour référence
-tests/                 suite pytest (mock Gemini/Sheets), 210 tests
+tests/                 suite pytest (mock Gemini/Sheets), 218 tests
 Documentation/
   WORKFLOW.md            traçage concret d'une question, du prompt au dashboard affiché
   reports/              rapport professionnel + guide technique (.docx) et leur générateur

@@ -680,6 +680,51 @@ def write_main_dashboard(query: str, intent: dict) -> str:
     return MAIN_DASHBOARD_NAME
 
 
+# Au-delà, le tableau de bord n'est plus lisible d'un coup d'œil. Le plus ancien
+# widget cède alors la place : mieux vaut une page qui reste lisible qu'une page
+# complète où l'on ne trouve plus rien.
+MAX_MAIN_WIDGETS = 24
+
+
+def append_to_main_dashboard(query: str, intent: dict) -> tuple[str | None, bool]:
+    """Ajoute UN widget au tableau de bord de travail. Renvoie (nom, ajout réel).
+
+    Le second élément distingue « ajouté » de « déjà présent » : annoncer un ajout
+    qui n'a pas eu lieu vaudrait tout autant que de ne rien dire.
+
+    Le nom est None si ce tableau de bord n'existe pas encore : « ajoute … » n'a alors
+    rien à compléter, et l'appelant retombe sur une composition normale. Volontaire —
+    compléter la vue d'ensemble à la place poserait un piège, ses widgets suivant les
+    filtres de période et de practice de la page, qu'un widget ajouté ne connaît pas :
+    déplacer le filtre mettrait 24 widgets à jour et pas le 25e.
+    """
+    path = DASHBOARDS_DIR / MAIN_FILENAME
+    if not path.exists():
+        return None, False
+
+    existant = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    widgets = [w for row in existant.get("rows") or [] for w in row.get("widgets", [])]
+
+    nouveau = _primary(intent, col=6)
+    if any(w.get("sql") == nouveau.get("sql") for w in widgets):
+        # Déjà présent à l'identique : l'ajouter deux fois n'apprendrait rien.
+        logger.info("Widget déjà présent, ajout ignoré pour %r", query)
+        return MAIN_DASHBOARD_NAME, False
+
+    widgets.append(nouveau)
+    widgets = widgets[-MAX_MAIN_WIDGETS:]
+
+    titre = existant.get("description") or ""
+    ajout = _analysis_title(query, intent)
+    description = f"{titre} + {ajout}" if titre else ajout
+    if len(description) > 120:
+        description = "…" + description[-119:]
+
+    _write_dashboard(MAIN_FILENAME, MAIN_DASHBOARD_NAME, description, widgets)
+    logger.info("Widget ajouté au tableau de bord de travail (%d au total)", len(widgets))
+    return MAIN_DASHBOARD_NAME, True
+
+
 def write_generated_dashboard(query: str, intent: dict) -> str:
     """Écrit l'INSTANTANÉ de la question et renvoie son nom (= sa route DAC).
 

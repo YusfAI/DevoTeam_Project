@@ -490,7 +490,7 @@ def build_rapport_professionnel():
              "(alertes deadlines, rafraîchissement des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (210 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
+            ["Tests", "pytest (218 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
              "(mocks), garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -509,7 +509,7 @@ def build_rapport_professionnel():
                      "explicite — il n'écrit jamais lui-même de requête.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "210 tests automatisés couvrent la compréhension du langage, le requêtage des "
+    add_bullet(doc, "218 tests automatisés couvrent la compréhension du langage, le requêtage des "
                      "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -1182,7 +1182,25 @@ def build_guide_technique():
         "appliquent maintenant cette règle. Deux tests de non-régression la "
         "verrouillent, un par module concerné.")
 
-    add_h2(doc, "9.7 Dire ce qui a changé")
+    add_h2(doc, "9.7 Compléter plutôt que remplacer")
+    add_body(doc,
+        "« Ajoute le budget par pays » place un widget de plus sur le tableau de bord "
+        "affiché au lieu de le recomposer. Le verbe ne change rien à l'analyse "
+        "demandée — même métrique, même axe, mêmes filtres — seulement la façon dont "
+        "le résultat rejoint l'écran : d'où un simple drapeau porté par l'intention, "
+        "plutôt qu'un chemin de composition parallèle à maintenir.")
+    add_cue(doc,
+        "Limite acceptée volontairement : l'ajout ne complète PAS la vue d'ensemble, "
+        "seulement le tableau de bord de travail. Les widgets de la vue d'ensemble "
+        "suivent les filtres de période et de practice de la page, qu'un widget ajouté "
+        "ne connaît pas — déplacer le filtre mettrait 24 widgets à jour et pas le 25e. "
+        "Un piège silencieux vaut moins qu'une limite énoncée.")
+    add_body(doc,
+        "Un ajout déjà présent est signalé comme tel plutôt qu'annoncé à tort, et un "
+        "plafond de 24 widgets empêche la page de devenir un mur où l'on ne trouve "
+        "plus rien.")
+
+    add_h2(doc, "9.8 Dire ce qui a changé")
     add_body(doc,
         "Une demande de suite modifie le tableau de bord affiché. Sans le dire, "
         "l'utilisateur voit l'iframe se recharger sans savoir ce qui a été pris en "
@@ -1200,7 +1218,7 @@ def build_guide_technique():
         "Au-delà de trois différences, rien n'est annoncé : le mot « modifié » "
         "deviendrait trompeur, ce n'est plus une retouche mais une autre analyse.")
 
-    add_h2(doc, "9.8 Un seul tableau de bord, modifié sur place")
+    add_h2(doc, "9.9 Un seul tableau de bord, modifié sur place")
     add_body(doc,
         "Chaque question réécrit _principal.yml, dont le nom de dashboard ne change "
         "jamais — donc l'URL de l'iframe non plus. L'utilisateur voit son tableau de "
@@ -1458,7 +1476,31 @@ def build_guide_technique():
         "répéter. Les conversations enregistrées avant l'ajout de l'horodatage sont "
         "regroupées sous « Plus ancien » plutôt que de porter une fausse date.")
 
-    add_h2(doc, "13.3 Bug trouvé : header illisible en mode sombre")
+    add_h2(doc, "13.3 Un seul tableau de bord, et des transitions en fondu")
+    add_body(doc,
+        "La bascule entre « Vue d'ensemble » et « Mon tableau de bord » a été retirée : "
+        "il n'y a plus qu'un tableau de bord, qui s'ouvre sur la vue d'ensemble et que "
+        "les questions transforment. Le rechargement de la page y revient — "
+        "l'affichage et le contexte de la dernière question ne sont plus restaurés, "
+        "car les conserver rouvrait une analyse que personne n'avait redemandée et "
+        "laissait une suite comme « en camembert » ajuster un tableau de bord qu'on ne "
+        "regardait plus. La conversation, elle, reste conservée.")
+    add_cue(doc,
+        "Recharger l'iframe en place la vidait le temps du chargement : l'écran "
+        "passait au blanc à chaque question. Deux cadres se superposent désormais — "
+        "celui qu'on regarde, et le suivant qui charge par-dessus, invisible. Quand il "
+        "est prêt il devient opaque, et l'ancien n'est retiré qu'ENSUITE, une fois le "
+        "fondu terminé : retirer l'ancien au moment de la promotion aurait laissé "
+        "apparaître le fond entre les deux.")
+    add_body(doc,
+        "Le squelette animé ne sert donc plus qu'au tout premier affichage, quand il "
+        "n'y a effectivement rien à montrer en attendant (démarrage à froid du moteur "
+        "de requête). Les fois suivantes, le tableau de bord précédent tient ce rôle "
+        "bien mieux, et un fil d'attente de deux pixels en tête signale le travail en "
+        "cours. La préférence système « mouvement réduit » ramène le tout à un "
+        "basculement instantané, sans jamais rouvrir de fenêtre de vide.")
+
+    add_h2(doc, "13.4 Bug trouvé : header illisible en mode sombre")
     add_body(doc,
         "Trouvé en relisant le CSS (pas en testant à l'œil — aucun outil de capture "
         "d'écran disponible dans cet environnement) : le dégradé du header utilisait "
@@ -1493,7 +1535,7 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "15. Tests automatisés")
     add_body(doc,
-        "210 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
+        "218 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
         "et le client Google Sheets (gspread) sont simulés (monkeypatch), et les données "
         "sont un petit DataFrame construit dans le test. La suite tourne donc hors ligne, "
         "en quelques secondes.")
@@ -1506,14 +1548,14 @@ def build_guide_technique():
     add_table(doc,
         ["Fichier", "Tests", "Ce qu'il protège"],
         [
-            ["test_intent_refiner.py", "59", "Dates relatives, parseur par mots-clés, affinage "
+            ["test_intent_refiner.py", "62", "Dates relatives, parseur par mots-clés, affinage "
              "d'intention, normalisation funnel/heatmap/scatter/days_remaining/exclude_statuses, "
              "arbitrage du type de graphique, retouches et vérification de couverture mot à mot."],
             ["test_data_store.py", "26", "Parsing et validation par ligne, littéraux NULL, "
              "attribution et réécriture des identifiants, réparation cellule par cellule sans "
              "perdre la ligne, traçabilité de chaque remplacement, résilience à une panne de "
              "lecture du Sheet."],
-            ["test_dac_composer.py", "35", "Génération SQL (échappement des apostrophes, refus "
+            ["test_dac_composer.py", "40", "Génération SQL (échappement des apostrophes, refus "
              "d'injection), composition multi-widgets, filtres propagés à tous les widgets, grille "
              "12 colonnes respectée, exclusion des affaires perdues, nom du dashboard de travail "
              "constant, YAML valide et relisible."],
@@ -1805,7 +1847,7 @@ def build_presentation_script():
     add_h1(doc, "Les chiffres à retenir")
     add_bullet(doc, "1 question = 1 tableau de bord complet, généré automatiquement.")
     add_bullet(doc, "9 types de visualisations choisis automatiquement selon la question.")
-    add_bullet(doc, "210 tests automatisés, aucune dépendance à des données réelles.")
+    add_bullet(doc, "218 tests automatisés, aucune dépendance à des données réelles.")
     add_bullet(doc, "21 phases de développement livrées, de bout en bout, en autonomie.")
     add_bullet(doc, "0 base de données à administrer — le Google Sheet est la source de vérité.")
     add_bullet(doc, "0 hallucination tolérée : donnée non fiable = question posée en retour, jamais un chiffre inventé.")

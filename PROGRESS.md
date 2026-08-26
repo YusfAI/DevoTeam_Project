@@ -31,6 +31,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 24 — Tout se pilote par la phrase tapée, chaque demande reçoit une réponse explicite, historique en volet, et une cellule illisible ne coûte plus la ligne entière
 - [x] Phase 25 — La vue d'ensemble répond aux trois questions du métier : offres remises sur la période, répartition par practice, et issue gagnée / perdue / en attente
 - [x] Phase 26 — Bloc « affaires chaudes » (KPI, graphique par practice, détail), et alignement des trois moteurs sur le sens d'un range_filter
+- [x] Phase 27 — Un seul tableau de bord, transitions en fondu enchaîné, et « ajoute … » qui complète au lieu de remplacer
 
 ## 📝 Journaux
 
@@ -181,6 +182,20 @@ Suite `pytest` : 199 tests (était 193). `dac check` : 15 dashboards, 119 widget
 *Et une découverte sur les données au passage.* Dans ce Sheet, 100 % n'est pas une prévision mais un CONSTAT : les 88 opportunités à 1,0 sont exactement les 88 déjà gagnées ou signées, correspondance parfaite. C'est pourquoi aucune affaire chaude n'apparaît à 100 % — une affaire dont la décision est tombée n'est plus en jeu. Les descriptions des widgets le disent maintenant explicitement, plutôt que de laisser la colonne « Pondération % » afficher 80 partout sans explication.
 
 Suite `pytest` : 210 tests (était 199). `dac check` : 15 dashboards, 24 widgets sur la vue d'ensemble, tous verts.
+
+**Phase 27** : Terminée. Un seul tableau de bord, des transitions qui ne clignotent plus, et la possibilité de compléter plutôt que de remplacer.
+
+*Deux pages en moins.* La bascule « Vue d'ensemble » / « Mon tableau de bord » est retirée : il n'y a plus qu'un tableau de bord, qui s'ouvre sur la vue d'ensemble et que les questions transforment. Le rechargement de la page y revient — l'affichage et le contexte de la dernière question ne sont plus restaurés, car les conserver rouvrait une analyse que personne n'avait redemandée et laissait une suite comme « en camembert » ajuster un tableau de bord qu'on ne regardait plus. La conversation, elle, reste conservée : c'est par l'historique qu'on revient à une analyse passée.
+
+*Le fondu enchaîné.* Recharger l'iframe en place la vidait le temps du chargement : l'écran passait au blanc à chaque question. Deux cadres se superposent désormais — celui qu'on regarde, et le suivant qui charge par-dessus, invisible. Quand il est prêt il devient opaque, et l'ancien n'est retiré qu'ensuite, une fois le fondu terminé : à aucun instant l'utilisateur ne voit du vide. Le squelette ne sert plus qu'au tout premier affichage, quand il n'y a effectivement rien à montrer en attendant ; les fois suivantes, le tableau de bord précédent tient ce rôle bien mieux. Un fil d'attente de deux pixels en tête dit que quelque chose travaille.
+
+*Compléter plutôt que remplacer.* « Ajoute le budget par pays » place un widget de plus sur le tableau de bord affiché au lieu de le recomposer. Le verbe ne change rien à l'analyse — même métrique, même axe, mêmes filtres — seulement la façon dont le résultat rejoint l'écran, d'où un simple drapeau porté par l'intention plutôt qu'un chemin de composition parallèle. Un ajout déjà présent est signalé comme tel : annoncer un ajout qui n'a pas eu lieu vaudrait tout autant que de ne rien dire. Un plafond de 24 widgets empêche la page de devenir un mur où l'on ne trouve plus rien.
+
+*Une limite acceptée volontairement.* « Ajoute … » ne complète PAS la vue d'ensemble, seulement le tableau de bord de travail. Ses widgets suivent les filtres de période et de practice de la page, qu'un widget ajouté ne connaît pas : déplacer le filtre mettrait 24 widgets à jour et pas le 25e. Tant qu'aucune question n'a été posée, « ajoute … » se comporte donc comme une question ordinaire.
+
+*Un défaut d'assemblage attrapé à l'exécution.* Le message de réponse était construit avant l'écriture des dashboards, alors qu'il décrit précisément ce qui vient d'être fait : la variable disant s'il s'agissait d'un ajout n'existait pas encore, et l'endpoint renvoyait une 500. Le message est désormais assemblé après.
+
+Suite `pytest` : 218 tests (était 210). `dac check` : 15 dashboards, tous verts, tableau de bord complété compris.
 
 ## 📊 Bilan du Produit
 

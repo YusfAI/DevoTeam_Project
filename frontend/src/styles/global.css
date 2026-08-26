@@ -566,30 +566,6 @@ body::before {
   color: #ffffff;
 }
 
-.view-toggle {
-  display: flex;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.view-toggle button {
-  border: none;
-  background: var(--surface-card);
-  color: var(--text-secondary);
-  padding: 7px 14px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  font: inherit;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.view-toggle button.active {
-  background: var(--brand-primary);
-  color: white;
-}
-
 .dashboard-body {
   flex: 1;
   min-height: 0;
@@ -629,20 +605,59 @@ body::before {
 /* Dashboard Bruin DAC servi en iframe (port 8321). Le padding du conteneur est
    annulé par une marge négative : DAC gère sa propre mise en page (grille 12
    colonnes), on lui laisse toute la surface plutôt que d'empiler deux cadres. */
+/* Deux cadres se superposent le temps d'un changement : celui qu'on regarde, et le
+   suivant qui charge par-dessus. D'où le positionnement absolu — en flux, ils se
+   suivraient au lieu de se recouvrir. `inset: 0` déborde volontairement sur le
+   padding du conteneur pour que le tableau de bord aille jusqu'au bord arrondi. */
 .dac-frame {
-  width: calc(100% + 44px);
-  height: calc(100% + 44px);
-  margin: -22px;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   border: 0;
   border-radius: 14px;
   display: block;
-  transition: opacity 0.35s ease;
+  transition: opacity 0.32s ease;
 }
 
-/* L'iframe reste dans le flux pendant son chargement (elle doit charger pour
-   déclencher onLoad) mais invisible : le squelette occupe l'espace à sa place. */
+/* Le cadre charge (il le doit, pour déclencher onLoad) mais reste invisible tant
+   qu'il n'a rien à montrer. Au premier affichage le squelette occupe la place ;
+   ensuite, c'est le tableau de bord précédent qui reste visible dessous. */
 .dac-frame.loading {
   opacity: 0;
+}
+
+/* Fil d'attente pendant une mise à jour. Le tableau de bord reste lisible — c'est
+   tout l'intérêt du fondu — mais quelque chose doit dire qu'il travaille. */
+.dashboard-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 14px 14px 0 0;
+  overflow: hidden;
+  z-index: 2;
+  background: color-mix(in srgb, var(--brand-primary) 14%, transparent);
+}
+
+.dashboard-progress::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 34%;
+  border-radius: inherit;
+  background: var(--brand-primary);
+  animation: dashboardProgress 1.05s ease-in-out infinite;
+}
+
+@keyframes dashboardProgress {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(400%);
+  }
 }
 
 .dac-skeleton {

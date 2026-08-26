@@ -24,8 +24,15 @@ export function useChatHistory(welcomeMessage) {
   const persisted = persistedRef.current
 
   const [messages, setMessages] = useState(persisted?.messages ?? [welcomeMessage])
-  const [dashboard, setDashboard] = useState(persisted?.dashboard ?? null)
-  const [lastIntent, setLastIntent] = useState(persisted?.lastIntent ?? null)
+
+  // Le tableau de bord affiché et le contexte de la dernière question ne sont PAS
+  // restaurés : au rechargement de la page, on repart de la vue d'ensemble. Les
+  // conserver rouvrait une analyse en cours sans que rien ne l'ait demandé, et
+  // laissait une suite comme « en camembert » ajuster un tableau de bord que
+  // l'utilisateur ne regardait plus. La conversation, elle, est bien conservée —
+  // c'est par l'historique qu'on revient à une analyse passée.
+  const [dashboard, setDashboard] = useState(null)
+  const [lastIntent, setLastIntent] = useState(null)
 
   const nextIdRef = useRef(1 + Math.max(0, ...(persisted?.messages ?? []).map((m) => m.id)))
 
@@ -33,13 +40,13 @@ export function useChatHistory(welcomeMessage) {
     try {
       localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ messages: messages.slice(-MAX_MESSAGES), dashboard, lastIntent }),
+        JSON.stringify({ messages: messages.slice(-MAX_MESSAGES) }),
       )
     } catch {
       // Quota dépassée ou navigation privée — la persistance est un confort, pas une
       // garantie ; l'app continue de fonctionner normalement sans elle.
     }
-  }, [messages, dashboard, lastIntent])
+  }, [messages])
 
   function addMessage(partial) {
     // Horodatage posé ici plutôt qu'à l'appel : l'historique groupe les analyses par

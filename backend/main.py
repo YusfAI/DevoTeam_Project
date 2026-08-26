@@ -23,7 +23,9 @@ from .data_store import get_dataframe, get_last_refresh_summary, refresh_datafra
 # pyrefly: ignore [missing-import]
 from .duckdb_export import export_dataframe
 # pyrefly: ignore [missing-import]
-from .dac_composer import write_generated_dashboard, write_main_dashboard
+from .dac_composer import (
+    append_to_main_dashboard, write_generated_dashboard, write_main_dashboard,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -89,15 +91,62 @@ async def generate_dashboard(request: ChatRequest):
         data = build_and_execute_query(intent)
         ai_message = build_data_response(intent, data)
 
+        goal = intent.get("goal", "")
+
+        # Dashboard multi-widgets répondant à la question (backend/dac_composer.py),
+        # affiché en iframe par le frontend. Jamais bloquant : si la génération ou
+        # l'écriture échoue, on renvoie quand même la réponse classique (message +
+        # graphique unique) plutôt que de faire échouer toute la requête.
+        # Deux écritures, deux rôles. Le dashboard de TRAVAIL garde toujours le même
+        # nom : la question le réécrit sur place, sous les yeux de l'utilisateur.
+        # L'INSTANTANÉ fige le résultat de cette question précise, pour que la liste
+        # déroulante puisse le rouvrir plus tard sans repasser par le modèle.
+        # « ajoute … » complète le tableau de bord affiché au lieu de le remplacer.
+        # Renvoie None s'il n'y a rien à compléter — on retombe alors sur une
+        # composition normale, ce qui est le comportement attendu quand la question
+        # est la première de la session.
+        ajout = False
+        deja_present = False
+        try:
+            dac_dashboard = None
+            if intent.get("append"):
+                dac_dashboard, ajout = append_to_main_dashboard(request.query, intent)
+                deja_present = dac_dashboard is not None and not ajout
+            if dac_dashboard is None:
+                dac_dashboard = write_main_dashboard(request.query, intent)
+        except Exception:
+            logger.exception("Écriture du dashboard de travail en échec pour %r", request.query)
+            dac_dashboard = None
+
+        try:
+            dashboard_snapshot = write_generated_dashboard(request.query, intent)
+        except Exception:
+            logger.exception("Écriture de l'instantané en échec pour %r", request.query)
+            dashboard_snapshot = None
+
+        # Si le dashboard de travail n'a pas pu être écrit, on affiche l'instantané
+        # plutôt que rien : l'utilisateur perd la mise à jour en place, pas sa réponse.
+        if dac_dashboard is None:
+            dac_dashboard = dashboard_snapshot
+
         # Une demande de suite modifie le tableau de bord affiché : le dire, sinon
         # l'utilisateur voit l'iframe se recharger sans savoir ce qui a été pris en
         # compte. La phrase vient d'une comparaison des deux intentions, jamais du
         # modèle — elle décrit ce qui a réellement changé dans les requêtes.
         entete = []
-        changement = describe_change(request.previous_intent, intent)
+        if ajout:
+            # Un ajout ne se décrit pas comme une modification : rien n'a été remplacé,
+            # et comparer les deux intentions annoncerait à tort un changement d'axe.
+            entete.append(f"Widget ajouté au tableau de bord — {goal or 'nouvelle vue'}.")
+        elif deja_present:
+            entete.append("Ce widget est déjà sur le tableau de bord — rien n'a changé.")
+        changement = ("" if ajout or deja_present
+                       else describe_change(request.previous_intent, intent))
         if changement:
             entete.append(changement)
-        elif (request.previous_intent
+        elif (not ajout
+                and not deja_present
+                and request.previous_intent
                 and not list_changes(request.previous_intent, intent)
                 and not intent.get("chart_type_reason")):
             # Demande comprise, mais sans effet : un filtre déjà posé, un axe déjà
@@ -118,32 +167,6 @@ async def generate_dashboard(request: ChatRequest):
         if entete:
             ai_message = "\n\n".join(entete) + "\n\n" + ai_message
 
-        goal = intent.get("goal", "")
-
-        # Dashboard multi-widgets répondant à la question (backend/dac_composer.py),
-        # affiché en iframe par le frontend. Jamais bloquant : si la génération ou
-        # l'écriture échoue, on renvoie quand même la réponse classique (message +
-        # graphique unique) plutôt que de faire échouer toute la requête.
-        # Deux écritures, deux rôles. Le dashboard de TRAVAIL garde toujours le même
-        # nom : la question le réécrit sur place, sous les yeux de l'utilisateur.
-        # L'INSTANTANÉ fige le résultat de cette question précise, pour que la liste
-        # déroulante puisse le rouvrir plus tard sans repasser par le modèle.
-        try:
-            dac_dashboard = write_main_dashboard(request.query, intent)
-        except Exception:
-            logger.exception("Écriture du dashboard de travail en échec pour %r", request.query)
-            dac_dashboard = None
-
-        try:
-            dashboard_snapshot = write_generated_dashboard(request.query, intent)
-        except Exception:
-            logger.exception("Écriture de l'instantané en échec pour %r", request.query)
-            dashboard_snapshot = None
-
-        # Si le dashboard de travail n'a pas pu être écrit, on affiche l'instantané
-        # plutôt que rien : l'utilisateur perd la mise à jour en place, pas sa réponse.
-        if dac_dashboard is None:
-            dac_dashboard = dashboard_snapshot
 
         # La réponse ne transporte plus de spécification de graphique : tout ce qui
         # s'affiche vient du dashboard DAC désigné par dac_dashboard. Le frontend n'a
