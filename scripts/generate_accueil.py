@@ -323,10 +323,14 @@ __CHAUDES__
         type: table
         col: 12
         description: >-
-          Classées par montant pondéré décroissant — les plus grosses espérances de
-          gain d'abord. La pondération est convertie en pourcentage dans la requête
-          plutôt que confiée au format d'affichage, dont la prise en charge des
-          pourcentages dans les tableaux DAC n'est pas garantie.
+          Pondération SUPÉRIEURE OU ÉGALE à 80 % — 90 % ou 100 % y figureraient aussi.
+          Si aucune n'apparaît à 100 %, c'est que dans ces données 100 % n'est pas une
+          prévision mais un constat : les 88 opportunités à 100 % sont exactement les
+          88 déjà gagnées ou signées, et une affaire dont la décision est tombée n'est
+          plus en jeu. Classées par montant pondéré décroissant, les plus grosses
+          espérances de gain d'abord. La pondération est convertie en pourcentage dans
+          la requête plutôt que confiée au format d'affichage, dont la prise en charge
+          des pourcentages dans les tableaux DAC n'est pas garantie.
         sql: |
 __CHAUDES__
           SELECT description, buyer, practice, budget,
@@ -453,7 +457,8 @@ NOUVELLE_LIGNE = """
 
 chaudes_kpi = "\n\n".join([
     kpi_chaudes("Affaires chaudes", 4, "COUNT(*)", ",.0f",
-                "Offres remises dont la probabilité de gain atteint 80 %, décision non tombée."),
+                "Offres remises dont la probabilité de gain est d'au moins 80 % — 90 % et "
+                "100 % compris — et dont la décision n'est pas tombée."),
     kpi_chaudes("Budget en jeu", 4, "SUM(budget)", ",.0f",
                 "Budget cumulé des affaires chaudes."),
     kpi_chaudes("Montant pondéré en jeu", 4, "SUM(weighted_amount)", ",.0f",

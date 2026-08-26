@@ -490,7 +490,7 @@ def build_rapport_professionnel():
              "(alertes deadlines, rafraîchissement des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (202 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
+            ["Tests", "pytest (210 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
              "(mocks), garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -509,7 +509,7 @@ def build_rapport_professionnel():
                      "explicite — il n'écrit jamais lui-même de requête.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "202 tests automatisés couvrent la compréhension du langage, le requêtage des "
+    add_bullet(doc, "210 tests automatisés couvrent la compréhension du langage, le requêtage des "
                      "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -1163,6 +1163,20 @@ def build_guide_technique():
         "« combien d'affaires chaudes ? » répondait « 1 opportunité » — le nombre de "
         "LIGNES du résultat agrégé, au lieu des 14 qu'il contenait.")
     add_body(doc,
+        "Le seuil est un MINIMUM : 90 % ou 100 % entrent aussi dans les affaires "
+        "chaudes. Encore fallait-il le prouver — sur les vraies données, aucune "
+        "affaire encore en jeu ne dépasse 80 %, donc remplacer « >= » par « = » "
+        "n'aurait changé aucun chiffre et serait passé inaperçu. dac check prouve "
+        "qu'une requête s'exécute, pas qu'elle sélectionne les bonnes lignes : un "
+        "fichier de tests dédié exécute désormais le SQL de la vue d'ensemble sur des "
+        "lignes fabriquées, et la protection a été vérifiée par mutation.")
+    add_cue(doc,
+        "Découverte au passage : dans ce Sheet, 100 % n'est pas une prévision mais un "
+        "CONSTAT. Les 88 opportunités à 1,0 sont exactement les 88 déjà gagnées ou "
+        "signées — correspondance parfaite. Aucune affaire chaude n'apparaît donc à "
+        "100 %, non par un défaut du filtre, mais parce qu'une affaire dont la "
+        "décision est tombée n'est plus en jeu.")
+    add_body(doc,
         "Borner une valeur n'est pas demander une liste. Le souhait d'une liste "
         "s'exprime par use_raw_table ou chart_type == « table », et les trois modules "
         "appliquent maintenant cette règle. Deux tests de non-régression la "
@@ -1479,7 +1493,7 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "15. Tests automatisés")
     add_body(doc,
-        "202 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
+        "210 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
         "et le client Google Sheets (gspread) sont simulés (monkeypatch), et les données "
         "sont un petit DataFrame construit dans le test. La suite tourne donc hors ligne, "
         "en quelques secondes.")
@@ -1511,6 +1525,9 @@ def build_guide_technique():
             ["test_response_builder.py", "26", "Formatage des unités, messages texte déterministes, "
              "cohérence texte/graphique pour funnel et heatmap, description de ce qui a changé "
              "dans le tableau de bord."],
+            ["test_accueil_dashboard.py", "8", "SQL de la vue d'ensemble exécuté sur des lignes "
+             "fabriquées : seuil des affaires chaudes inclusif, issues qui totalisent les offres "
+             "remises, taux de réussite calculé sur les seules offres décidées."],
             ["test_alerts.py", "12", "Fenêtre de 7 jours, exclusion des statuts clos, envoi email, "
              "rattrapage idempotent du scheduler."],
         ])
@@ -1788,7 +1805,7 @@ def build_presentation_script():
     add_h1(doc, "Les chiffres à retenir")
     add_bullet(doc, "1 question = 1 tableau de bord complet, généré automatiquement.")
     add_bullet(doc, "9 types de visualisations choisis automatiquement selon la question.")
-    add_bullet(doc, "202 tests automatisés, aucune dépendance à des données réelles.")
+    add_bullet(doc, "210 tests automatisés, aucune dépendance à des données réelles.")
     add_bullet(doc, "21 phases de développement livrées, de bout en bout, en autonomie.")
     add_bullet(doc, "0 base de données à administrer — le Google Sheet est la source de vérité.")
     add_bullet(doc, "0 hallucination tolérée : donnée non fiable = question posée en retour, jamais un chiffre inventé.")

@@ -176,7 +176,11 @@ Suite `pytest` : 199 tests (était 193). `dac check` : 15 dashboards, 119 widget
 
 *Le même défaut, trois fois.* Brancher le terme a révélé que `db_layer`, `sql_builder` et `response_builder` ne s'accordaient pas sur ce que signifie un `range_filter`. Deux d'entre eux le traitaient comme une demande de liste brute, le troisième non. Conséquence mesurée : « affaires chaudes par practice » renvoyait les lignes brutes dans le chat pendant que le dashboard groupait correctement, et « combien d'affaires chaudes ? » répondait **« 1 opportunité »** — le nombre de LIGNES du résultat agrégé, au lieu des 14 qu'il contenait. Borner une valeur n'est pas demander une liste : le souhait d'une liste s'exprime par `use_raw_table` ou `chart_type == "table"`, et les trois modules appliquent désormais cette règle. Deux tests de non-régression la verrouillent, dans `db_layer` et dans `response_builder`.
 
-Suite `pytest` : 202 tests (était 199). `dac check` : 15 dashboards, 124 widgets, tous verts.
+*Le seuil est un minimum, et il fallait le prouver.* Le filtre s'écrit « probabilité ≥ 80 % », donc 90 % ou 100 % y entrent. Mais sur les vraies données aucune affaire encore en jeu ne dépasse 80 % : remplacer `>=` par `=` n'aurait changé aucun chiffre affiché et serait passé inaperçu — `dac check` prouve qu'une requête s'exécute, pas qu'elle sélectionne les bonnes lignes. Un fichier de tests dédié (`tests/test_accueil_dashboard.py`) exécute désormais le SQL de la vue d'ensemble sur des lignes fabriquées : une affaire à 100 % encore en jeu, une à 79 %, une gagnée, une jamais remise. Vérifié par mutation — passer le seuil à une égalité fait tomber trois tests.
+
+*Et une découverte sur les données au passage.* Dans ce Sheet, 100 % n'est pas une prévision mais un CONSTAT : les 88 opportunités à 1,0 sont exactement les 88 déjà gagnées ou signées, correspondance parfaite. C'est pourquoi aucune affaire chaude n'apparaît à 100 % — une affaire dont la décision est tombée n'est plus en jeu. Les descriptions des widgets le disent maintenant explicitement, plutôt que de laisser la colonne « Pondération % » afficher 80 partout sans explication.
+
+Suite `pytest` : 210 tests (était 199). `dac check` : 15 dashboards, 24 widgets sur la vue d'ensemble, tous verts.
 
 ## 📊 Bilan du Produit
 
