@@ -33,7 +33,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 26 — Bloc « affaires chaudes » (KPI, graphique par practice, détail), et alignement des trois moteurs sur le sens d'un range_filter
 - [x] Phase 27 — Un seul tableau de bord, transitions en fondu enchaîné, et « ajoute … » qui complète au lieu de remplacer
 - [x] Phase 28 — Affaire chaude = probabilité ≥ 80 %, sans condition de statut
-- [x] Phase 29 — Tableau des affaires chaudes au format des autres visuels (DAC ne sait ni régler une hauteur ni faire défiler un tableau)
+- [x] Phase 29 — Tableau des affaires chaudes défilable (hauteur de LIGNE), et une phrase d'explication sous chaque visuel
 
 ## 📝 Journaux
 
@@ -211,17 +211,17 @@ Suite `pytest` : 218 tests (était 210). `dac check` : 15 dashboards, tous verts
 
 Suite `pytest` : 218 tests, dont quatre réécrits pour la nouvelle définition (une affaire gagnée est maintenant chaude, ce que l'ancien test interdisait explicitement). `dac check` : 15 dashboards, 124 widgets, tous verts.
 
-**Phase 29** : Terminée. Le tableau des affaires chaudes prend la taille des autres visuels.
+**Phase 29** : Terminée. Le tableau des affaires chaudes défile, et chaque visuel s'explique en une phrase.
 
-*Ce que Bruin DAC ne permet pas.* La demande était un tableau plus petit, défilable au curseur pour en voir le reste. Les deux schémas ont été sondés plutôt que supposés : `height` sur un widget est **explicitement refusé** (« additional properties 'height' not allowed »), et un thème n'accepte pas davantage de CSS personnalisé. Le bundle servi confirme le reste — le tableau est enveloppé dans un `overflow-x-auto`, donc il défile à l'horizontale et **pas à la verticale**, et son conteneur est en `h-full overflow-hidden`. La documentation de DAC (`dac skills`, installée pour l'occasion) ne mentionne aucun réglage de taille hors `col`, et confirme que le TSX partage exactement le même modèle que le YAML — il n'y avait donc pas d'échappatoire de ce côté.
+*Une limite affirmée à tort, puis corrigée.* La demande était un tableau plus petit, défilable à la molette pour voir toutes les affaires. J'ai sondé `height` **sur le widget** — refusé, « additional properties 'height' not allowed » — puis le CSS dans le thème, refusé aussi, et j'en ai conclu que DAC ne savait pas régler une hauteur. La conclusion était fausse : la sonde portait sur le mauvais niveau. Relancée sur la **ligne** de grille, `height` passe sans broncher, ce que le bundle confirmait déjà (`function Kb({children, height})` applique un style de hauteur au conteneur de ligne). La leçon vaut d'être notée : sonder un seul niveau d'un schéma et généraliser à l'outil entier, c'est transformer une méconnaissance en fatalité documentée. La demande a d'ailleurs dû être répétée pour que je m'en aperçoive.
 
-*Ce qui a été fait.* Le nombre de lignes étant le seul levier restant sur la hauteur, le tableau est plafonné à ses 10 plus fortes espérances de gain et passe en `col: 8`, sur la même ligne que le graphique par practice ramené à `col: 4`. Le bloc occupe désormais deux lignes de grille au lieu de trois, et la vue d'ensemble passe de 11 à 10 lignes. La description du widget dit ce qu'elle montre, pourquoi elle est plafonnée, et où trouver la liste entière — le chat, qui la rend complète.
+*Ce qui a été fait.* La ligne portant les affaires chaudes reçoit `height: 360`. Le widget étant en `h-full` dans sa cellule, il cesse de s'étirer avec son contenu ; son conteneur porte `overflow-x-auto`, et CSS fait calculer `auto` pour l'axe vertical dès qu'un axe n'est plus `visible` — le défilement à la molette apparaît donc. **Aucune ligne n'est retirée** : les 55 affaires de la période (105 sur l'historique) restent toutes atteignables. Le plafond `LIMIT 10` posé au tour précédent est supprimé, et un test vérifie que la requête rend bien la totalité — un LIMIT rendrait les affaires suivantes définitivement inatteignables, molette ou pas.
 
-*L'invariant à ne pas casser.* Le KPI « Affaires chaudes » continue de compter TOUT le périmètre (55 sur la période par défaut, 105 sur l'historique) pendant que le tableau n'en montre que dix. Un test le vérifie sur 25 lignes fabriquées, et contrôle au passage que ce sont bien les dix plus fortes et non dix lignes au hasard.
+*Chaque visuel s'explique.* Les 24 widgets portent désormais une phrase courte sous leur titre — moins de 100 caractères, vérifié par un test. Deux n'en avaient aucune, six s'étaient transformées en paragraphes (jusqu'à 624 caractères, soit plus long que le tableau qu'elles décrivaient). Le raisonnement long descend en commentaire YAML, où il continue de servir la revue sans encombrer l'écran.
 
 *Un incident de manipulation.* Le nettoyage de la sonde de thème a coupé le serveur DAC en service — un `taskkill` sur l'image entière, trop large pour ce qu'il visait. Relancé aussitôt.
 
-Suite `pytest` : 219 tests. `dac check` : 15 dashboards, 122 widgets, tous verts.
+Suite `pytest` : 221 tests. `dac check` : 15 dashboards, 122 widgets, tous verts.
 
 ## 📊 Bilan du Produit
 

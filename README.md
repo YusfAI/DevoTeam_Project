@@ -53,6 +53,9 @@ données à installer.
   remises sur la période, comment elles se répartissent par practice, et ce qu'elles
   sont devenues (gagnées / perdues / en attente) — puis donne l'état du portefeuille,
   le pipeline et les échéances urgentes. 19 widgets.
+- **Chaque visuel s'explique** : une phrase courte sous le titre de chacun des 24
+  widgets de la vue d'ensemble, vérifiée par un test (moins de 100 caractères). Le
+  raisonnement long vit en commentaire YAML, pour la revue.
 - **Affaires chaudes** : toute opportunité dont la probabilité de gain atteint 80 %.
   Un seul critère — le statut n'entre pas en compte, donc les affaires déjà gagnées
   (à 100 % dans ces données) en font partie. Trois KPI, un graphique par practice et
@@ -261,7 +264,7 @@ frontend/              Vite + React (build servi par FastAPI en local)
 credentials/           clé de compte de service Google (gitignoré, absent par défaut)
 data/                  scheduler_state.json (état local, gitignoré) ; dump SQL
                        historique de l'ancienne base MySQL, conservé pour référence
-tests/                 suite pytest (mock Gemini/Sheets), 219 tests
+tests/                 suite pytest (mock Gemini/Sheets), 221 tests
 Documentation/
   WORKFLOW.md            traçage concret d'une question, du prompt au dashboard affiché
   reports/              rapport professionnel + guide technique (.docx) et leur générateur

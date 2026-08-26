@@ -64,7 +64,7 @@ rows:
         type: metric
         col: 3
         description: >-
-          Offres effectivement déposées sur la période, échéance déjà passée.
+          Offres déposées sur la période, échéance déjà passée.
         sql: |
           WITH remises AS (
             SELECT *,
@@ -94,7 +94,7 @@ rows:
         type: metric
         col: 3
         description: >-
-          Offres gagnées ou déjà signées.
+          Gagnées ou déjà signées.
         sql: |
           WITH remises AS (
             SELECT *,
@@ -123,6 +123,8 @@ rows:
       - name: Perdues
         type: metric
         col: 3
+        description: >-
+          Décision défavorable du client.
         sql: |
           WITH remises AS (
             SELECT *,
@@ -183,8 +185,8 @@ rows:
         type: metric
         col: 4
         description: >-
-          Gagnées rapportées aux seules offres DÉCIDÉES — les offres en attente ne sont
-          ni un succès ni un échec, les compter au dénominateur écraserait le taux.
+          Gagnées ÷ offres décidées. Les offres en attente ne comptent pas au
+          dénominateur.
         sql: |
           WITH remises AS (
             SELECT *,
@@ -215,7 +217,7 @@ rows:
         type: metric
         col: 4
         description: >-
-          Montant total des offres déposées sur la période.
+          Budget cumulé des offres déposées.
         sql: |
           WITH remises AS (
             SELECT *,
@@ -244,6 +246,8 @@ rows:
       - name: Budget gagné
         type: metric
         col: 4
+        description: >-
+          Part du budget remis effectivement remportée.
         sql: |
           WITH remises AS (
             SELECT *,
@@ -274,7 +278,7 @@ rows:
         type: chart
         chart: pie
         col: 6
-        description: Trois parts d'un même total — le pourcentage s'affiche sur chaque part.
+        description: Part des offres gagnées, perdues et en attente.
         sql: |
           WITH remises AS (
             SELECT *,
@@ -312,7 +316,7 @@ rows:
         type: chart
         chart: pie
         col: 6
-        description: Répartition des offres déposées entre les trois practices.
+        description: Répartition des dépôts entre les trois practices.
         sql: |
           WITH remises AS (
             SELECT *,
@@ -348,10 +352,9 @@ rows:
         chart: bar
         col: 6
         stacked: true
-        description: >-
-          Où l'on gagne, et où l'on perd. Barres empilées plutôt que côte à côte : la
-          hauteur totale reste le volume déposé par practice, lisible en même temps
-          que sa composition.
+        # Barres empilées plutôt que côte à côte : la hauteur totale reste le volume
+        # déposé par practice, lisible en même temps que sa composition.
+        description: Où l'on gagne et où l'on perd, practice par practice.
         sql: |
           WITH remises AS (
             SELECT *,
@@ -393,9 +396,9 @@ rows:
         chart: bar
         col: 6
         stacked: true
-        description: >-
-          Rythme de dépôt et issue mois par mois. Barres empilées et non courbe : une
-          courbe montrerait le volume mais pas sa composition, qui est ici l'essentiel.
+        # Barres empilées et non courbe : une courbe montrerait le volume mais pas sa
+        # composition, qui est ici l'essentiel.
+        description: Rythme de dépôt et issue, mois par mois.
         sql: |
           WITH remises AS (
             SELECT *,
@@ -438,9 +441,7 @@ rows:
         type: metric
         col: 4
         description: >-
-          Toute opportunité dont la probabilité de gain atteint au moins 80 % — 90 % et
-          100 % compris. Le statut n'entre pas en compte : les affaires déjà gagnées, à
-          100 %, en font donc partie.
+          Opportunités à 80 % de probabilité ou plus. Le statut n'entre pas en compte.
         sql: |
           WITH chaudes AS (
             SELECT * FROM opportunities
@@ -463,7 +464,7 @@ rows:
         type: metric
         col: 4
         description: >-
-          Budget cumulé des opportunités à 80 % ou plus, affaires gagnées comprises.
+          Budget cumulé des affaires chaudes.
         sql: |
           WITH chaudes AS (
             SELECT * FROM opportunities
@@ -505,12 +506,19 @@ rows:
           SELECT SUM(weighted_amount) AS value FROM chaudes
         value: { field: value, type: number, format: ",.0f" }
 
-  - widgets:
+  # `height` sur la LIGNE (et non sur le widget, où le schéma le refuse) fixe la
+  # hauteur de la cellule de grille. Le tableau, en `h-full` à l'intérieur, cesse
+  # alors de s'étirer avec son contenu : son conteneur porte `overflow-x-auto`, et
+  # CSS fait calculer `auto` pour l'axe vertical dès qu'un axe n'est plus `visible`
+  # — le défilement à la molette apparaît donc, et TOUTES les affaires restent
+  # atteignables sans que le widget prenne toute la page.
+  - height: 360
+    widgets:
       - name: Affaires chaudes par practice
         type: chart
         chart: bar
         col: 4
-        description: Nombre d'opportunités à 80 % de probabilité ou plus, par practice.
+        description: Répartition des affaires chaudes entre les practices.
         sql: |
           WITH chaudes AS (
             SELECT * FROM opportunities
@@ -537,16 +545,12 @@ rows:
       - name: Détail des affaires chaudes
         type: table
         col: 8
-        description: >-
-          Les 10 plus fortes espérances de gain, parmi toutes les
-          opportunités à 80 % de probabilité ou plus. Le nombre de lignes est plafonné
-          pour que le widget garde la hauteur des autres : Bruin DAC n'offre aucun
-          réglage de hauteur et son tableau ne défile qu'à l'horizontale, si bien
-          qu'une liste complète s'étirerait sur toute la page et repousserait tout le
-          reste vers le bas. Pour la liste entière, demandez « liste des affaires
-          chaudes » dans le chat. À savoir en lisant les montants : dans ces données
-          100 % n'est pas une prévision mais un constat, les 88 opportunités à 100 %
-          étant exactement les 88 déjà gagnées ou signées.
+        # Aucune ligne n'est retirée : la hauteur de la LIGNE de grille borne le
+        # widget, et le tableau défile à la molette pour la suite (voir
+        # HAUTEUR_LIGNE_CHAUDES). À savoir en lisant les montants : dans ces données
+        # 100 % n'est pas une prévision mais un constat — les 88 opportunités à 100 %
+        # sont exactement les 88 déjà gagnées ou signées.
+        description: Toutes les affaires chaudes, la plus forte espérance d'abord. Faites défiler pour la suite.
         sql: |
           WITH chaudes AS (
             SELECT * FROM opportunities
@@ -567,7 +571,6 @@ rows:
                  weighted_amount, deadline
           FROM chaudes
           ORDER BY weighted_amount DESC
-          LIMIT 10
         columns:
           - { name: description, label: Opportunité }
           - { name: buyer, label: Client }
@@ -583,8 +586,7 @@ rows:
         type: metric
         col: 3
         description: >-
-          Budget estimé côté client, hors affaires perdues, infructueuses, NO GO, hors
-          scope et non shortlistées.
+          Budget annoncé par le client, hors affaires perdues.
         sql: |
           SELECT SUM(budget) AS value FROM opportunities
           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
@@ -604,7 +606,7 @@ rows:
         type: metric
         col: 3
         description: >-
-          Montant réellement proposé par DevoTeam, sur le même périmètre.
+          Montant proposé par DevoTeam, sur le même périmètre.
         sql: |
           SELECT SUM(financial_offer) AS value FROM opportunities
           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
@@ -624,7 +626,7 @@ rows:
         type: metric
         col: 3
         description: >-
-          Négatif = nous chiffrons en dessous du budget annoncé par le client.
+          Négatif = nous chiffrons sous le budget du client.
         sql: |
           SELECT (SUM(financial_offer) - SUM(budget)) / NULLIF(SUM(budget), 0) AS value FROM opportunities
           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
@@ -644,8 +646,7 @@ rows:
         type: metric
         col: 3
         description: >-
-          Offre financière × probabilité de gain, sur les seules opportunités où elle
-          est renseignée — environ la moitié du portefeuille.
+          Offre × probabilité, sur les seules lignes où la probabilité est renseignée.
         sql: |
           SELECT SUM(weighted_amount) AS value FROM opportunities
           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
@@ -667,7 +668,7 @@ rows:
         type: chart
         chart: funnel
         col: 6
-        description: Nombre d'opportunités ayant atteint au moins chaque étape.
+        description: Opportunités ayant atteint au moins chaque étape.
         # Cumul depuis la fin : une opportunité signée a nécessairement franchi les
         # étapes précédentes. Compter les statuts bruts ne décroîtrait pas et ne
         # formerait donc pas un entonnoir (voir backend/sql_builder.funnel_sql).
@@ -717,7 +718,7 @@ rows:
         type: chart
         chart: bar
         col: 6
-        description: Part des opportunités ayant atteint une étape qui franchissent la suivante.
+        description: Part qui franchit l'étape suivante.
         sql: |
           WITH etapes AS (
             SELECT status, COUNT(*) AS nb,
@@ -798,10 +799,9 @@ rows:
       - name: Opportunités urgentes (échéance ≤ 7 jours)
         type: table
         col: 12
-        description: >-
-          Opportunités encore ouvertes uniquement. Seul widget tourné vers l'avenir :
-          la borne « à date » des offres remises ne s'y applique pas, sinon il serait
-          toujours vide.
+        # Seul widget tourné vers l'avenir : la borne « à date » des offres remises ne
+        # s'y applique pas, sinon il serait toujours vide.
+        description: Affaires encore ouvertes dont l'échéance tombe dans les 7 jours.
         sql: |
           SELECT buyer, country, practice, status, deadline, days_remaining, budget
           FROM opportunities

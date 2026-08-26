@@ -186,17 +186,47 @@ def test_the_win_rate_ignores_the_offers_still_pending(base):
     assert _executer(base, "Taux de réussite")[0][0] == pytest.approx(0.75)
 
 
-def test_the_table_is_capped_but_the_kpi_still_counts_everything(base):
-    # Bruin DAC n'offre aucun réglage de hauteur et son tableau ne défile pas
-    # verticalement : le nombre de lignes est le seul levier pour que le widget garde
-    # la taille des autres. Le KPI, lui, doit continuer de compter TOUT le périmètre —
-    # sans quoi le chiffre affiché ne serait que la hauteur du tableau.
+def test_the_table_holds_every_hot_deal(base):
+    # Aucune ligne n'est retirée : la taille du widget est bornée par la hauteur de sa
+    # LIGNE de grille, pas en amputant la requête. Un LIMIT rendrait les affaires
+    # suivantes définitivement inatteignables, molette ou pas.
     _remplir(base, [_opportunite(buyer="Client %02d" % i, win_probability=0.8,
                                   weighted_amount=float(1000 - i))
                      for i in range(25)])
 
     assert _executer(base, "Affaires chaudes")[0][0] == 25
     lignes = _executer(base, "Détail des affaires chaudes")
-    assert len(lignes) == 10
-    # Et ce sont bien les plus fortes espérances de gain, pas dix lignes au hasard.
-    assert [l[1] for l in lignes] == ["Client %02d" % i for i in range(10)]
+    assert len(lignes) == 25
+    # Et triées par espérance de gain décroissante : la plus forte se lit sans défiler.
+    assert [l[1] for l in lignes] == ["Client %02d" % i for i in range(25)]
+
+
+def test_the_hot_deal_row_is_height_bounded():
+    """C'est ce qui rend le défilement possible.
+
+    Le widget est en `h-full` dans sa cellule de grille ; sans hauteur sur la ligne,
+    la cellule s'étire avec le contenu et le tableau occupe toute la page. Avec elle,
+    le conteneur du tableau — qui porte `overflow-x-auto`, ce qui fait calculer `auto`
+    pour l'axe vertical — défile à la molette. `height` n'est accepté QUE sur la
+    ligne : le schéma DAC le refuse sur un widget.
+    """
+    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
+    lignes = [r for r in doc["rows"]
+               if any(w["name"] == "Détail des affaires chaudes" for w in r["widgets"])]
+
+    assert len(lignes) == 1
+    assert isinstance(lignes[0].get("height"), int)
+
+
+def test_every_widget_explains_itself_briefly():
+    # Une phrase sous le titre, assez courte pour être lue d'un coup d'œil. Le
+    # raisonnement long vit en commentaire YAML, où il sert la revue sans encombrer
+    # l'écran.
+    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
+    widgets = [w for row in doc["rows"] for w in row["widgets"]]
+
+    sans_description = [w["name"] for w in widgets if not (w.get("description") or "").strip()]
+    bavardes = [w["name"] for w in widgets if len((w.get("description") or "").strip()) > 100]
+
+    assert not sans_description, sans_description
+    assert not bavardes, bavardes

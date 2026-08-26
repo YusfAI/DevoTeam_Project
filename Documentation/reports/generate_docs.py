@@ -490,7 +490,7 @@ def build_rapport_professionnel():
              "(alertes deadlines, rafraîchissement des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (219 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
+            ["Tests", "pytest (221 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
              "(mocks), garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -509,7 +509,7 @@ def build_rapport_professionnel():
                      "explicite — il n'écrit jamais lui-même de requête.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "219 tests automatisés couvrent la compréhension du langage, le requêtage des "
+    add_bullet(doc, "221 tests automatisés couvrent la compréhension du langage, le requêtage des "
                      "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -1161,20 +1161,21 @@ def build_guide_technique():
         "à forte confiance, mêlant l'acquis et l'à-venir. Les intitulés le disent : "
         "« Budget à forte confiance » plutôt que « Budget en jeu », qui laissait "
         "entendre une affaire encore ouverte.")
-    add_cue(doc,
-        "Une limite de l'outil, sondée plutôt que supposée : Bruin DAC n'offre AUCUN "
-        "réglage de hauteur — son schéma refuse explicitement la propriété height — et "
-        "un thème n'accepte pas de CSS personnalisé. Son tableau est enveloppé dans un "
-        "overflow-x-auto : il défile à l'horizontale, pas à la verticale. Le TSX "
-        "partage exactement le même modèle que le YAML, donc pas d'échappatoire de ce "
-        "côté non plus.")
     add_body(doc,
-        "Le nombre de lignes est par conséquent le seul levier sur la hauteur d'un "
-        "tableau. Celui des affaires chaudes est plafonné à ses dix plus fortes "
-        "espérances de gain pour garder la taille des autres widgets, la liste "
-        "complète restant accessible par le chat. Le KPI, lui, continue de compter "
-        "tout le périmètre — un test le vérifie, sans quoi le chiffre affiché ne "
-        "serait que la hauteur du tableau.")
+        "Le tableau des affaires chaudes tient dans la hauteur des autres widgets et "
+        "défile à la molette pour la suite. La hauteur se règle sur la LIGNE de "
+        "grille (`height: 360`), jamais sur le widget : le schéma la refuse à ce "
+        "niveau. Le widget étant en `h-full` dans sa cellule, il cesse alors de "
+        "s'étirer avec son contenu ; son conteneur porte `overflow-x-auto`, et CSS "
+        "fait calculer `auto` pour l'axe vertical dès qu'un axe n'est plus `visible`, "
+        "d'où le défilement.")
+    add_cue(doc,
+        "Cette hauteur avait d'abord été déclarée impossible, et le tableau plafonné à "
+        "dix lignes en conséquence. La sonde avait porté sur le mauvais niveau — le "
+        "widget — et la conclusion avait été généralisée à l'outil entier. Sonder un "
+        "seul niveau d'un schéma puis en déduire une fatalité est le vrai défaut ici ; "
+        "aucune ligne n'est désormais retirée de la requête, un LIMIT rendant les "
+        "affaires suivantes inatteignables, molette ou pas.")
     add_body(doc,
         "L'application connaissait déjà le terme « offre pondérée » avec la même "
         "intention mais un périmètre plus étroit. Deux définitions divergentes pour "
@@ -1562,7 +1563,7 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "15. Tests automatisés")
     add_body(doc,
-        "219 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
+        "221 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
         "et le client Google Sheets (gspread) sont simulés (monkeypatch), et les données "
         "sont un petit DataFrame construit dans le test. La suite tourne donc hors ligne, "
         "en quelques secondes.")
@@ -1594,7 +1595,7 @@ def build_guide_technique():
             ["test_response_builder.py", "26", "Formatage des unités, messages texte déterministes, "
              "cohérence texte/graphique pour funnel et heatmap, description de ce qui a changé "
              "dans le tableau de bord."],
-            ["test_accueil_dashboard.py", "9", "SQL de la vue d'ensemble exécuté sur des lignes "
+            ["test_accueil_dashboard.py", "11", "SQL de la vue d'ensemble exécuté sur des lignes "
              "fabriquées : seuil des affaires chaudes inclusif, issues qui totalisent les offres "
              "remises, taux de réussite calculé sur les seules offres décidées."],
             ["test_alerts.py", "12", "Fenêtre de 7 jours, exclusion des statuts clos, envoi email, "
@@ -1874,7 +1875,7 @@ def build_presentation_script():
     add_h1(doc, "Les chiffres à retenir")
     add_bullet(doc, "1 question = 1 tableau de bord complet, généré automatiquement.")
     add_bullet(doc, "9 types de visualisations choisis automatiquement selon la question.")
-    add_bullet(doc, "219 tests automatisés, aucune dépendance à des données réelles.")
+    add_bullet(doc, "221 tests automatisés, aucune dépendance à des données réelles.")
     add_bullet(doc, "21 phases de développement livrées, de bout en bout, en autonomie.")
     add_bullet(doc, "0 base de données à administrer — le Google Sheet est la source de vérité.")
     add_bullet(doc, "0 hallucination tolérée : donnée non fiable = question posée en retour, jamais un chiffre inventé.")

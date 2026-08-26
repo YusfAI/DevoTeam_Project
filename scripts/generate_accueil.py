@@ -155,12 +155,11 @@ def etapes_cte():
             "          )")
 
 
-# Nombre de lignes du tableau des affaires chaudes. Bruin DAC n'offre aucun réglage
-# de hauteur — son schéma refuse explicitement `height` — et son tableau ne défile
-# qu'à l'horizontale (`overflow-x-auto`, vérifié dans le bundle servi). Le nombre de
-# lignes est donc le SEUL levier sur la hauteur du widget ; dix tient dans la même
-# hauteur qu'un graphique voisin.
-MAX_LIGNES_CHAUDES = 10
+# Hauteur, en pixels, de la ligne portant les affaires chaudes. C'est ce qui borne
+# le tableau et déclenche son défilement vertical : aucune ligne n'est retirée, la
+# liste entière reste accessible à la molette. Valeur à ajuster si le bloc paraît
+# trop court ou trop haut à l'écran.
+HAUTEUR_LIGNE_CHAUDES = 360
 
 HEADER = """schema: https://getbruin.com/schemas/dac/dashboard/v1
 name: Vue d'ensemble commerciale
@@ -228,10 +227,11 @@ rows:
 
 ligne1 = "\n\n".join([
     kpi_remises("Offres remises", 3, "COUNT(*)", ",.0f",
-                "Offres effectivement déposées sur la période, échéance déjà passée."),
+                "Offres déposées sur la période, échéance déjà passée."),
     kpi_remises("Gagnées", 3, "COUNT(*) FILTER (WHERE issue = 'Gagnée')", ",.0f",
-                "Offres gagnées ou déjà signées."),
-    kpi_remises("Perdues", 3, "COUNT(*) FILTER (WHERE issue = 'Perdue')", ",.0f"),
+                "Gagnées ou déjà signées."),
+    kpi_remises("Perdues", 3, "COUNT(*) FILTER (WHERE issue = 'Perdue')", ",.0f",
+                "Décision défavorable du client."),
     kpi_remises("En attente", 3, "COUNT(*) FILTER (WHERE issue = 'En attente')", ",.0f",
                 "Déposées, sans décision du client à ce jour."),
 ])
@@ -241,11 +241,11 @@ ligne2 = "\n\n".join([
                 "COUNT(*) FILTER (WHERE issue = 'Gagnée') * 1.0\n"
                 "                 / NULLIF(COUNT(*) FILTER (WHERE issue <> 'En attente'), 0)",
                 ".1%",
-                "Gagnées rapportées aux seules offres DÉCIDÉES — les offres en attente "
-                "ne sont ni un succès ni un échec, les compter au dénominateur écraserait le taux."),
+                "Gagnées ÷ offres décidées. Les offres en attente ne comptent pas au dénominateur."),
     kpi_remises("Budget remis", 4, "SUM(budget)", ",.0f",
-                "Montant total des offres déposées sur la période."),
-    kpi_remises("Budget gagné", 4, "SUM(budget) FILTER (WHERE issue = 'Gagnée')", ",.0f"),
+                "Budget cumulé des offres déposées."),
+    kpi_remises("Budget gagné", 4, "SUM(budget) FILTER (WHERE issue = 'Gagnée')", ",.0f",
+                "Part du budget remis effectivement remportée."),
 ])
 
 BODY = """
@@ -255,7 +255,7 @@ BODY = """
         type: chart
         chart: pie
         col: 6
-        description: Trois parts d'un même total — le pourcentage s'affiche sur chaque part.
+        description: Part des offres gagnées, perdues et en attente.
         sql: |
 __REMISES__,
 __ISSUES__
@@ -271,7 +271,7 @@ __ISSUES__
         type: chart
         chart: pie
         col: 6
-        description: Répartition des offres déposées entre les trois practices.
+        description: Répartition des dépôts entre les trois practices.
         sql: |
 __REMISES__
           SELECT practice, COUNT(*) AS nb
@@ -287,10 +287,9 @@ __REMISES__
         chart: bar
         col: 6
         stacked: true
-        description: >-
-          Où l'on gagne, et où l'on perd. Barres empilées plutôt que côte à côte : la
-          hauteur totale reste le volume déposé par practice, lisible en même temps
-          que sa composition.
+        # Barres empilées plutôt que côte à côte : la hauteur totale reste le volume
+        # déposé par practice, lisible en même temps que sa composition.
+        description: Où l'on gagne et où l'on perd, practice par practice.
         sql: |
 __REMISES__,
 __ISSUES__,
@@ -310,9 +309,9 @@ __ISSUES__,
         chart: bar
         col: 6
         stacked: true
-        description: >-
-          Rythme de dépôt et issue mois par mois. Barres empilées et non courbe : une
-          courbe montrerait le volume mais pas sa composition, qui est ici l'essentiel.
+        # Barres empilées et non courbe : une courbe montrerait le volume mais pas sa
+        # composition, qui est ici l'essentiel.
+        description: Rythme de dépôt et issue, mois par mois.
         sql: |
 __REMISES__,
 __ISSUES__,
@@ -331,12 +330,19 @@ __ISSUES__,
   - widgets:
 __CHAUDES_KPI__
 
-  - widgets:
+  # `height` sur la LIGNE (et non sur le widget, où le schéma le refuse) fixe la
+  # hauteur de la cellule de grille. Le tableau, en `h-full` à l'intérieur, cesse
+  # alors de s'étirer avec son contenu : son conteneur porte `overflow-x-auto`, et
+  # CSS fait calculer `auto` pour l'axe vertical dès qu'un axe n'est plus `visible`
+  # — le défilement à la molette apparaît donc, et TOUTES les affaires restent
+  # atteignables sans que le widget prenne toute la page.
+  - height: __HAUTEUR_CHAUDES__
+    widgets:
       - name: Affaires chaudes par practice
         type: chart
         chart: bar
         col: 4
-        description: Nombre d'opportunités à 80 % de probabilité ou plus, par practice.
+        description: Répartition des affaires chaudes entre les practices.
         sql: |
 __CHAUDES__
           SELECT practice, COUNT(*) AS nb
@@ -350,16 +356,12 @@ __CHAUDES__
       - name: Détail des affaires chaudes
         type: table
         col: 8
-        description: >-
-          Les __MAX_CHAUDES__ plus fortes espérances de gain, parmi toutes les
-          opportunités à 80 % de probabilité ou plus. Le nombre de lignes est plafonné
-          pour que le widget garde la hauteur des autres : Bruin DAC n'offre aucun
-          réglage de hauteur et son tableau ne défile qu'à l'horizontale, si bien
-          qu'une liste complète s'étirerait sur toute la page et repousserait tout le
-          reste vers le bas. Pour la liste entière, demandez « liste des affaires
-          chaudes » dans le chat. À savoir en lisant les montants : dans ces données
-          100 % n'est pas une prévision mais un constat, les 88 opportunités à 100 %
-          étant exactement les 88 déjà gagnées ou signées.
+        # Aucune ligne n'est retirée : la hauteur de la LIGNE de grille borne le
+        # widget, et le tableau défile à la molette pour la suite (voir
+        # HAUTEUR_LIGNE_CHAUDES). À savoir en lisant les montants : dans ces données
+        # 100 % n'est pas une prévision mais un constat — les 88 opportunités à 100 %
+        # sont exactement les 88 déjà gagnées ou signées.
+        description: Toutes les affaires chaudes, la plus forte espérance d'abord. Faites défiler pour la suite.
         sql: |
 __CHAUDES__
           SELECT description, buyer, practice, budget,
@@ -367,7 +369,6 @@ __CHAUDES__
                  weighted_amount, deadline
           FROM chaudes
           ORDER BY weighted_amount DESC
-          LIMIT __MAX_CHAUDES__
         columns:
           - { name: description, label: Opportunité }
           - { name: buyer, label: Client }
@@ -383,15 +384,14 @@ __CHAUDES__
 
 ligne3 = "\n\n".join([
     kpi("Budget actif", 3, actif("SUM(budget)"), ",.0f",
-        "Budget estimé côté client, hors affaires perdues, infructueuses, NO GO, hors scope et non shortlistées."),
+        "Budget annoncé par le client, hors affaires perdues."),
     kpi("Offre financière", 3, actif("SUM(financial_offer)"), ",.0f",
-        "Montant réellement proposé par DevoTeam, sur le même périmètre."),
+        "Montant proposé par DevoTeam, sur le même périmètre."),
     kpi("Écart offre / budget", 3,
         actif("(SUM(financial_offer) - SUM(budget)) / NULLIF(SUM(budget), 0)"), "+.1%",
-        "Négatif = nous chiffrons en dessous du budget annoncé par le client."),
+        "Négatif = nous chiffrons sous le budget du client."),
     kpi("Montant pondéré", 3, actif("SUM(weighted_amount)"), ",.0f",
-        "Offre financière × probabilité de gain, sur les seules opportunités où elle est "
-        "renseignée — environ la moitié du portefeuille."),
+        "Offre × probabilité, sur les seules lignes où la probabilité est renseignée."),
 ])
 
 FOOTER = """
@@ -402,7 +402,7 @@ FOOTER = """
         type: chart
         chart: funnel
         col: 6
-        description: Nombre d'opportunités ayant atteint au moins chaque étape.
+        description: Opportunités ayant atteint au moins chaque étape.
         # Cumul depuis la fin : une opportunité signée a nécessairement franchi les
         # étapes précédentes. Compter les statuts bruts ne décroîtrait pas et ne
         # formerait donc pas un entonnoir (voir backend/sql_builder.funnel_sql).
@@ -418,7 +418,7 @@ __ETAPES__
         type: chart
         chart: bar
         col: 6
-        description: Part des opportunités ayant atteint une étape qui franchissent la suivante.
+        description: Part qui franchit l'étape suivante.
         sql: |
 __ETAPES__,
           cumul AS (
@@ -456,10 +456,9 @@ __FILTRES__
       - name: Opportunités urgentes (échéance ≤ 7 jours)
         type: table
         col: 12
-        description: >-
-          Opportunités encore ouvertes uniquement. Seul widget tourné vers l'avenir :
-          la borne « à date » des offres remises ne s'y applique pas, sinon il serait
-          toujours vide.
+        # Seul widget tourné vers l'avenir : la borne « à date » des offres remises ne
+        # s'y applique pas, sinon il serait toujours vide.
+        description: Affaires encore ouvertes dont l'échéance tombe dans les 7 jours.
         sql: |
           SELECT buyer, country, practice, status, deadline, days_remaining, budget
           FROM opportunities
@@ -487,17 +486,15 @@ NOUVELLE_LIGNE = """
 
 chaudes_kpi = "\n\n".join([
     kpi_chaudes("Affaires chaudes", 4, "COUNT(*)", ",.0f",
-                "Toute opportunité dont la probabilité de gain atteint au moins 80 % — 90 % et "
-                "100 % compris. Le statut n'entre pas en compte : les affaires déjà gagnées, "
-                "à 100 %, en font donc partie."),
+                "Opportunités à 80 % de probabilité ou plus. Le statut n'entre pas en compte."),
     kpi_chaudes("Budget à forte confiance", 4, "SUM(budget)", ",.0f",
-                "Budget cumulé des opportunités à 80 % ou plus, affaires gagnées comprises."),
+                "Budget cumulé des affaires chaudes."),
     kpi_chaudes("Montant pondéré associé", 4, "SUM(weighted_amount)", ",.0f",
                 "Offre financière × probabilité, sur ce même périmètre."),
 ])
 
 doc = HEADER + ligne1 + NOUVELLE_LIGNE + ligne2 + BODY + ligne3 + FOOTER
-doc = (doc.replace("__MAX_CHAUDES__", str(MAX_LIGNES_CHAUDES))
+doc = (doc.replace("__HAUTEUR_CHAUDES__", str(HAUTEUR_LIGNE_CHAUDES))
           .replace("__CHAUDES_KPI__", chaudes_kpi)
           .replace("__CHAUDES__", CHAUDES_CTE)
           .replace("__REMISES__", REMISES_CTE)
