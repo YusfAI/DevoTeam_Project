@@ -1,28 +1,55 @@
 schema: https://getbruin.com/schemas/dac/dashboard/v1
 name: Vue d'ensemble commerciale
-description: Les questions les plus fréquentes sur le portefeuille d'opportunités
+description: Les offres remises depuis novembre 2025, ce qu'elles sont devenues, et l'état du portefeuille
 connection: devoteam_duckdb
 
-# Dashboard "as code" : versionné dans git, relu en revue, reproductible à
-# l'identique sur n'importe quelle machine. Les données proviennent du fichier
-# DuckDB réécrit à chaque rafraîchissement du Google Sheet (backend/duckdb_export.py).
+# ATTENTION : fichier PRODUIT par scripts/generate_accueil.py, à ne pas éditer à la
+# main — toute modification directe serait perdue à la prochaine génération. Il reste
+# versionné et relu en revue (c'est un dashboard « as code »), mais son générateur
+# existe pour une raison précise : les 12 étapes du pipeline et la liste des statuts
+# perdus sont recopiées dans plusieurs widgets, et deux copies qui divergent
+# fausseraient les taux sans qu'aucun test ne le voie. Elles sont donc dérivées de
+# backend/business_rules.py, source unique.
 #
-# RÈGLE APPLIQUÉE À TOUS LES WIDGETS : les affaires définitivement perdues (Offre
-# perdue, Infructueux, NO GO, Hors scope, Non shortlisté) sont exclues. Elles
-# représentent 66,1 M€ sur 164,4 M€ : les additionner dans un « budget total »
-# donnait un chiffre inutilisable pour décider. Les gagnées et signées restent
-# comptées — ce sont des succès, pas des pertes.
-# La même règle est appliquée automatiquement aux dashboards générés par le chat
-# (voir backend/business_rules.py::LOST_STATUSES), pour que les deux concordent.
+#   python scripts/generate_accueil.py     (depuis la racine du projet)
+#
+# Les données viennent du fichier DuckDB réécrit à chaque rafraîchissement du Google
+# Sheet (backend/duckdb_export.py).
+#
+# CE QU'EST UNE « OFFRE REMISE ». Le statut décrit l'état COURANT : une offre partie
+# chez le client et gagnée depuis n'est plus au statut « Offre remise ». Compter ce
+# seul statut donnerait 4 offres au lieu de 57. Sont donc comptées comme remises les
+# opportunités dont le statut atteste le dépôt — Offre remise, En attente du plan de
+# charge, Offre gagnée, Offre signée, Offre perdue (définition arrêtée avec le métier,
+# voir business_rules.SUBMITTED_STATUSES).
+#
+# « À DATE ». Il n'existe pas de colonne « date de remise » : l'échéance en tient
+# lieu, car pour un appel d'offres la date limite de dépôt EST la date de remise. La
+# borne haute est aujourd'hui — une échéance à venir signifie que l'offre n'est pas
+# encore partie (20 opportunités sont dans ce cas et sortent donc du compte).
+#
+# EXCLUSION DES AFFAIRES PERDUES. La règle par défaut de l'application les écarte de
+# tous les chiffres (66,1 M€ d'affaires mortes dans un « budget total » ne servent
+# aucune décision). Elle est LEVÉE dans le bloc « offres remises », qui filtre
+# lui-même sur le statut : c'est exactement l'échappatoire prévue — sans elle, la
+# question « combien de perdues ? » ne pourrait pas recevoir de réponse. Le bloc
+# « portefeuille » plus bas, lui, applique l'exclusion.
 #
 # Les 12 étapes de l'entonnoir sont la transcription exacte de
-# business_rules.FUNNEL_STAGE_ORDER : les deux widgets qui s'en servent doivent
-# rester d'accord, sans quoi les taux de passage porteraient sur un pipeline
-# différent de celui que l'entonnoir affiche.
+# business_rules.FUNNEL_STAGE_ORDER.
 #
-# Le filtre ci-dessous est injecté en Jinja dans CHAQUE requête : changer la
-# practice recalcule tout le dashboard côté SQL, sans rechargement de page.
+# COULEURS. Bruin DAC attribue les couleurs de série par rang dans le résultat, sans
+# permettre de fixer « Gagnée = vert ». Les issues sont donc énumérées en dur et
+# jointes en LEFT JOIN pour rester dans un ordre constant même à zéro, et ce sont les
+# étiquettes — pas la couleur — qui portent le sens.
 filters:
+  - name: periode
+    type: select
+    multiple: false
+    default: "Depuis novembre 2025"
+    options:
+      values: ["Depuis novembre 2025", "12 derniers mois", "Depuis janvier 2026", "Tout l'historique"]
+
   - name: practice
     type: select
     multiple: false
@@ -31,18 +58,390 @@ filters:
       values: ["Toutes", "Digital Transformation", "Risk Advisory", "Data Management"]
 
 rows:
-  # --- Ligne 1 : les trois montants. Budget et offre financière côte à côte parce
-  # qu'ils diffèrent sur 349 des 350 lignes d'origine : n'en montrer qu'un laissait
-  # croire qu'il n'y en avait qu'un. L'écart dit si l'on chiffre au-dessus ou en
-  # dessous du budget annoncé par le client. ---
+  # === Q1 et Q3 : combien d'offres remises, et ce qu'elles sont devenues ===
+  - widgets:
+      - name: Offres remises
+        type: metric
+        col: 3
+        description: Offres effectivement déposées sur la période, échéance déjà passée.
+        sql: |
+          WITH remises AS (
+            SELECT *,
+              CASE
+                WHEN status IN ('Offre gagnée', 'Offre signée') THEN 'Gagnée'
+                WHEN status IN ('Offre perdue') THEN 'Perdue'
+                ELSE 'En attente'
+              END AS issue
+            FROM opportunities
+            WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
+              AND deadline <= CURRENT_DATE
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT COUNT(*) AS value FROM remises
+        value: { field: value, type: number, format: ",.0f" }
+
+      - name: Gagnées
+        type: metric
+        col: 3
+        description: Offres gagnées ou déjà signées.
+        sql: |
+          WITH remises AS (
+            SELECT *,
+              CASE
+                WHEN status IN ('Offre gagnée', 'Offre signée') THEN 'Gagnée'
+                WHEN status IN ('Offre perdue') THEN 'Perdue'
+                ELSE 'En attente'
+              END AS issue
+            FROM opportunities
+            WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
+              AND deadline <= CURRENT_DATE
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT COUNT(*) FILTER (WHERE issue = 'Gagnée') AS value FROM remises
+        value: { field: value, type: number, format: ",.0f" }
+
+      - name: Perdues
+        type: metric
+        col: 3
+        sql: |
+          WITH remises AS (
+            SELECT *,
+              CASE
+                WHEN status IN ('Offre gagnée', 'Offre signée') THEN 'Gagnée'
+                WHEN status IN ('Offre perdue') THEN 'Perdue'
+                ELSE 'En attente'
+              END AS issue
+            FROM opportunities
+            WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
+              AND deadline <= CURRENT_DATE
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT COUNT(*) FILTER (WHERE issue = 'Perdue') AS value FROM remises
+        value: { field: value, type: number, format: ",.0f" }
+
+      - name: En attente
+        type: metric
+        col: 3
+        description: Déposées, sans décision du client à ce jour.
+        sql: |
+          WITH remises AS (
+            SELECT *,
+              CASE
+                WHEN status IN ('Offre gagnée', 'Offre signée') THEN 'Gagnée'
+                WHEN status IN ('Offre perdue') THEN 'Perdue'
+                ELSE 'En attente'
+              END AS issue
+            FROM opportunities
+            WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
+              AND deadline <= CURRENT_DATE
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT COUNT(*) FILTER (WHERE issue = 'En attente') AS value FROM remises
+        value: { field: value, type: number, format: ",.0f" }
+
+  - widgets:
+      - name: Taux de réussite
+        type: metric
+        col: 4
+        description: Gagnées rapportées aux seules offres DÉCIDÉES — les offres en attente ne sont ni un succès ni un échec, les compter au dénominateur écraserait le taux.
+        sql: |
+          WITH remises AS (
+            SELECT *,
+              CASE
+                WHEN status IN ('Offre gagnée', 'Offre signée') THEN 'Gagnée'
+                WHEN status IN ('Offre perdue') THEN 'Perdue'
+                ELSE 'En attente'
+              END AS issue
+            FROM opportunities
+            WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
+              AND deadline <= CURRENT_DATE
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT COUNT(*) FILTER (WHERE issue = 'Gagnée') * 1.0
+                 / NULLIF(COUNT(*) FILTER (WHERE issue <> 'En attente'), 0) AS value FROM remises
+        value: { field: value, type: number, format: ".1%" }
+
+      - name: Budget remis
+        type: metric
+        col: 4
+        description: Montant total des offres déposées sur la période.
+        sql: |
+          WITH remises AS (
+            SELECT *,
+              CASE
+                WHEN status IN ('Offre gagnée', 'Offre signée') THEN 'Gagnée'
+                WHEN status IN ('Offre perdue') THEN 'Perdue'
+                ELSE 'En attente'
+              END AS issue
+            FROM opportunities
+            WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
+              AND deadline <= CURRENT_DATE
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT SUM(budget) AS value FROM remises
+        value: { field: value, type: number, format: ",.0f" }
+
+      - name: Budget gagné
+        type: metric
+        col: 4
+        sql: |
+          WITH remises AS (
+            SELECT *,
+              CASE
+                WHEN status IN ('Offre gagnée', 'Offre signée') THEN 'Gagnée'
+                WHEN status IN ('Offre perdue') THEN 'Perdue'
+                ELSE 'En attente'
+              END AS issue
+            FROM opportunities
+            WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
+              AND deadline <= CURRENT_DATE
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT SUM(budget) FILTER (WHERE issue = 'Gagnée') AS value FROM remises
+        value: { field: value, type: number, format: ",.0f" }
+
+  - widgets:
+      - name: Issue des offres remises
+        type: chart
+        chart: pie
+        col: 6
+        description: Trois parts d'un même total — le pourcentage s'affiche sur chaque part.
+        sql: |
+          WITH remises AS (
+            SELECT *,
+              CASE
+                WHEN status IN ('Offre gagnée', 'Offre signée') THEN 'Gagnée'
+                WHEN status IN ('Offre perdue') THEN 'Perdue'
+                ELSE 'En attente'
+              END AS issue
+            FROM opportunities
+            WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
+              AND deadline <= CURRENT_DATE
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          ),
+          issues(issue, rang) AS (
+            VALUES ('Gagnée', 1), ('Perdue', 2), ('En attente', 3)
+          )
+          SELECT i.issue, COUNT(r.id) AS nb
+          FROM issues i
+          LEFT JOIN remises r ON r.issue = i.issue
+          GROUP BY i.issue, i.rang
+          ORDER BY i.rang
+        label: issue
+        value: { field: nb }
+
+      - name: Offres remises par practice
+        type: chart
+        chart: pie
+        col: 6
+        description: Répartition des offres déposées entre les trois practices.
+        sql: |
+          WITH remises AS (
+            SELECT *,
+              CASE
+                WHEN status IN ('Offre gagnée', 'Offre signée') THEN 'Gagnée'
+                WHEN status IN ('Offre perdue') THEN 'Perdue'
+                ELSE 'En attente'
+              END AS issue
+            FROM opportunities
+            WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
+              AND deadline <= CURRENT_DATE
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT practice, COUNT(*) AS nb
+          FROM remises
+          GROUP BY practice
+          ORDER BY nb DESC
+        label: practice
+        value: { field: nb }
+
+  - widgets:
+      - name: Issue par practice
+        type: chart
+        chart: bar
+        col: 6
+        stacked: true
+        description: >-
+          Où l'on gagne, et où l'on perd. Barres empilées plutôt que côte à côte : la
+          hauteur totale reste le volume déposé par practice, lisible en même temps
+          que sa composition.
+        sql: |
+          WITH remises AS (
+            SELECT *,
+              CASE
+                WHEN status IN ('Offre gagnée', 'Offre signée') THEN 'Gagnée'
+                WHEN status IN ('Offre perdue') THEN 'Perdue'
+                ELSE 'En attente'
+              END AS issue
+            FROM opportunities
+            WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
+              AND deadline <= CURRENT_DATE
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          ),
+          issues(issue, rang) AS (
+            VALUES ('Gagnée', 1), ('Perdue', 2), ('En attente', 3)
+          ),
+          practices AS (SELECT DISTINCT practice FROM remises)
+          SELECT p.practice, i.issue, COUNT(r.id) AS nb
+          FROM practices p
+          CROSS JOIN issues i
+          LEFT JOIN remises r ON r.practice = p.practice AND r.issue = i.issue
+          GROUP BY p.practice, i.issue, i.rang
+          ORDER BY p.practice, i.rang
+        x: { field: practice, type: category, title: Practice }
+        y: { field: nb, type: number, title: Offres remises, format: ",.0f" }
+        color: { field: issue }
+
+      - name: Offres remises par mois
+        type: chart
+        chart: bar
+        col: 6
+        stacked: true
+        description: >-
+          Rythme de dépôt et issue mois par mois. Barres empilées et non courbe : une
+          courbe montrerait le volume mais pas sa composition, qui est ici l'essentiel.
+        sql: |
+          WITH remises AS (
+            SELECT *,
+              CASE
+                WHEN status IN ('Offre gagnée', 'Offre signée') THEN 'Gagnée'
+                WHEN status IN ('Offre perdue') THEN 'Perdue'
+                ELSE 'En attente'
+              END AS issue
+            FROM opportunities
+            WHERE status IN ('Offre remise', 'En attente du plan de charge', 'Offre gagnée', 'Offre signée', 'Offre perdue')
+              AND deadline <= CURRENT_DATE
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          ),
+          issues(issue, rang) AS (
+            VALUES ('Gagnée', 1), ('Perdue', 2), ('En attente', 3)
+          ),
+          mois AS (SELECT DISTINCT deadline_month AS m FROM remises WHERE deadline_month IS NOT NULL)
+          SELECT mo.m AS mois, i.issue, COUNT(r.id) AS nb
+          FROM mois mo
+          CROSS JOIN issues i
+          LEFT JOIN remises r ON r.deadline_month = mo.m AND r.issue = i.issue
+          GROUP BY mo.m, i.issue, i.rang
+          ORDER BY mo.m, i.rang
+        x: { field: mois, type: category, title: Mois d'échéance }
+        y: { field: nb, type: number, title: Offres remises, format: ",.0f" }
+        color: { field: issue }
+
+  # === Santé du portefeuille — affaires perdues exclues ===
   - widgets:
       - name: Budget actif
         type: metric
-        col: 4
+        col: 3
         description: Budget estimé côté client, hors affaires perdues, infructueuses, NO GO, hors scope et non shortlistées.
         sql: |
           SELECT SUM(budget) AS value FROM opportunities
           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
           {% endif %}
@@ -50,11 +449,18 @@ rows:
 
       - name: Offre financière
         type: metric
-        col: 4
+        col: 3
         description: Montant réellement proposé par DevoTeam, sur le même périmètre.
         sql: |
           SELECT SUM(financial_offer) AS value FROM opportunities
           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
           {% endif %}
@@ -62,94 +468,43 @@ rows:
 
       - name: Écart offre / budget
         type: metric
-        col: 4
+        col: 3
         description: Négatif = nous chiffrons en dessous du budget annoncé par le client.
         sql: |
           SELECT (SUM(financial_offer) - SUM(budget)) / NULLIF(SUM(budget), 0) AS value FROM opportunities
           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
           {% endif %}
         value: { field: value, type: number, format: "+.1%" }
 
-  # --- Ligne 2 : le volume et la qualité du portefeuille ---
-  - widgets:
-      - name: Opportunités
-        type: metric
-        col: 4
-        sql: |
-          SELECT COUNT(*) AS value FROM opportunities
-          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
-          {% if filters.practice != 'Toutes' %}
-            AND practice = '{{ filters.practice }}'
-          {% endif %}
-        value: { field: value, type: number, format: ",.0f" }
-
       - name: Montant pondéré
         type: metric
-        col: 4
+        col: 3
         description: Offre financière × probabilité de gain, sur les seules opportunités où elle est renseignée — environ la moitié du portefeuille.
         sql: |
           SELECT SUM(weighted_amount) AS value FROM opportunities
           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
           {% endif %}
         value: { field: value, type: number, format: ",.0f" }
 
-      - name: Probabilité de gain moyenne
-        type: metric
-        col: 4
-        sql: |
-          SELECT AVG(win_probability) AS value FROM opportunities
-          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
-            AND win_probability IS NOT NULL
-          {% if filters.practice != 'Toutes' %}
-            AND practice = '{{ filters.practice }}'
-          {% endif %}
-        value: { field: value, type: number, format: ".1%" }
-
-  # --- Ligne 3 : « Où est l'argent ? » et « comment se répartit-il ? » ---
-  - widgets:
-      - name: Budget par pays
-        type: chart
-        chart: bar
-        col: 7
-        description: Les 10 pays au budget actif le plus élevé.
-        sql: |
-          SELECT country, SUM(budget) AS budget FROM opportunities
-          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
-          {% if filters.practice != 'Toutes' %}
-            AND practice = '{{ filters.practice }}'
-          {% endif %}
-          GROUP BY 1
-          ORDER BY 2 DESC
-          LIMIT 10
-        x: { field: country, type: category, title: Pays }
-        y: { field: budget, type: number, title: Budget, format: ",.0f" }
-        # Une couleur par pays plutôt qu'une teinte unique : chaque catégorie se
-        # distingue immédiatement, et la légende relie les graphiques entre eux.
-        color: { field: country }
-
-      - name: Répartition par practice
-        type: chart
-        chart: pie
-        # Élargi à 5 colonnes : le camembert affiche « nom NN% » à côté de chaque
-        # part, et ces étiquettes sont rognées si le widget est trop étroit.
-        col: 5
-        description: Nombre d'opportunités actives par practice.
-        sql: |
-          SELECT practice, COUNT(*) AS nb FROM opportunities
-          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
-          {% if filters.practice != 'Toutes' %}
-            AND practice = '{{ filters.practice }}'
-          {% endif %}
-          GROUP BY 1
-          ORDER BY 2 DESC
-        label: practice
-        value: { field: nb }
-
-  # --- Ligne 4 : « Où en est le pipeline ? » et « où perd-on les affaires ? » ---
+  # === Pipeline : où en sont les affaires encore ouvertes ===
   - widgets:
       - name: Entonnoir de vente
         type: chart
@@ -159,7 +514,6 @@ rows:
         # Cumul depuis la fin : une opportunité signée a nécessairement franchi les
         # étapes précédentes. Compter les statuts bruts ne décroîtrait pas et ne
         # formerait donc pas un entonnoir (voir backend/sql_builder.funnel_sql).
-        # Les statuts de sortie sont déjà absents de la liste des étapes.
         sql: |
           WITH etapes AS (
             SELECT status, COUNT(*) AS nb,
@@ -184,8 +538,15 @@ rows:
               'Manif shortlistée', 'Manifestation remise', 'Offre remise',
               'En attente du plan de charge', 'Offre gagnée', 'Offre signée'
             )
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
           {% if filters.practice != 'Toutes' %}
-              AND practice = '{{ filters.practice }}'
+            AND practice = '{{ filters.practice }}'
           {% endif %}
             GROUP BY status
           )
@@ -224,8 +585,15 @@ rows:
               'Manif shortlistée', 'Manifestation remise', 'Offre remise',
               'En attente du plan de charge', 'Offre gagnée', 'Offre signée'
             )
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
           {% if filters.practice != 'Toutes' %}
-              AND practice = '{{ filters.practice }}'
+            AND practice = '{{ filters.practice }}'
           {% endif %}
             GROUP BY status
           ),
@@ -242,12 +610,41 @@ rows:
         y: { field: taux, type: number, title: Taux de passage, format: ".0%" }
         color: { field: status }
 
-  # --- Ligne 5 : « Qu'est-ce qui est urgent ? » ---
+  - widgets:
+      - name: Budget actif par pays
+        type: chart
+        chart: bar
+        col: 12
+        description: Les 10 pays au budget actif le plus élevé.
+        sql: |
+          SELECT country, SUM(budget) AS budget FROM opportunities
+          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          GROUP BY 1
+          ORDER BY 2 DESC
+          LIMIT 10
+        x: { field: country, type: category, title: Pays }
+        y: { field: budget, type: number, title: Budget, format: ",.0f" }
+        color: { field: country }
+
+  # === Ce qu'il faut traiter maintenant ===
   - widgets:
       - name: Opportunités urgentes (échéance ≤ 7 jours)
         type: table
         col: 12
-        description: Opportunités encore ouvertes uniquement — les affaires closes ou perdues sont exclues.
+        description: >-
+          Opportunités encore ouvertes uniquement. Seul widget tourné vers l'avenir :
+          la borne « à date » des offres remises ne s'y applique pas, sinon il serait
+          toujours vide.
         sql: |
           SELECT buyer, country, practice, status, deadline, days_remaining, budget
           FROM opportunities
@@ -256,6 +653,13 @@ rows:
               'Offre gagnée', 'Offre perdue', 'Offre signée', 'Infructueux',
               'NO GO', 'Hors scope', 'Non shortlisté'
             )
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
           {% if filters.practice != 'Toutes' %}
             AND practice = '{{ filters.practice }}'
           {% endif %}

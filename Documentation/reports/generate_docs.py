@@ -490,7 +490,7 @@ def build_rapport_professionnel():
              "(alertes deadlines, rafraîchissement des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (193 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
+            ["Tests", "pytest (199 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
              "(mocks), garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -509,7 +509,7 @@ def build_rapport_professionnel():
                      "explicite — il n'écrit jamais lui-même de requête.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "193 tests automatisés couvrent la compréhension du langage, le requêtage des "
+    add_bullet(doc, "199 tests automatisés couvrent la compréhension du langage, le requêtage des "
                      "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -759,7 +759,7 @@ def build_guide_technique():
             ["backend/business_rules.py", "Règles métier indépendantes de l'affichage (ordre du pipeline)."],
             ["backend/data_quality.py", "Rapport des lignes rejetées et des valeurs manquantes."],
             ["dac/.bruin.yml", "Connexion DuckDB de DAC (aucun identifiant, versionnée volontairement)."],
-            ["dac/dashboards/accueil.yml", "Vue d'ensemble écrite à la main, versionnée et relue en revue."],
+            ["dac/dashboards/accueil.yml", "Vue d'ensemble écrite à la main (19 widgets), versionnée et relue en revue."],
             ["dac/dashboards/_principal.yml", "Tableau de bord de travail, réécrit par chaque question (éphémère, hors suivi git)."],
             ["dac/dashboards/_analyse_*.yml", "Instantané figé par question, pour les rouvrir (éphémère, hors suivi git)."],
             ["frontend/src/", "Application Vite + React (chat, iframe DAC, hooks, styles)."],
@@ -1112,7 +1112,35 @@ def build_guide_technique():
         "filtres à plusieurs valeurs sont épargnés — « compare la France et le Maroc » "
         "veut précisément cet axe ET cette restriction.")
 
-    add_h2(doc, "9.5 Dire ce qui a changé")
+    add_h2(doc, "9.5 « Offre remise » est un terme métier, pas un statut")
+    add_body(doc,
+        "Le statut décrit l'état COURANT d'une opportunité, pas son historique. Une "
+        "offre partie chez le client et gagnée depuis n'est plus au statut « Offre "
+        "remise » : compter ce seul statut donne 4 offres là où 57 ont réellement été "
+        "déposées. Sont donc « remises » les opportunités dont le statut ATTESTE le "
+        "dépôt — Offre remise, En attente du plan de charge, Offre gagnée, Offre "
+        "signée, Offre perdue.")
+    add_cue(doc,
+        "Trois définitions étaient défendables selon qu'on y range les appels d'offres "
+        "infructueux et les candidatures non shortlistées — 57, 62 ou 67 offres, pour "
+        "un taux de réussite de 53 %, 48 % ou 45 %. L'écart est trop grand pour être "
+        "tranché par le code : la question a été posée au métier, qui a retenu la "
+        "définition la plus stricte. Il n'existe par ailleurs aucune colonne « date de "
+        "remise » : l'échéance en tient lieu, la date limite de dépôt étant, pour un "
+        "appel d'offres, la date de remise.")
+    add_body(doc,
+        "Filtrer sur ces statuts lève au passage l'exclusion par défaut des affaires "
+        "perdues (section 9.1) — ce qui est exactement voulu : une offre perdue a bien "
+        "été remise, et sans cela la question « sur le total remis, combien de "
+        "perdues ? » n'aurait pas de réponse. La définition sert le dashboard ET le "
+        "chat : sans règle dédiée, la même question posée dans la conversation aurait "
+        "répondu 4.")
+    add_body(doc,
+        "Le taux de réussite se calcule sur les offres DÉCIDÉES, pas sur le total "
+        "remis : une offre en attente n'est ni un succès ni un échec, la compter au "
+        "dénominateur écraserait le taux sans rien dire de vrai.")
+
+    add_h2(doc, "9.6 Dire ce qui a changé")
     add_body(doc,
         "Une demande de suite modifie le tableau de bord affiché. Sans le dire, "
         "l'utilisateur voit l'iframe se recharger sans savoir ce qui a été pris en "
@@ -1130,7 +1158,7 @@ def build_guide_technique():
         "Au-delà de trois différences, rien n'est annoncé : le mot « modifié » "
         "deviendrait trompeur, ce n'est plus une retouche mais une autre analyse.")
 
-    add_h2(doc, "9.6 Un seul tableau de bord, modifié sur place")
+    add_h2(doc, "9.7 Un seul tableau de bord, modifié sur place")
     add_body(doc,
         "Chaque question réécrit _principal.yml, dont le nom de dashboard ne change "
         "jamais — donc l'URL de l'iframe non plus. L'utilisateur voit son tableau de "
@@ -1423,7 +1451,7 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "15. Tests automatisés")
     add_body(doc,
-        "193 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
+        "199 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
         "et le client Google Sheets (gspread) sont simulés (monkeypatch), et les données "
         "sont un petit DataFrame construit dans le test. La suite tourne donc hors ligne, "
         "en quelques secondes.")
@@ -1436,7 +1464,7 @@ def build_guide_technique():
     add_table(doc,
         ["Fichier", "Tests", "Ce qu'il protège"],
         [
-            ["test_intent_refiner.py", "53", "Dates relatives, parseur par mots-clés, affinage "
+            ["test_intent_refiner.py", "59", "Dates relatives, parseur par mots-clés, affinage "
              "d'intention, normalisation funnel/heatmap/scatter/days_remaining/exclude_statuses, "
              "arbitrage du type de graphique, retouches et vérification de couverture mot à mot."],
             ["test_data_store.py", "26", "Parsing et validation par ligne, littéraux NULL, "
@@ -1732,7 +1760,7 @@ def build_presentation_script():
     add_h1(doc, "Les chiffres à retenir")
     add_bullet(doc, "1 question = 1 tableau de bord complet, généré automatiquement.")
     add_bullet(doc, "9 types de visualisations choisis automatiquement selon la question.")
-    add_bullet(doc, "193 tests automatisés, aucune dépendance à des données réelles.")
+    add_bullet(doc, "199 tests automatisés, aucune dépendance à des données réelles.")
     add_bullet(doc, "21 phases de développement livrées, de bout en bout, en autonomie.")
     add_bullet(doc, "0 base de données à administrer — le Google Sheet est la source de vérité.")
     add_bullet(doc, "0 hallucination tolérée : donnée non fiable = question posée en retour, jamais un chiffre inventé.")

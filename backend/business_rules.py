@@ -50,6 +50,33 @@ LOST_STATUSES = [
     "Non shortlisté",
 ]
 
+
+# ---------------------------------------------------------------------------
+# Offres remises
+#
+# Le statut décrit l'état COURANT d'une opportunité, pas son historique. Une offre
+# partie chez le client et gagnée depuis n'est plus au statut « Offre remise » :
+# compter ce seul statut donnait 4 offres là où 57 avaient réellement été déposées.
+#
+# Sont donc « remises » les opportunités dont le statut ATTESTE le dépôt. La liste a
+# été arrêtée avec le métier : les appels d'offres déclarés infructueux et les
+# candidatures non shortlistées en sont volontairement absents, leur position exacte
+# par rapport à la remise n'étant pas certaine.
+# ---------------------------------------------------------------------------
+
+SUBMITTED_STATUSES = [
+    "Offre remise",
+    "En attente du plan de charge",
+    "Offre gagnée",
+    "Offre signée",
+    "Offre perdue",
+]
+
+# Issue d'une offre remise. « En attente » se déduit du reste : déposée, sans
+# décision du client à ce jour.
+WON_STATUSES = ["Offre gagnée", "Offre signée"]
+PENDING_SUBMISSION = ["Offre remise", "En attente du plan de charge"]
+
 # Au-delà, un croisement dimension × practice devient illisible. On garde les N
 # valeurs les plus fortes plutôt que de tronquer arbitrairement ou de tout afficher.
 MAX_HEATMAP_ROWS = 15

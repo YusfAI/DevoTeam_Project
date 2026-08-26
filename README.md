@@ -41,7 +41,16 @@ données à installer.
   demandé sur 19 pays devient des barres, et l'explication s'affiche sous le
   graphique. Une moyenne ne forme jamais des parts d'un tout.
 - **Vue d'ensemble versionnée** : la page d'accueil est un dashboard YAML relu en
-  revue (`dac/dashboards/accueil.yml`), avec filtre interactif.
+  revue (`dac/dashboards/accueil.yml`), avec filtres interactifs de période et de
+  practice. Elle répond d'abord aux trois questions du métier — combien d'offres
+  remises sur la période, comment elles se répartissent par practice, et ce qu'elles
+  sont devenues (gagnées / perdues / en attente) — puis donne l'état du portefeuille,
+  le pipeline et les échéances urgentes. 19 widgets.
+- **« Offre remise » est un terme métier, pas un statut** : le statut décrit l'état
+  *courant*, donc une offre partie chez le client et gagnée depuis n'y figure plus.
+  Compter ce seul statut donnait 4 offres là où 57 avaient été déposées. La
+  définition (`business_rules.SUBMITTED_STATUSES`) vaut aussi bien pour le dashboard
+  que pour le chat.
 - 9 types de rendu : barres, courbes, aires, camemberts (pourcentage affiché sur
   chaque part), cartes KPI, tableaux, entonnoir de vente, nuage de points et carte de
   chaleur. Les catégories d'un graphique ont chacune leur couleur, la même d'un
@@ -228,7 +237,9 @@ backend/
 dac/
   .bruin.yml             connexion DuckDB (aucun secret, versionnée volontairement)
   themes/devoteam.yml    thème aux couleurs de l'application (palette CVD comprise)
-  dashboards/accueil.yml vue d'ensemble écrite à la main, versionnée
+  dashboards/accueil.yml vue d'ensemble versionnée, PRODUITE par
+                         scripts/generate_accueil.py (étapes du pipeline et statuts
+                         dérivés de business_rules.py) — ne pas éditer à la main
   dashboards/qualite.yml  dashboard de qualité des données, versionné
   dashboards/_principal.yml tableau de bord de travail, réécrit à chaque question (gitignoré)
   dashboards/_analyse_*.yml instantanés par question, pour les rouvrir (gitignorés)
@@ -237,7 +248,7 @@ frontend/              Vite + React (build servi par FastAPI en local)
 credentials/           clé de compte de service Google (gitignoré, absent par défaut)
 data/                  scheduler_state.json (état local, gitignoré) ; dump SQL
                        historique de l'ancienne base MySQL, conservé pour référence
-tests/                 suite pytest (mock Gemini/Sheets), 193 tests
+tests/                 suite pytest (mock Gemini/Sheets), 199 tests
 Documentation/
   WORKFLOW.md            traçage concret d'une question, du prompt au dashboard affiché
   reports/              rapport professionnel + guide technique (.docx) et leur générateur

@@ -5,7 +5,7 @@ import unicodedata
 from datetime import date
 from typing import Optional
 
-from .business_rules import choose_chart_type
+from .business_rules import SUBMITTED_STATUSES, choose_chart_type
 from .schema_and_whitelist import VALID_METRICS, VALID_DIMENSIONS, KNOWN_VALUES
 from .alerts import EXCLUDED_STATUSES
 
@@ -18,6 +18,24 @@ def _norm(text: str) -> str:
 # "offre(s)"/"opportunité(s)" doit précéder "pondéré..." de près (0-2 mots entre les
 # deux) — exclut "montant pondéré", qui n'a ni "offre" ni "opportunité" à proximité.
 _WEIGHTED_OFFER_PATTERN = re.compile(r"\b(?:offres?|opportunit\w*)\s+(?:\w+\s+){0,2}ponder")
+
+# « offres remises » est un terme MÉTIER, pas le statut du même nom. Le statut décrit
+# l'état courant : une offre partie chez le client et gagnée depuis n'y figure plus.
+# Sans cette règle, la question « combien d'offres a-t-on remises ? » répondait 4 —
+# le nombre d'offres encore en attente de décision — quand la vue d'ensemble en
+# affiche 57. Deux chiffres différents pour la même question, selon qu'on la pose au
+# chat ou qu'on la lise sur le dashboard : c'est précisément ce que ce projet évite.
+#
+# Le pluriel n'est pas exigé (« combien d'offre remise ») mais « offre remise »
+# employé au singulier avec un déterminant défini (« le statut offre remise ») reste
+# rare, et la levée d'ambiguïté par le nombre serait fragile.
+# Jusqu'à trois mots peuvent s'intercaler : « combien d'offres A-T-ON remises ». La
+# classe intermédiaire inclut l'apostrophe et le trait d'union, sans quoi « a-t-on »
+# ne compterait pas pour un mot et la tournure la plus naturelle de la question
+# passerait à côté de la règle.
+_SUBMITTED_OFFER_PATTERN = re.compile(
+    r"\b(?:offres?|opportunit\w*|dossiers?)\s+(?:[\w'-]+\s+){0,3}(?:remis\w*|depose\w*|soumis\w*)"
+)
 
 
 PRACTICE_MAP = {
@@ -523,6 +541,15 @@ def refine_intent(query: str, intent: dict, today: Optional[date] = None) -> dic
         intent["filters"]["status"] = "Offre remise"
         intent.setdefault("range_filters", {})
         intent["range_filters"]["win_probability"] = {"op": ">=", "value": 0.8}
+
+    # « offres remises » = toutes celles effectivement déposées, y compris gagnées et
+    # perdues depuis (business_rules.SUBMITTED_STATUSES). Placé APRÈS la règle des
+    # offres pondérées, qui est plus spécifique et vise un tout autre périmètre.
+    # Filtrer sur `status` lève au passage l'exclusion par défaut des affaires
+    # perdues — ce qui est voulu : une offre perdue a bien été remise.
+    elif _SUBMITTED_OFFER_PATTERN.search(q):
+        intent.setdefault("filters", {})
+        intent["filters"]["status"] = list(SUBMITTED_STATUSES)
 
     # Ce que les MOTS de la question demandent. La forme retenue est ensuite validée
     # contre la forme réelle des données par choose_chart_type, en fin de fonction :

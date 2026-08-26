@@ -29,6 +29,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 22 — Chantier de finition : justesse des chiffres, contexte, qualité des données, fiabilité perçue et identité visuelle
 - [x] Phase 23 — L'assistant modifie LE tableau de bord : affaires perdues exclues, ambiguïtés des données tranchées, forme des graphiques arbitrée sur les données, retouches sans appel au modèle, historique des demandes
 - [x] Phase 24 — Tout se pilote par la phrase tapée, chaque demande reçoit une réponse explicite, historique en volet, et une cellule illisible ne coûte plus la ligne entière
+- [x] Phase 25 — La vue d'ensemble répond aux trois questions du métier : offres remises sur la période, répartition par practice, et issue gagnée / perdue / en attente
 
 ## 📝 Journaux
 
@@ -149,6 +150,22 @@ Vérification finale sur les vraies données : `dac check` passe sur **15 dashbo
 La contrepartie est non négociable et a été construite en même temps : réparer sans tracer reviendrait à corrompre en silence, exactement ce que le rejet servait à éviter. Chaque remplacement est recensé avec sa ligne, sa colonne et sa valeur d'origine, diagnostiqué quand la faute est reconnaissable, et le dashboard « Qualité des données » a été réécrit autour de cette notion — il porte désormais un compteur « Lignes écartées malgré tout » qui doit rester à zéro.
 
 Suite `pytest` : 193 tests (était 168). `dac check` : 15 dashboards, 115 widgets, tous verts.
+
+**Phase 25** : Terminée. La vue d'ensemble est réécrite pour répondre d'abord aux trois questions que le métier pose réellement, avant de donner l'état du portefeuille.
+
+*Deux définitions à arrêter avant d'écrire quoi que ce soit.* « Combien d'offres a-t-on remises ? » n'a pas de réponse évidente : le statut décrit l'état COURANT, donc une offre partie chez le client et gagnée depuis n'est plus au statut « Offre remise » — le compter seul donne 4 offres là où 57 ont été déposées. Trois définitions étaient défendables (57, 62 ou 67 selon qu'on y range les appels d'offres infructueux et les candidatures non shortlistées, avec un taux de réussite de 53 %, 48 % ou 45 %) ; le métier a tranché pour la plus stricte. Et comme il n'existe pas de colonne « date de remise », c'est l'échéance qui en tient lieu — pour un appel d'offres, la date limite de dépôt EST la date de remise.
+
+*Le dashboard.* Quatre KPI répondent à Q1 et Q3 (57 remises, 30 gagnées, 18 perdues, 9 en attente), trois donnent le taux de réussite et les montants, un camembert montre l'issue et un autre la répartition par practice (Q2). Deux barres empilées croisent ensuite les deux lectures : issue par practice — où l'on voit que Data Management n'a gagné aucune de ses 6 offres remises — et rythme de dépôt mois par mois. Suivent la santé du portefeuille, le pipeline et les urgences. Un filtre de période en tête recalcule les 19 widgets.
+
+*Le taux de réussite se calcule sur les offres DÉCIDÉES* (30 sur 48, soit 62,5 %) et non sur le total remis : une offre en attente n'est ni un succès ni un échec, la compter au dénominateur écraserait le taux sans rien dire de vrai.
+
+*Une contrainte de rendu traitée plutôt que subie.* Bruin DAC attribue les couleurs de série par rang dans le résultat : une période sans aucune offre perdue aurait décalé l'ordre et repeint « Gagnée ». Les trois issues sont donc énumérées en dur et jointes en LEFT JOIN, présentes même à zéro — ce qui fige l'ordre et rend visible, plutôt que d'effacer, le cas « 0 gagnée ». La palette a par ailleurs été repassée au validateur sur la vraie surface DAC (#fcfcfb) : tous les contrôles passent, l'avertissement de contraste étant levé par les étiquettes natives et le tableau de détail.
+
+*Cohérence chat / dashboard.* Sans règle dédiée, la même question posée au chat aurait répondu 4. « Offres remises », « dossiers déposés » et leurs variantes sont désormais reconnus comme le terme métier et résolus vers la même liste de statuts — y compris dans la tournure « combien d'offres A-T-ON remises », où trois mots s'intercalent.
+
+*Un défaut de méthode corrigé au passage.* Une ligne entière de KPI manquait à l'assemblage du dashboard, et le contrôle automatique ne l'a pas vu : il vérifiait que chaque ligne remplit bien la grille de 12 colonnes, ce qu'une ligne absente respecte parfaitement. Le générateur vérifie maintenant aussi la présence nominative des 19 widgets attendus.
+
+Suite `pytest` : 199 tests (était 193). `dac check` : 15 dashboards, 119 widgets, tous verts.
 
 ## 📊 Bilan du Produit
 

@@ -443,3 +443,68 @@ def test_the_title_follows_the_adjustment():
     # compte ; reprendre la phrase tapée donnerait « Par practice » comme intitulé.
     suite = try_followup_parse("par practice", _PRECEDENT)
     assert suite["goal"] == "Budget par practice"
+
+
+# ---------------------------------------------------------------------------
+# « Offres remises » : un terme métier, pas le statut du même nom
+# ---------------------------------------------------------------------------
+
+from backend.business_rules import PENDING_SUBMISSION, SUBMITTED_STATUSES, WON_STATUSES
+
+
+def _intent_vierge(**overrides):
+    base = {"goal": "", "metric": "nb_opportunities", "dimension": "", "filters": {},
+            "range_filters": {}, "chart_type": "kpi_card", "aggregation": "count",
+            "use_raw_table": False, "limit": 0}
+    base.update(overrides)
+    return base
+
+
+def test_submitted_offers_cover_every_status_that_proves_a_deposit():
+    # Le statut décrit l'état COURANT : une offre partie chez le client et gagnée
+    # depuis n'est plus au statut « Offre remise ». Compter ce seul statut donnait 4
+    # offres là où 57 avaient réellement été déposées.
+    intent = refine_intent("combien d'offres remises", _intent_vierge())
+    assert intent["filters"]["status"] == list(SUBMITTED_STATUSES)
+
+
+def test_the_natural_phrasing_with_words_in_between_is_recognised():
+    # « combien d'offres A-T-ON remises » : trois mots séparent les deux termes, dont
+    # un que \w seul ne sait pas lire.
+    intent = refine_intent("combien d'offres a-t-on remises", _intent_vierge())
+    assert intent["filters"]["status"] == list(SUBMITTED_STATUSES)
+
+
+def test_a_submitted_offer_that_was_lost_still_counts_as_submitted():
+    # C'est ce qui rend la question « sur le total remis, combien de perdues ? »
+    # répondable — et ce qui lève l'exclusion par défaut des affaires perdues,
+    # puisque l'intention filtre elle-même sur le statut.
+    assert "Offre perdue" in SUBMITTED_STATUSES
+    intent = refine_intent("offres remises", _intent_vierge())
+    assert "Offre perdue" in intent["filters"]["status"]
+
+
+def test_weighted_offers_keep_their_own_narrower_meaning():
+    # Règle plus spécifique et périmètre tout autre : elle ne doit pas être avalée
+    # par celle des offres remises, dont elle partage pourtant le mot « offres ».
+    intent = refine_intent("liste des offres pondérées", _intent_vierge())
+    assert intent["filters"]["status"] == "Offre remise"
+    assert intent["range_filters"]["win_probability"] == {"op": ">=", "value": 0.8}
+
+
+def test_a_plain_status_question_is_untouched():
+    intent = refine_intent("offres perdues", _intent_vierge())
+    assert intent["filters"]["status"] == "Offre perdue"
+
+
+def test_the_three_outcome_lists_partition_the_submitted_ones():
+    # Les KPI « gagnées », « perdues » et « en attente » doivent additionner le total
+    # des offres remises : un statut oublié dans une des listes ferait un dashboard
+    # dont les parties ne font pas le tout.
+    gagnees = set(WON_STATUSES)
+    attente = set(PENDING_SUBMISSION)
+    perdues = set(SUBMITTED_STATUSES) - gagnees - attente
+
+    assert gagnees | attente | perdues == set(SUBMITTED_STATUSES)
+    assert not (gagnees & attente) and not (gagnees & perdues) and not (attente & perdues)
+    assert perdues == {"Offre perdue"}
