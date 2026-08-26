@@ -536,6 +536,50 @@ body::before {
   flex-shrink: 0;
 }
 
+/* Réglage de la taille d'affichage. Deux boutons et la valeur, groupés comme un
+   seul contrôle pour ne pas ajouter du bruit à côté du sélecteur d'historique. */
+.zoom-control {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-card);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.zoom-control button {
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  width: 26px;
+  height: 30px;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.zoom-control button:hover:not(:disabled) {
+  background: var(--surface-page);
+  color: var(--text-primary);
+}
+
+.zoom-control button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.zoom-control span {
+  min-width: 44px;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Bouton d'historique, dans l'en-tête du tableau de bord. Aligné sur le sélecteur
    de vue qu'il précède : même hauteur, même rayon, même famille de couleurs — ce
    sont deux commandes du même objet, elles doivent se lire comme une paire. */
@@ -607,11 +651,13 @@ body::before {
    colonnes), on lui laisse toute la surface plutôt que d'empiler deux cadres. */
 /* Deux cadres se superposent le temps d'un changement : celui qu'on regarde, et le
    suivant qui charge par-dessus. D'où le positionnement absolu — en flux, ils se
-   suivraient au lieu de se recouvrir. `inset: 0` déborde volontairement sur le
-   padding du conteneur pour que le tableau de bord aille jusqu'au bord arrondi. */
+   suivraient au lieu de se recouvrir. Le calage se fait par top/left plutôt que par
+   `inset: 0`, pour que la largeur et la hauteur restent pilotables en ligne : elles
+   compensent le zoom (voir DashboardPanel), et `inset` les contredirait. */
 .dac-frame {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   border: 0;

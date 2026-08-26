@@ -8,6 +8,23 @@ import DevoteamLogo from './DevoteamLogo'
 // nouveau complètement opaque, sinon le fond apparaîtrait entre les deux.
 const FONDU_MS = 320
 
+// Paliers de zoom du tableau de bord. DAC n'expose aucun jeton de typographie — son
+// bundle ne lit que onze variables `--dac-*` et huit teintes, aucune taille de texte —
+// donc agrandir la police depuis le thème est impossible. Zoomer le cadre produit le
+// même effet, et le choix revient à qui regarde l'écran.
+const ZOOMS = [0.9, 1, 1.1, 1.25, 1.4]
+const ZOOM_STORAGE = 'devoteam-dashboard-zoom'
+
+function zoomInitial() {
+  try {
+    const enregistre = Number(window.localStorage.getItem(ZOOM_STORAGE))
+    return ZOOMS.includes(enregistre) ? enregistre : 1
+  } catch {
+    // Navigation privée ou stockage indisponible : le zoom par défaut suffit.
+    return 1
+  }
+}
+
 export default function DashboardPanel({
   dashboard, dashboardKey, historyOpen, onToggleHistory,
 }) {
@@ -21,6 +38,22 @@ export default function DashboardPanel({
   // État du serveur de dashboards. null = vérification en cours ; false = injoignable,
   // auquel cas on affiche une consigne au lieu d'une iframe vide et muette — une
   // panne de DAC était jusqu'ici indiscernable d'une absence de données.
+  const [zoom, setZoom] = useState(zoomInitial)
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(ZOOM_STORAGE, String(zoom))
+    } catch {
+      // Le réglage est un confort, pas une garantie.
+    }
+  }, [zoom])
+
+  function decalerZoom(pas) {
+    setZoom((actuel) => {
+      const index = ZOOMS.indexOf(actuel)
+      return ZOOMS[Math.min(ZOOMS.length - 1, Math.max(0, index + pas))]
+    })
+  }
+
   const [dacStatus, setDacStatus] = useState(null)
   useEffect(() => {
     let cancelled = false
@@ -93,6 +126,27 @@ export default function DashboardPanel({
           <p>{subtitle}</p>
         </div>
         <div className="dashboard-header-actions">
+          {/* DAC ne permet pas d'agrandir la police de ses graphiques ; zoomer le
+              cadre revient au même et laisse le réglage à qui lit l'écran. */}
+          <div className="zoom-control" role="group" aria-label="Taille d’affichage">
+            <button
+              type="button"
+              onClick={() => decalerZoom(-1)}
+              disabled={zoom === ZOOMS[0]}
+              title="Réduire l’affichage"
+            >
+              −
+            </button>
+            <span aria-live="polite">{Math.round(zoom * 100)} %</span>
+            <button
+              type="button"
+              onClick={() => decalerZoom(1)}
+              disabled={zoom === ZOOMS[ZOOMS.length - 1]}
+              title="Agrandir l’affichage"
+            >
+              +
+            </button>
+          </div>
           <button
             type="button"
             className={`history-button${historyOpen ? ' active' : ''}`}
@@ -137,6 +191,10 @@ export default function DashboardPanel({
               <iframe
                 key={frame.token}
                 className={`dac-frame${ready[frame.token] ? '' : ' loading'}`}
+                // La largeur et la hauteur compensent le zoom : sans elles, le cadre
+                // grandirait avec son contenu et déborderait de son conteneur. Ainsi
+                // seule la taille du RENDU change, pas celle du bloc.
+                style={{ zoom, width: `${100 / zoom}%`, height: `${100 / zoom}%` }}
                 src={frame.src}
                 title={currentName}
                 onLoad={() => handleLoad(frame.token)}

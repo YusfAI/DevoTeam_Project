@@ -53,6 +53,13 @@ données à installer.
   remises sur la période, comment elles se répartissent par practice, et ce qu'elles
   sont devenues (gagnées / perdues / en attente) — puis donne l'état du portefeuille,
   le pipeline et les échéances urgentes. 19 widgets.
+- **Palette revalidée** : huit teintes qui passent tous les contrôles du validateur
+  daltonien sans avertissement, contraste compris — les trois teintes claires de la
+  version précédente passaient sous 3:1. Un test empêche la régression et vérifie que
+  l'application et les dashboards n'utilisent pas deux palettes différentes.
+- **Taille d'affichage réglable** : Bruin DAC n'expose aucun jeton de typographie, un
+  réglage de zoom (90 % à 140 %) sur le cadre produit le même effet et se souvient du
+  choix.
 - **Chaque visuel s'explique** : une phrase courte sous le titre de chacun des 24
   widgets de la vue d'ensemble, vérifiée par un test (moins de 100 caractères). Le
   raisonnement long vit en commentaire YAML, pour la revue.
@@ -264,7 +271,7 @@ frontend/              Vite + React (build servi par FastAPI en local)
 credentials/           clé de compte de service Google (gitignoré, absent par défaut)
 data/                  scheduler_state.json (état local, gitignoré) ; dump SQL
                        historique de l'ancienne base MySQL, conservé pour référence
-tests/                 suite pytest (mock Gemini/Sheets), 227 tests
+tests/                 suite pytest (mock Gemini/Sheets), 230 tests
 Documentation/
   WORKFLOW.md            traçage concret d'une question, du prompt au dashboard affiché
   reports/              rapport professionnel + guide technique (.docx) et leur générateur

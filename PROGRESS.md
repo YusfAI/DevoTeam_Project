@@ -38,6 +38,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 31 — Proxy du serveur de développement corrigé, et trois tests qui empêchent l'oubli de se reproduire
 - [x] Phase 32 — Tableau des affaires chaudes replacé dans le dashboard DAC, seul sur sa ligne
 - [x] Phase 33 — Détail réparti sur trois colonnes : hauteur divisée par trois, aucune opportunité perdue
+- [x] Phase 34 — Palette revalidée sans avertissement, garde-fou contre la divergence, et taille d'affichage réglable
 
 ## 📝 Journaux
 
@@ -270,6 +271,18 @@ Suite `pytest` : 226 tests. `dac check` : 15 dashboards, 121 widgets, tous verts
 *Trois tests tiennent l'invariant qui compte* : les trois colonnes contiennent chaque affaire exactement une fois, dans l'ordre des espérances de gain décroissantes, et le découpage se répartit au plus juste quel que soit le total. Un découpage qui doublonnerait ou sauterait une ligne échouerait là, alors qu'aucune requête n'aurait échoué.
 
 Suite `pytest` : 227 tests. `dac check` : 15 dashboards, 123 widgets, tous verts.
+
+**Phase 34** : Terminée. Travail sur l'apparence des graphiques — dans les limites, précisément mesurées, de ce que Bruin DAC laisse régler.
+
+*Ce que le thème pilote vraiment.* Le bundle servi ne lit que **onze variables `--dac-*`** (surfaces, bordure, trois niveaux de texte, accent, succès, erreur) et **huit teintes de graphique**. Rien d'autre : le fichier de thème accepte volontiers un `font-size` ou un `radius`, mais personne ne les lit. Il n'existe donc aucun moyen d'agrandir la police d'un graphique ni d'en changer la forme depuis la configuration. Les animations, elles, sont désactivées dans le code de DAC lui-même (`isAnimationActive: false`).
+
+*La palette, refaite au validateur et non à l'œil.* La version précédente laissait trois teintes — vert, ambre, rose — sous le rapport de contraste 3:1 avec la surface, ce que le validateur signalait sans que rien n'empêche la dérive. Trois candidates ont été mesurées ; celle retenue passe **tous les contrôles sans un seul avertissement**, et la séparation en vision daltonienne sur la paire la plus serrée remonte de 6,2 à **8,1 ΔE** — au-dessus de la cible, plus seulement du plancher. Les teintes sont plus profondes, donc plus lisibles sur fond clair. La palette du mode sombre, déjà conforme, n'a pas bougé.
+
+*Un garde-fou sur ce qui n'en avait pas.* La palette vit dans deux fichiers — `tokens.css` pour l'application, `themes/devoteam.yml` pour les dashboards — et un commentaire demandait depuis toujours de les tenir synchronisés sans que rien ne le vérifie. Trois tests le font maintenant : les deux fichiers portent la même palette, chaque teinte atteint 3:1 avec la surface, aucune n'est employée deux fois. Vérifié en réintroduisant l'ancienne teinte ambre : les deux premiers tests tombent.
+
+*La taille du texte, rendue à l'utilisateur.* Faute de jeton de typographie, un réglage de zoom (90 % à 140 %) agit sur le cadre et produit le même effet. La largeur et la hauteur compensent le facteur, sans quoi le cadre grandirait avec son contenu et déborderait. Le choix est mémorisé. C'est un réglage plutôt qu'une valeur imposée parce que je ne vois pas l'écran : c'est à celui qui le regarde de trancher.
+
+Suite `pytest` : 230 tests (était 227). `dac check` : 15 dashboards, 124 widgets, tous verts.
 
 ## 📊 Bilan du Produit
 
