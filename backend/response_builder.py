@@ -101,7 +101,12 @@ def build_data_response(intent: dict, data: list) -> str:
     dimension = intent.get("dimension", "")
     chart_type = intent.get("chart_type", "bar")
     goal = intent.get("goal", "")
-    use_raw = intent.get("use_raw_table") or bool(intent.get("range_filters"))
+    # Même règle que db_layer et sql_builder, et pour la même raison : la présence
+    # d'un range_filter ne signifie PAS que l'utilisateur veut une liste. Elle le
+    # faisait ici, et « combien d'affaires chaudes ? » répondait « 1 opportunité » —
+    # le nombre de LIGNES du résultat agrégé, au lieu des 14 qu'il contenait. Le
+    # souhait d'une liste s'exprime par use_raw_table ou chart_type == "table".
+    use_raw = bool(intent.get("use_raw_table")) or chart_type == "table"
     filter_desc = _describe_filters(intent)
     metric_label = METRIC_LABELS.get(metric, metric)
     limit = int(intent.get("limit") or 0)

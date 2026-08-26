@@ -30,6 +30,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 23 — L'assistant modifie LE tableau de bord : affaires perdues exclues, ambiguïtés des données tranchées, forme des graphiques arbitrée sur les données, retouches sans appel au modèle, historique des demandes
 - [x] Phase 24 — Tout se pilote par la phrase tapée, chaque demande reçoit une réponse explicite, historique en volet, et une cellule illisible ne coûte plus la ligne entière
 - [x] Phase 25 — La vue d'ensemble répond aux trois questions du métier : offres remises sur la période, répartition par practice, et issue gagnée / perdue / en attente
+- [x] Phase 26 — Bloc « affaires chaudes » (KPI, graphique par practice, détail), et alignement des trois moteurs sur le sens d'un range_filter
 
 ## 📝 Journaux
 
@@ -166,6 +167,16 @@ Suite `pytest` : 193 tests (était 168). `dac check` : 15 dashboards, 115 widget
 *Un défaut de méthode corrigé au passage.* Une ligne entière de KPI manquait à l'assemblage du dashboard, et le contrôle automatique ne l'a pas vu : il vérifiait que chaque ligne remplit bien la grille de 12 colonnes, ce qu'une ligne absente respecte parfaitement. Le générateur vérifie maintenant aussi la présence nominative des 19 widgets attendus.
 
 Suite `pytest` : 199 tests (était 193). `dac check` : 15 dashboards, 119 widgets, tous verts.
+
+**Phase 26** : Terminée. Ajout du bloc « affaires chaudes » à la vue d'ensemble — et, en le branchant, découverte d'un même défaut logé dans trois modules.
+
+*Affaires chaudes.* Une offre déjà partie chez le client, dont la probabilité de gain atteint 80 % et dont la décision n'est pas tombée : le pipeline le plus proche de se concrétiser. Le périmètre exact des statuts a été arrêté avec le métier — inclure « En attente du plan de charge », l'étape suivant immédiatement « Offre remise », fait passer le portefeuille chaud de 7 à 14 affaires et de 3,0 à 7,3 M€. Trois KPI (nombre, budget en jeu, montant pondéré en jeu), un graphique par practice et le détail opportunité par opportunité, classé par espérance de gain décroissante. Rien n'a été retiré : la vue d'ensemble passe de 19 à 24 widgets.
+
+*Un concept, deux noms, une seule définition.* L'application connaissait déjà « offre pondérée » avec la même intention mais un périmètre de statuts plus étroit. Deux définitions divergentes pour une même réalité auraient donné deux chiffres selon le mot employé : elles sont unifiées dans `business_rules.HOT_DEAL_STATUSES`, que le dashboard et le chat partagent.
+
+*Le même défaut, trois fois.* Brancher le terme a révélé que `db_layer`, `sql_builder` et `response_builder` ne s'accordaient pas sur ce que signifie un `range_filter`. Deux d'entre eux le traitaient comme une demande de liste brute, le troisième non. Conséquence mesurée : « affaires chaudes par practice » renvoyait les lignes brutes dans le chat pendant que le dashboard groupait correctement, et « combien d'affaires chaudes ? » répondait **« 1 opportunité »** — le nombre de LIGNES du résultat agrégé, au lieu des 14 qu'il contenait. Borner une valeur n'est pas demander une liste : le souhait d'une liste s'exprime par `use_raw_table` ou `chart_type == "table"`, et les trois modules appliquent désormais cette règle. Deux tests de non-régression la verrouillent, dans `db_layer` et dans `response_builder`.
+
+Suite `pytest` : 202 tests (était 199). `dac check` : 15 dashboards, 124 widgets, tous verts.
 
 ## 📊 Bilan du Produit
 

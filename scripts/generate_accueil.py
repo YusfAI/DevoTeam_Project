@@ -15,7 +15,8 @@ import sys
 
 sys.path.insert(0, ".")
 from backend.business_rules import (
-    FUNNEL_STAGE_ORDER, LOST_STATUSES, PENDING_SUBMISSION, SUBMITTED_STATUSES, WON_STATUSES,
+    FUNNEL_STAGE_ORDER, HOT_DEAL_MIN_PROBABILITY, HOT_DEAL_STATUSES, LOST_STATUSES,
+    PENDING_SUBMISSION, SUBMITTED_STATUSES, WON_STATUSES,
 )
 
 
@@ -96,6 +97,22 @@ def kpi(name, col, corps, fmt, desc=None):
 
 def kpi_remises(name, col, expr, fmt, desc=None):
     return kpi(name, col, REMISES_CTE + "\n          SELECT %s AS value FROM remises" % expr, fmt, desc)
+
+
+# Affaire chaude : offre déjà partie chez le client, forte probabilité de gain,
+# décision pas encore tombée. Pas de borne haute sur l'échéance ici, contrairement
+# aux offres remises : ces affaires sont par définition tournées vers l'avenir, les
+# limiter aux échéances passées viderait le tableau de son intérêt.
+CHAUDES_CTE = """          WITH chaudes AS (
+            SELECT * FROM opportunities
+            WHERE win_probability >= %s
+              AND status IN (%s)
+%s
+          )""" % (HOT_DEAL_MIN_PROBABILITY, liste(HOT_DEAL_STATUSES), FILTRES)
+
+
+def kpi_chaudes(name, col, expr, fmt, desc=None):
+    return kpi(name, col, CHAUDES_CTE + "\n          SELECT %s AS value FROM chaudes" % expr, fmt, desc)
 
 
 def actif(expr, extra=""):
@@ -281,6 +298,51 @@ __ISSUES__,
         y: { field: nb, type: number, title: Offres remises, format: ",.0f" }
         color: { field: issue }
 
+  # === Affaires chaudes : l'offre est partie, la décision approche ===
+  - widgets:
+__CHAUDES_KPI__
+
+  - widgets:
+      - name: Affaires chaudes par practice
+        type: chart
+        chart: bar
+        col: 12
+        description: Nombre d'affaires chaudes par practice.
+        sql: |
+__CHAUDES__
+          SELECT practice, COUNT(*) AS nb
+          FROM chaudes
+          GROUP BY practice
+          ORDER BY nb DESC
+        x: { field: practice, type: category, title: Practice }
+        y: { field: nb, type: number, title: Affaires chaudes, format: ",.0f" }
+        color: { field: practice }
+
+  - widgets:
+      - name: Détail des affaires chaudes
+        type: table
+        col: 12
+        description: >-
+          Classées par montant pondéré décroissant — les plus grosses espérances de
+          gain d'abord. La pondération est convertie en pourcentage dans la requête
+          plutôt que confiée au format d'affichage, dont la prise en charge des
+          pourcentages dans les tableaux DAC n'est pas garantie.
+        sql: |
+__CHAUDES__
+          SELECT description, buyer, practice, budget,
+                 ROUND(win_probability * 100) AS ponderation,
+                 weighted_amount, deadline
+          FROM chaudes
+          ORDER BY weighted_amount DESC
+        columns:
+          - { name: description, label: Opportunité }
+          - { name: buyer, label: Client }
+          - { name: practice, label: Practice }
+          - { name: budget, label: Budget, number: currency }
+          - { name: ponderation, label: Pondération %, number: number }
+          - { name: weighted_amount, label: Montant pondéré, number: currency }
+          - { name: deadline, label: Échéance }
+
   # === Santé du portefeuille — affaires perdues exclues ===
   - widgets:
 """
@@ -389,8 +451,19 @@ NOUVELLE_LIGNE = """
   - widgets:
 """
 
+chaudes_kpi = "\n\n".join([
+    kpi_chaudes("Affaires chaudes", 4, "COUNT(*)", ",.0f",
+                "Offres remises dont la probabilité de gain atteint 80 %, décision non tombée."),
+    kpi_chaudes("Budget en jeu", 4, "SUM(budget)", ",.0f",
+                "Budget cumulé des affaires chaudes."),
+    kpi_chaudes("Montant pondéré en jeu", 4, "SUM(weighted_amount)", ",.0f",
+                "Offre financière × probabilité — l'espérance de gain de ces affaires."),
+])
+
 doc = HEADER + ligne1 + NOUVELLE_LIGNE + ligne2 + BODY + ligne3 + FOOTER
-doc = (doc.replace("__REMISES__", REMISES_CTE)
+doc = (doc.replace("__CHAUDES_KPI__", chaudes_kpi)
+          .replace("__CHAUDES__", CHAUDES_CTE)
+          .replace("__REMISES__", REMISES_CTE)
           .replace("__ISSUES__", ISSUES)
           .replace("__ETAPES__", etapes_cte())
           .replace("__PERDUS__", PERDUS)
@@ -414,6 +487,8 @@ attendus = [
     "Taux de réussite", "Budget remis", "Budget gagné",
     "Issue des offres remises", "Offres remises par practice",
     "Issue par practice", "Offres remises par mois",
+    "Affaires chaudes", "Budget en jeu", "Montant pondéré en jeu",
+    "Affaires chaudes par practice", "Détail des affaires chaudes",
     "Budget actif", "Offre financière", "Écart offre / budget", "Montant pondéré",
     "Entonnoir de vente", "Taux de passage entre étapes", "Budget actif par pays",
     "Opportunités urgentes (échéance ≤ 7 jours)",

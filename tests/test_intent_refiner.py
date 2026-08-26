@@ -1,5 +1,8 @@
 from datetime import date
 
+from backend.business_rules import (
+    HOT_DEAL_STATUSES, PENDING_SUBMISSION, SUBMITTED_STATUSES, WON_STATUSES,
+)
 from backend.intent_refiner import try_rule_based_parse, refine_intent
 
 
@@ -231,19 +234,20 @@ def test_no_relative_period_phrase_leaves_dates_untouched():
     assert "deadline_year" not in result["filters"]
 
 
-# --- "Offre pondérée" : win_probability >= 0.8 ET statut "Offre remise" ---
+# --- « Offre pondérée » / « affaire chaude » : deux noms, une seule définition ---
+# win_probability >= 0.8 ET offre remise encore en jeu (HOT_DEAL_STATUSES).
 
 def test_offre_ponderee_applies_the_business_rule_filters():
     intent = _base_intent(chart_type="table", use_raw_table=True)
     result = refine_intent("liste des offres pondérées", intent)
-    assert result["filters"]["status"] == "Offre remise"
+    assert result["filters"]["status"] == list(HOT_DEAL_STATUSES)
     assert result["range_filters"]["win_probability"] == {"op": ">=", "value": 0.8}
 
 
 def test_offres_ponderees_plural_also_matches():
     intent = _base_intent(chart_type="kpi_card")
     result = refine_intent("combien d'opportunités pondérées avons-nous ?", intent)
-    assert result["filters"]["status"] == "Offre remise"
+    assert result["filters"]["status"] == list(HOT_DEAL_STATUSES)
     assert result["range_filters"]["win_probability"] == {"op": ">=", "value": 0.8}
 
 
@@ -252,7 +256,7 @@ def test_offre_ponderee_overrides_a_weaker_llm_guess():
     # different status, "offre pondérée" must still win.
     intent = _base_intent(chart_type="table", use_raw_table=True, filters={"status": "Lead"})
     result = refine_intent("liste des offres pondérées", intent)
-    assert result["filters"]["status"] == "Offre remise"
+    assert result["filters"]["status"] == list(HOT_DEAL_STATUSES)
 
 
 def test_offre_ponderee_does_not_force_the_chart_type():
@@ -261,7 +265,7 @@ def test_offre_ponderee_does_not_force_the_chart_type():
     intent = _base_intent(chart_type="bar", dimension="country")
     result = refine_intent("budget des offres pondérées par pays", intent)
     assert result["chart_type"] == "bar"
-    assert result["filters"]["status"] == "Offre remise"
+    assert result["filters"]["status"] == list(HOT_DEAL_STATUSES)
 
 
 def test_montant_pondere_does_not_trigger_the_weighted_offer_rule():
@@ -449,9 +453,6 @@ def test_the_title_follows_the_adjustment():
 # « Offres remises » : un terme métier, pas le statut du même nom
 # ---------------------------------------------------------------------------
 
-from backend.business_rules import PENDING_SUBMISSION, SUBMITTED_STATUSES, WON_STATUSES
-
-
 def _intent_vierge(**overrides):
     base = {"goal": "", "metric": "nb_opportunities", "dimension": "", "filters": {},
             "range_filters": {}, "chart_type": "kpi_card", "aggregation": "count",
@@ -488,7 +489,7 @@ def test_weighted_offers_keep_their_own_narrower_meaning():
     # Règle plus spécifique et périmètre tout autre : elle ne doit pas être avalée
     # par celle des offres remises, dont elle partage pourtant le mot « offres ».
     intent = refine_intent("liste des offres pondérées", _intent_vierge())
-    assert intent["filters"]["status"] == "Offre remise"
+    assert intent["filters"]["status"] == list(HOT_DEAL_STATUSES)
     assert intent["range_filters"]["win_probability"] == {"op": ">=", "value": 0.8}
 
 

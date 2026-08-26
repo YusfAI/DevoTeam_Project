@@ -200,3 +200,17 @@ def test_a_wholly_different_analysis_is_not_called_a_modification():
 
 def test_no_previous_question_means_nothing_to_compare():
     assert describe_change(None, _AVANT) == ""
+
+
+def test_a_bounded_value_is_not_a_request_for_a_list():
+    # « combien d'affaires chaudes ? » répondait « 1 opportunité » : le nombre de
+    # LIGNES du résultat agrégé, au lieu des 14 qu'il contenait. La cause était la
+    # même qu'ailleurs — traiter tout range_filter comme une demande de liste.
+    intent = {
+        "metric": "nb_opportunities", "dimension": "", "chart_type": "kpi_card",
+        "filters": {}, "range_filters": {"win_probability": {"op": ">=", "value": 0.8}},
+        "use_raw_table": False, "limit": 0, "goal": "Affaires chaudes",
+    }
+    message = build_data_response(intent, [{"nb_opportunities": 14}])
+    assert "14" in message
+    assert "1 opportunité" not in message

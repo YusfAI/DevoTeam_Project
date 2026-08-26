@@ -5,7 +5,9 @@ import unicodedata
 from datetime import date
 from typing import Optional
 
-from .business_rules import SUBMITTED_STATUSES, choose_chart_type
+from .business_rules import (
+    HOT_DEAL_MIN_PROBABILITY, HOT_DEAL_STATUSES, SUBMITTED_STATUSES, choose_chart_type,
+)
 from .schema_and_whitelist import VALID_METRICS, VALID_DIMENSIONS, KNOWN_VALUES
 from .alerts import EXCLUDED_STATUSES
 
@@ -18,6 +20,12 @@ def _norm(text: str) -> str:
 # "offre(s)"/"opportunité(s)" doit précéder "pondéré..." de près (0-2 mots entre les
 # deux) — exclut "montant pondéré", qui n'a ni "offre" ni "opportunité" à proximité.
 _WEIGHTED_OFFER_PATTERN = re.compile(r"\b(?:offres?|opportunit\w*)\s+(?:\w+\s+){0,2}ponder")
+
+# « affaire chaude » est l'autre nom de la même chose : une offre déjà remise, très
+# probable, dont la décision n'est pas tombée. Deux termes pour un seul concept —
+# ils doivent donc résoudre vers la MÊME définition, sinon la même question donnerait
+# deux chiffres selon le mot employé.
+_HOT_DEAL_PATTERN = re.compile(r"\b(?:affaires?|deals?|opportunit\w*)\s+(?:[\w'-]+\s+){0,2}chaud")
 
 # « offres remises » est un terme MÉTIER, pas le statut du même nom. Le statut décrit
 # l'état courant : une offre partie chez le client et gagnée depuis n'y figure plus.
@@ -536,11 +544,13 @@ def refine_intent(query: str, intent: dict, today: Optional[date] = None) -> dic
     # de près : ça exclut "montant pondéré", où aucun des deux mots n'apparaît avant.
     # Ce n'est qu'un filtre — le type d'affichage (table/KPI/graphique) reste piloté
     # normalement par le reste de la question, jamais forcé ici.
-    if _WEIGHTED_OFFER_PATTERN.search(q):
+    if _WEIGHTED_OFFER_PATTERN.search(q) or _HOT_DEAL_PATTERN.search(q):
         intent.setdefault("filters", {})
-        intent["filters"]["status"] = "Offre remise"
+        intent["filters"]["status"] = list(HOT_DEAL_STATUSES)
         intent.setdefault("range_filters", {})
-        intent["range_filters"]["win_probability"] = {"op": ">=", "value": 0.8}
+        intent["range_filters"]["win_probability"] = {
+            "op": ">=", "value": HOT_DEAL_MIN_PROBABILITY,
+        }
 
     # « offres remises » = toutes celles effectivement déposées, y compris gagnées et
     # perdues depuis (business_rules.SUBMITTED_STATUSES). Placé APRÈS la règle des

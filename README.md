@@ -46,6 +46,11 @@ données à installer.
   remises sur la période, comment elles se répartissent par practice, et ce qu'elles
   sont devenues (gagnées / perdues / en attente) — puis donne l'état du portefeuille,
   le pipeline et les échéances urgentes. 19 widgets.
+- **Affaires chaudes** : les offres remises encore en jeu dont la probabilité de
+  gain atteint 80 % — le pipeline le plus proche de se concrétiser. Trois KPI, un
+  graphique par practice et le détail opportunité par opportunité sur la vue
+  d'ensemble. « Affaire chaude » et « offre pondérée » sont deux noms du même
+  concept et résolvent vers la même définition (`business_rules.HOT_DEAL_STATUSES`).
 - **« Offre remise » est un terme métier, pas un statut** : le statut décrit l'état
   *courant*, donc une offre partie chez le client et gagnée depuis n'y figure plus.
   Compter ce seul statut donnait 4 offres là où 57 avaient été déposées. La
@@ -248,7 +253,7 @@ frontend/              Vite + React (build servi par FastAPI en local)
 credentials/           clé de compte de service Google (gitignoré, absent par défaut)
 data/                  scheduler_state.json (état local, gitignoré) ; dump SQL
                        historique de l'ancienne base MySQL, conservé pour référence
-tests/                 suite pytest (mock Gemini/Sheets), 199 tests
+tests/                 suite pytest (mock Gemini/Sheets), 202 tests
 Documentation/
   WORKFLOW.md            traçage concret d'une question, du prompt au dashboard affiché
   reports/              rapport professionnel + guide technique (.docx) et leur générateur

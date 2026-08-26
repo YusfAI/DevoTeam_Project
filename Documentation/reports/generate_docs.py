@@ -490,7 +490,7 @@ def build_rapport_professionnel():
              "(alertes deadlines, rafraîchissement des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (199 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
+            ["Tests", "pytest (202 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
              "(mocks), garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -509,7 +509,7 @@ def build_rapport_professionnel():
                      "explicite — il n'écrit jamais lui-même de requête.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "199 tests automatisés couvrent la compréhension du langage, le requêtage des "
+    add_bullet(doc, "202 tests automatisés couvrent la compréhension du langage, le requêtage des "
                      "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -759,7 +759,7 @@ def build_guide_technique():
             ["backend/business_rules.py", "Règles métier indépendantes de l'affichage (ordre du pipeline)."],
             ["backend/data_quality.py", "Rapport des lignes rejetées et des valeurs manquantes."],
             ["dac/.bruin.yml", "Connexion DuckDB de DAC (aucun identifiant, versionnée volontairement)."],
-            ["dac/dashboards/accueil.yml", "Vue d'ensemble écrite à la main (19 widgets), versionnée et relue en revue."],
+            ["dac/dashboards/accueil.yml", "Vue d'ensemble (24 widgets), produite par scripts/generate_accueil.py, versionnée et relue en revue."],
             ["dac/dashboards/_principal.yml", "Tableau de bord de travail, réécrit par chaque question (éphémère, hors suivi git)."],
             ["dac/dashboards/_analyse_*.yml", "Instantané figé par question, pour les rouvrir (éphémère, hors suivi git)."],
             ["frontend/src/", "Application Vite + React (chat, iframe DAC, hooks, styles)."],
@@ -1140,7 +1140,35 @@ def build_guide_technique():
         "remis : une offre en attente n'est ni un succès ni un échec, la compter au "
         "dénominateur écraserait le taux sans rien dire de vrai.")
 
-    add_h2(doc, "9.6 Dire ce qui a changé")
+    add_h2(doc, "9.6 Affaires chaudes, et le piège du range_filter")
+    add_body(doc,
+        "Une « affaire chaude » est une offre déjà partie chez le client, dont la "
+        "probabilité de gain atteint 80 % et dont la décision n'est pas tombée : le "
+        "pipeline le plus proche de se concrétiser. Le périmètre des statuts a été "
+        "arrêté avec le métier — inclure « En attente du plan de charge », l'étape "
+        "suivant immédiatement « Offre remise », fait passer le portefeuille chaud de "
+        "7 à 14 affaires et de 3,0 à 7,3 M€.")
+    add_body(doc,
+        "L'application connaissait déjà le terme « offre pondérée » avec la même "
+        "intention mais un périmètre plus étroit. Deux définitions divergentes pour "
+        "une même réalité auraient donné deux chiffres selon le mot employé : elles "
+        "sont unifiées dans business_rules.HOT_DEAL_STATUSES, partagée par le "
+        "dashboard et par le chat.")
+    add_cue(doc,
+        "Brancher ce terme a révélé un même défaut logé dans TROIS modules. "
+        "db_layer, sql_builder et response_builder ne s'accordaient pas sur ce que "
+        "signifie un range_filter : deux le traitaient comme une demande de liste "
+        "brute, le troisième non. « Affaires chaudes par practice » renvoyait donc "
+        "les lignes brutes dans le chat pendant que le dashboard groupait, et "
+        "« combien d'affaires chaudes ? » répondait « 1 opportunité » — le nombre de "
+        "LIGNES du résultat agrégé, au lieu des 14 qu'il contenait.")
+    add_body(doc,
+        "Borner une valeur n'est pas demander une liste. Le souhait d'une liste "
+        "s'exprime par use_raw_table ou chart_type == « table », et les trois modules "
+        "appliquent maintenant cette règle. Deux tests de non-régression la "
+        "verrouillent, un par module concerné.")
+
+    add_h2(doc, "9.7 Dire ce qui a changé")
     add_body(doc,
         "Une demande de suite modifie le tableau de bord affiché. Sans le dire, "
         "l'utilisateur voit l'iframe se recharger sans savoir ce qui a été pris en "
@@ -1158,7 +1186,7 @@ def build_guide_technique():
         "Au-delà de trois différences, rien n'est annoncé : le mot « modifié » "
         "deviendrait trompeur, ce n'est plus une retouche mais une autre analyse.")
 
-    add_h2(doc, "9.7 Un seul tableau de bord, modifié sur place")
+    add_h2(doc, "9.8 Un seul tableau de bord, modifié sur place")
     add_body(doc,
         "Chaque question réécrit _principal.yml, dont le nom de dashboard ne change "
         "jamais — donc l'URL de l'iframe non plus. L'utilisateur voit son tableau de "
@@ -1451,7 +1479,7 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "15. Tests automatisés")
     add_body(doc,
-        "199 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
+        "202 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
         "et le client Google Sheets (gspread) sont simulés (monkeypatch), et les données "
         "sont un petit DataFrame construit dans le test. La suite tourne donc hors ligne, "
         "en quelques secondes.")
@@ -1475,12 +1503,12 @@ def build_guide_technique():
              "d'injection), composition multi-widgets, filtres propagés à tous les widgets, grille "
              "12 colonnes respectée, exclusion des affaires perdues, nom du dashboard de travail "
              "constant, YAML valide et relisible."],
-            ["test_db_layer.py", "20", "Requêtage pandas : groupements, filtres à valeurs multiples, "
+            ["test_db_layer.py", "22", "Requêtage pandas : groupements, filtres à valeurs multiples, "
              "intervalles, exclusion des affaires perdues et son échappatoire, chemin brut du "
              "scatter, DataFrame vide."],
             ["test_llm_validation.py", "16", "Anti-hallucination : clarification plutôt que valeur "
              "devinée, résolution fuzzy des filtres, chemin rapide vs LLM."],
-            ["test_response_builder.py", "25", "Formatage des unités, messages texte déterministes, "
+            ["test_response_builder.py", "26", "Formatage des unités, messages texte déterministes, "
              "cohérence texte/graphique pour funnel et heatmap, description de ce qui a changé "
              "dans le tableau de bord."],
             ["test_alerts.py", "12", "Fenêtre de 7 jours, exclusion des statuts clos, envoi email, "
@@ -1760,7 +1788,7 @@ def build_presentation_script():
     add_h1(doc, "Les chiffres à retenir")
     add_bullet(doc, "1 question = 1 tableau de bord complet, généré automatiquement.")
     add_bullet(doc, "9 types de visualisations choisis automatiquement selon la question.")
-    add_bullet(doc, "199 tests automatisés, aucune dépendance à des données réelles.")
+    add_bullet(doc, "202 tests automatisés, aucune dépendance à des données réelles.")
     add_bullet(doc, "21 phases de développement livrées, de bout en bout, en autonomie.")
     add_bullet(doc, "0 base de données à administrer — le Google Sheet est la source de vérité.")
     add_bullet(doc, "0 hallucination tolérée : donnée non fiable = question posée en retour, jamais un chiffre inventé.")

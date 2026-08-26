@@ -426,6 +426,146 @@ rows:
         y: { field: nb, type: number, title: Offres remises, format: ",.0f" }
         color: { field: issue }
 
+  # === Affaires chaudes : l'offre est partie, la décision approche ===
+  - widgets:
+      - name: Affaires chaudes
+        type: metric
+        col: 4
+        description: Offres remises dont la probabilité de gain atteint 80 %, décision non tombée.
+        sql: |
+          WITH chaudes AS (
+            SELECT * FROM opportunities
+            WHERE win_probability >= 0.8
+              AND status IN ('Offre remise', 'En attente du plan de charge')
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT COUNT(*) AS value FROM chaudes
+        value: { field: value, type: number, format: ",.0f" }
+
+      - name: Budget en jeu
+        type: metric
+        col: 4
+        description: Budget cumulé des affaires chaudes.
+        sql: |
+          WITH chaudes AS (
+            SELECT * FROM opportunities
+            WHERE win_probability >= 0.8
+              AND status IN ('Offre remise', 'En attente du plan de charge')
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT SUM(budget) AS value FROM chaudes
+        value: { field: value, type: number, format: ",.0f" }
+
+      - name: Montant pondéré en jeu
+        type: metric
+        col: 4
+        description: Offre financière × probabilité — l'espérance de gain de ces affaires.
+        sql: |
+          WITH chaudes AS (
+            SELECT * FROM opportunities
+            WHERE win_probability >= 0.8
+              AND status IN ('Offre remise', 'En attente du plan de charge')
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT SUM(weighted_amount) AS value FROM chaudes
+        value: { field: value, type: number, format: ",.0f" }
+
+  - widgets:
+      - name: Affaires chaudes par practice
+        type: chart
+        chart: bar
+        col: 12
+        description: Nombre d'affaires chaudes par practice.
+        sql: |
+          WITH chaudes AS (
+            SELECT * FROM opportunities
+            WHERE win_probability >= 0.8
+              AND status IN ('Offre remise', 'En attente du plan de charge')
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT practice, COUNT(*) AS nb
+          FROM chaudes
+          GROUP BY practice
+          ORDER BY nb DESC
+        x: { field: practice, type: category, title: Practice }
+        y: { field: nb, type: number, title: Affaires chaudes, format: ",.0f" }
+        color: { field: practice }
+
+  - widgets:
+      - name: Détail des affaires chaudes
+        type: table
+        col: 12
+        description: >-
+          Classées par montant pondéré décroissant — les plus grosses espérances de
+          gain d'abord. La pondération est convertie en pourcentage dans la requête
+          plutôt que confiée au format d'affichage, dont la prise en charge des
+          pourcentages dans les tableaux DAC n'est pas garantie.
+        sql: |
+          WITH chaudes AS (
+            SELECT * FROM opportunities
+            WHERE win_probability >= 0.8
+              AND status IN ('Offre remise', 'En attente du plan de charge')
+          {% if filters.periode == 'Depuis novembre 2025' %}
+            AND deadline >= DATE '2025-11-01'
+          {% elif filters.periode == '12 derniers mois' %}
+            AND deadline >= CURRENT_DATE - INTERVAL 12 MONTH
+          {% elif filters.periode == 'Depuis janvier 2026' %}
+            AND deadline >= DATE '2026-01-01'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT description, buyer, practice, budget,
+                 ROUND(win_probability * 100) AS ponderation,
+                 weighted_amount, deadline
+          FROM chaudes
+          ORDER BY weighted_amount DESC
+        columns:
+          - { name: description, label: Opportunité }
+          - { name: buyer, label: Client }
+          - { name: practice, label: Practice }
+          - { name: budget, label: Budget, number: currency }
+          - { name: ponderation, label: Pondération %, number: number }
+          - { name: weighted_amount, label: Montant pondéré, number: currency }
+          - { name: deadline, label: Échéance }
+
   # === Santé du portefeuille — affaires perdues exclues ===
   - widgets:
       - name: Budget actif

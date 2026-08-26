@@ -77,6 +77,28 @@ SUBMITTED_STATUSES = [
 WON_STATUSES = ["Offre gagnée", "Offre signée"]
 PENDING_SUBMISSION = ["Offre remise", "En attente du plan de charge"]
 
+
+# ---------------------------------------------------------------------------
+# Affaires chaudes
+#
+# Une offre déjà partie chez le client, dont la probabilité de gain est au plus
+# haut et dont la décision n'est pas encore tombée. C'est le pipeline le plus
+# proche de se concrétiser : ce qu'un commercial regarde en premier le lundi matin.
+#
+# Les statuts retenus sont ceux d'une offre remise ET encore en jeu : une offre
+# gagnée ou perdue n'a plus rien de « chaud », sa décision est prise. « En attente
+# du plan de charge » en fait partie — l'offre est bien partie chez le client,
+# c'est l'étape suivante du pipeline (confirmé avec le métier ; l'inclure fait
+# passer le portefeuille chaud de 7 à 14 affaires, et de 3,0 à 7,3 M€).
+#
+# Cette définition est aussi celle du terme « offre pondérée » employé dans le chat :
+# c'est le même concept sous deux noms, et deux définitions divergentes pour une
+# même réalité produiraient deux chiffres pour une même question.
+# ---------------------------------------------------------------------------
+
+HOT_DEAL_MIN_PROBABILITY = 0.8
+HOT_DEAL_STATUSES = list(PENDING_SUBMISSION)
+
 # Au-delà, un croisement dimension × practice devient illisible. On garde les N
 # valeurs les plus fortes plutôt que de tronquer arbitrairement ou de tout afficher.
 MAX_HEATMAP_ROWS = 15

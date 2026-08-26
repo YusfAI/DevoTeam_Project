@@ -214,3 +214,37 @@ def test_pandas_and_sql_engines_agree_on_the_exclusion(df_avec_perdues):
     sql = build_sql(intent)
     for perdu in LOST_STATUSES:
         assert f"'{perdu}'" in sql, f"{perdu} absent de la clause SQL"
+
+
+# ---------------------------------------------------------------------------
+# Borner une valeur n'est pas demander une liste
+# ---------------------------------------------------------------------------
+
+def test_a_range_filter_alone_does_not_force_the_raw_row_path(fixture_df, monkeypatch):
+    # Ce défaut a été trouvé trois fois, dans trois modules : db_layer, sql_builder et
+    # response_builder traitaient (ou non) tout range_filter comme une demande de
+    # liste. Résultat : « affaires chaudes par practice » renvoyait les lignes brutes
+    # côté chat pendant que le dashboard groupait — deux réponses pour une question.
+    monkeypatch.setattr(db_layer, "get_dataframe", lambda: fixture_df)
+    intent = {
+        "metric": "nb_opportunities", "dimension": "practice", "chart_type": "bar",
+        "filters": {}, "range_filters": {"win_probability": {"op": ">=", "value": 0.5}},
+        "use_raw_table": False, "limit": 0,
+    }
+    result = db_layer.build_and_execute_query(intent)
+
+    assert all("practice" in row and "nb_opportunities" in row for row in result)
+    assert "buyer" not in result[0]  # une ligne brute en aurait un
+
+
+def test_asking_for_a_list_still_gives_raw_rows(fixture_df, monkeypatch):
+    # Le garde-fou de l'autre côté : c'est use_raw_table (ou chart_type == "table")
+    # qui exprime le souhait d'une liste, et il doit continuer de fonctionner.
+    monkeypatch.setattr(db_layer, "get_dataframe", lambda: fixture_df)
+    intent = {
+        "metric": "budget", "dimension": "", "chart_type": "table",
+        "filters": {}, "range_filters": {"days_remaining": {"op": "between", "value": [0, 7]}},
+        "use_raw_table": True, "limit": 0,
+    }
+    result = db_layer.build_and_execute_query(intent)
+    assert "buyer" in result[0]

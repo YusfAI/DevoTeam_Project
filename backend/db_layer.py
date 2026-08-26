@@ -127,9 +127,16 @@ def build_and_execute_query(intent: dict) -> list:
     limit = int(intent.get("limit") or 0)
 
     # Le scatter a besoin de plusieurs mesures par opportunité (budget, probabilité
-    # de gain, montant pondéré) — jamais une seule mesure agrégée par dimension,
-    # donc il emprunte le même chemin "lignes brutes" que use_raw_table/range_filters.
-    use_raw = intent.get("use_raw_table", False) or bool(range_filters) or chart_type == "scatter"
+    # de gain, montant pondéré) — jamais une seule mesure agrégée par dimension, donc
+    # il emprunte le même chemin "lignes brutes" que use_raw_table.
+    #
+    # La présence d'un range_filter ne déclenche PLUS ce chemin. Elle le faisait, et
+    # les deux moteurs divergeaient : sql_builder groupait « affaires chaudes par
+    # practice » comme demandé pendant que pandas renvoyait la liste brute — le
+    # graphique et le message du chat ne racontaient donc pas la même chose pour une
+    # question identique. Le souhait d'une liste s'exprime par use_raw_table ou
+    # chart_type == "table", jamais par le seul fait de borner une valeur.
+    use_raw = intent.get("use_raw_table", False) or chart_type in ("table", "scatter")
 
     filtered = _apply_filters(df, filters, range_filters, exclude_statuses)
 
