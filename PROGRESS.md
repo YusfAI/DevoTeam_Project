@@ -40,6 +40,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 33 — Détail réparti sur trois colonnes : hauteur divisée par trois, aucune opportunité perdue
 - [x] Phase 34 — Palette revalidée sans avertissement, garde-fou contre la divergence, et taille d'affichage réglable
 - [x] Phase 35 — Sélecteur de plage de dates natif : raccourcis + calendrier, valeur partageable par l'URL
+- [x] Phase 36 — Correction du défaut du sélecteur de plage, qui rendait le dashboard invisible
 
 ## 📝 Journaux
 
@@ -296,6 +297,16 @@ Suite `pytest` : 230 tests (était 227). `dac check` : 15 dashboards, 124 widget
 *Une exemption assumée.* Le tableau des urgences échappe à la période : sa fenêtre est « les 7 prochains jours », elle se définit toute seule, et une plage se terminant aujourd'hui le viderait entièrement — le contraire de son propos. Le filtre de practice, lui, continue de s'y appliquer. Quatre tests tiennent ce contrat, dont un qui vérifie qu'aucun AUTRE widget n'a été oublié : un widget hors période afficherait un chiffre d'un autre périmètre que ses voisins, sans qu'aucune requête n'échoue.
 
 Suite `pytest` : 234 tests (était 230). `dac check` : 15 dashboards, 124 widgets, tous verts.
+
+**Phase 36** : Terminée. Correction du dashboard par défaut devenu invisible.
+
+*La panne.* Le sélecteur de plage introduit à la phase précédente empêchait la vue d'ensemble de s'afficher. La cause est dans la façon dont DAC initialise la valeur d'un filtre : pour un `date-range`, il ne résout une chaîne QUE si c'est une clé de raccourci (`last_30_days`…) et la transmet **telle quelle** sinon. La forme « début..fin » ne vaut que dans l'URL. Passée en défaut, le sélecteur recevait donc un texte là où il attend `{start, end}`, et le rendu échouait — emportant tout le dashboard.
+
+*Mon erreur, et sa nature.* J'avais sondé le SCHÉMA, qui accepte les trois formes (chaîne de raccourci, chaîne « début..fin », objet), et j'en avais conclu que la deuxième convenait. Le schéma ne dit rien du comportement. C'est la même faute qu'avec `height` sondé sur le widget plutôt que sur la ligne : vérifier qu'une chose est acceptée n'est pas vérifier qu'elle est comprise.
+
+*Le correctif.* Le défaut devient un objet `{start, end}`, que DAC transmet inchangé. Un test le verrouille — il ne pouvait pas être écrit avant, puisque `dac validate` et `dac check` passaient tous deux sur la version fautive : seul le rendu dans le navigateur la distinguait.
+
+Suite `pytest` : 235 tests. `dac check` : 15 dashboards, 127 widgets, tous verts.
 
 ## 📊 Bilan du Produit
 

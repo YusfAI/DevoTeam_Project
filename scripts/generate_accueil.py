@@ -249,7 +249,14 @@ filters:
   # en cours. À étendre le jour où des échéances iront au-delà.
   - name: periode
     type: date-range
-    default: "2025-11-01..2026-12-31"
+    # Un OBJET, pas la chaîne « début..fin ». Cette dernière ne vaut que dans l'URL :
+    # à l'initialisation, le bundle ne résout une chaîne que si c'est une clé de
+    # raccourci et la transmet telle quelle sinon, si bien que le sélecteur recevait
+    # un texte là où il attend {start, end} — et le dashboard entier ne s'affichait
+    # plus. Un objet est transmis inchangé, donc directement exploitable.
+    default:
+      start: "2025-11-01"
+      end: "2026-12-31"
 
   - name: practice
     type: select

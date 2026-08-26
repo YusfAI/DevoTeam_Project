@@ -172,11 +172,26 @@ def test_the_period_is_a_real_date_range_picker():
     # Un menu à quatre choix ne permettait pas de borner une période à la main.
     doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
     periode = next(f for f in doc["filters"] if f["name"] == "periode")
-
     assert periode["type"] == "date-range"
-    # Une plage explicite plutôt qu'un raccourci : aucun des raccourcis intégrés ne
-    # correspond au point de départ retenu par le métier.
-    assert ".." in str(periode["default"])
+
+
+def test_the_default_range_is_an_object_not_a_string():
+    """Le piège qui a fait disparaître le dashboard entier.
+
+    À l'initialisation, DAC ne résout une chaîne que si c'est une clé de raccourci
+    (« last_30_days »…) et la transmet TELLE QUELLE sinon. La forme « début..fin » ne
+    vaut que dans l'URL : passée en défaut, le sélecteur recevait un texte là où il
+    attend {start, end}, et plus rien ne s'affichait. Un objet est transmis inchangé.
+
+    Le schéma accepte les deux formes — seul le comportement les distingue, d'où ce
+    test plutôt qu'une confiance dans `dac validate`.
+    """
+    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
+    defaut = next(f for f in doc["filters"] if f["name"] == "periode")["default"]
+
+    assert isinstance(defaut, dict), "une chaîne « début..fin » ne serait pas résolue"
+    assert set(defaut) == {"start", "end"}
+    assert defaut["start"] < defaut["end"]
 
 
 def test_each_bound_applies_only_if_it_exists():
