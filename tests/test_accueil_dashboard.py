@@ -1,9 +1,9 @@
 """Exécute le SQL de la vue d'ensemble sur des données synthétiques.
 
 `dac check` prouve que chaque requête s'exécute, pas qu'elle sélectionne les bonnes
-lignes : sur les vraies données, aucune affaire encore en jeu n'est à 100 %, donc
+lignes : les vraies données ne contiennent aucune prévision entre 80 % et 100 %, donc
 remplacer « >= 80 % » par « = 80 % » ne changerait aucun chiffre affiché et passerait
-inaperçu. Ces tests fabriquent les lignes que les vraies données ne contiennent pas.
+inaperçu. Ces tests fabriquent les lignes que les vraies données n'ont pas.
 """
 import re
 from pathlib import Path
@@ -98,25 +98,31 @@ def test_a_deal_below_the_threshold_is_excluded(base):
     assert [l[1] for l in lignes] == ["Au seuil"]
 
 
-def test_a_deal_already_decided_is_not_hot_however_certain(base):
-    # Une affaire gagnée est à 100 % par construction — c'est un constat, pas une
-    # prévision. Elle n'a plus rien de « chaud » : la décision est prise.
+def test_the_status_plays_no_part(base):
+    # Décision métier explicite : seule la probabilité décide. Une affaire déjà
+    # gagnée est à 100 %, donc chaude elle aussi — c'est ce qui fait passer le
+    # compte de 14 à 105 sur les vraies données.
     _remplir(base, [
         _opportunite(buyer="Gagnée", status="Offre gagnée", win_probability=1.0),
         _opportunite(buyer="Signée", status="Offre signée", win_probability=1.0),
-        _opportunite(buyer="En jeu", win_probability=1.0),
+        _opportunite(buyer="Remise", status="Offre remise", win_probability=0.8),
+        _opportunite(buyer="Amont", status="Lead", win_probability=1.0),
     ])
     lignes = _executer(base, "Détail des affaires chaudes")
-    assert [l[1] for l in lignes] == ["En jeu"]
+    assert {l[1] for l in lignes} == {"Gagnée", "Signée", "Remise", "Amont"}
 
 
-def test_an_offer_not_yet_submitted_is_not_hot(base):
+def test_an_opportunity_without_a_probability_stays_out(base):
+    # Les 63 offres perdues ont une pondération vide dans le Sheet : elles sortent
+    # d'elles-mêmes, une comparaison avec une valeur absente étant toujours fausse.
+    # Aucun filtre de statut n'est donc nécessaire pour les écarter.
     _remplir(base, [
-        _opportunite(buyer="Pas encore remise", status="Lead", win_probability=1.0),
-        _opportunite(buyer="Remise", win_probability=0.8),
+        _opportunite(buyer="Sans pondération", status="Offre perdue", win_probability=None,
+                      weighted_amount=None),
+        _opportunite(buyer="Avec pondération", win_probability=0.8),
     ])
     lignes = _executer(base, "Détail des affaires chaudes")
-    assert [l[1] for l in lignes] == ["Remise"]
+    assert [l[1] for l in lignes] == ["Avec pondération"]
 
 
 def test_the_hot_deal_kpis_agree_with_the_table(base):
@@ -126,8 +132,8 @@ def test_the_hot_deal_kpis_agree_with_the_table(base):
         _opportunite(win_probability=0.4, budget=999999.0, weighted_amount=1.0),
     ])
     assert _executer(base, "Affaires chaudes")[0][0] == 2
-    assert _executer(base, "Budget en jeu")[0][0] == 300000.0
-    assert _executer(base, "Montant pondéré en jeu")[0][0] == 272000.0
+    assert _executer(base, "Budget à forte confiance")[0][0] == 300000.0
+    assert _executer(base, "Montant pondéré associé")[0][0] == 272000.0
     assert len(_executer(base, "Détail des affaires chaudes")) == 2
 
 

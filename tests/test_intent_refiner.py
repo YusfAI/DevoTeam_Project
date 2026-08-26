@@ -1,7 +1,7 @@
 from datetime import date
 
 from backend.business_rules import (
-    HOT_DEAL_STATUSES, PENDING_SUBMISSION, SUBMITTED_STATUSES, WON_STATUSES,
+    HOT_DEAL_MIN_PROBABILITY, PENDING_SUBMISSION, SUBMITTED_STATUSES, WON_STATUSES,
 )
 from backend.intent_refiner import try_rule_based_parse, refine_intent
 
@@ -235,28 +235,33 @@ def test_no_relative_period_phrase_leaves_dates_untouched():
 
 
 # --- « Offre pondérée » / « affaire chaude » : deux noms, une seule définition ---
-# win_probability >= 0.8 ET offre remise encore en jeu (HOT_DEAL_STATUSES).
+# UN SEUL critère : win_probability >= 0.8. Le statut ne joue aucun rôle — une affaire
+# déjà gagnée est à 100 %, donc chaude elle aussi.
 
 def test_offre_ponderee_applies_the_business_rule_filters():
     intent = _base_intent(chart_type="table", use_raw_table=True)
     result = refine_intent("liste des offres pondérées", intent)
-    assert result["filters"]["status"] == list(HOT_DEAL_STATUSES)
-    assert result["range_filters"]["win_probability"] == {"op": ">=", "value": 0.8}
+    assert result["range_filters"]["win_probability"] == {
+        "op": ">=", "value": HOT_DEAL_MIN_PROBABILITY,
+    }
+    # Aucun filtre de statut : le statut ne fait pas partie de la définition.
+    assert "status" not in result["filters"]
 
 
 def test_offres_ponderees_plural_also_matches():
     intent = _base_intent(chart_type="kpi_card")
     result = refine_intent("combien d'opportunités pondérées avons-nous ?", intent)
-    assert result["filters"]["status"] == list(HOT_DEAL_STATUSES)
     assert result["range_filters"]["win_probability"] == {"op": ">=", "value": 0.8}
 
 
-def test_offre_ponderee_overrides_a_weaker_llm_guess():
-    # The business definition is authoritative: even if the LLM already set a
-    # different status, "offre pondérée" must still win.
+def test_offre_ponderee_applies_its_threshold_whatever_the_llm_guessed():
+    # La définition métier fait autorité sur le seuil, quoi qu'ait proposé le modèle.
+    # Le statut, lui, n'appartient plus à la définition : celui que le modèle a posé
+    # est donc respecté plutôt qu'écrasé.
     intent = _base_intent(chart_type="table", use_raw_table=True, filters={"status": "Lead"})
     result = refine_intent("liste des offres pondérées", intent)
-    assert result["filters"]["status"] == list(HOT_DEAL_STATUSES)
+    assert result["range_filters"]["win_probability"] == {"op": ">=", "value": 0.8}
+    assert result["filters"]["status"] == "Lead"
 
 
 def test_offre_ponderee_does_not_force_the_chart_type():
@@ -265,7 +270,7 @@ def test_offre_ponderee_does_not_force_the_chart_type():
     intent = _base_intent(chart_type="bar", dimension="country")
     result = refine_intent("budget des offres pondérées par pays", intent)
     assert result["chart_type"] == "bar"
-    assert result["filters"]["status"] == list(HOT_DEAL_STATUSES)
+    assert result["range_filters"]["win_probability"] == {"op": ">=", "value": 0.8}
 
 
 def test_montant_pondere_does_not_trigger_the_weighted_offer_rule():
@@ -489,8 +494,8 @@ def test_weighted_offers_keep_their_own_narrower_meaning():
     # Règle plus spécifique et périmètre tout autre : elle ne doit pas être avalée
     # par celle des offres remises, dont elle partage pourtant le mot « offres ».
     intent = refine_intent("liste des offres pondérées", _intent_vierge())
-    assert intent["filters"]["status"] == list(HOT_DEAL_STATUSES)
     assert intent["range_filters"]["win_probability"] == {"op": ">=", "value": 0.8}
+    assert "status" not in intent["filters"]
 
 
 def test_a_plain_status_question_is_untouched():

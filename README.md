@@ -53,11 +53,12 @@ données à installer.
   remises sur la période, comment elles se répartissent par practice, et ce qu'elles
   sont devenues (gagnées / perdues / en attente) — puis donne l'état du portefeuille,
   le pipeline et les échéances urgentes. 19 widgets.
-- **Affaires chaudes** : les offres remises encore en jeu dont la probabilité de
-  gain atteint 80 % — le pipeline le plus proche de se concrétiser. Trois KPI, un
-  graphique par practice et le détail opportunité par opportunité sur la vue
-  d'ensemble. « Affaire chaude » et « offre pondérée » sont deux noms du même
-  concept et résolvent vers la même définition (`business_rules.HOT_DEAL_STATUSES`).
+- **Affaires chaudes** : toute opportunité dont la probabilité de gain atteint 80 %.
+  Un seul critère — le statut n'entre pas en compte, donc les affaires déjà gagnées
+  (à 100 % dans ces données) en font partie. Trois KPI, un graphique par practice et
+  le détail opportunité par opportunité sur la vue d'ensemble. « Affaire chaude » et
+  « offre pondérée » sont deux noms du même concept et résolvent vers la même
+  définition (`business_rules.HOT_DEAL_MIN_PROBABILITY`).
 - **« Offre remise » est un terme métier, pas un statut** : le statut décrit l'état
   *courant*, donc une offre partie chez le client et gagnée depuis n'y figure plus.
   Compter ce seul statut donnait 4 offres là où 57 avaient été déposées. La

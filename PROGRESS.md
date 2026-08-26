@@ -32,6 +32,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 25 — La vue d'ensemble répond aux trois questions du métier : offres remises sur la période, répartition par practice, et issue gagnée / perdue / en attente
 - [x] Phase 26 — Bloc « affaires chaudes » (KPI, graphique par practice, détail), et alignement des trois moteurs sur le sens d'un range_filter
 - [x] Phase 27 — Un seul tableau de bord, transitions en fondu enchaîné, et « ajoute … » qui complète au lieu de remplacer
+- [x] Phase 28 — Affaire chaude = probabilité ≥ 80 %, sans condition de statut
 
 ## 📝 Journaux
 
@@ -196,6 +197,18 @@ Suite `pytest` : 210 tests (était 199). `dac check` : 15 dashboards, 24 widgets
 *Un défaut d'assemblage attrapé à l'exécution.* Le message de réponse était construit avant l'écriture des dashboards, alors qu'il décrit précisément ce qui vient d'être fait : la variable disant s'il s'agissait d'un ajout n'existait pas encore, et l'endpoint renvoyait une 500. Le message est désormais assemblé après.
 
 Suite `pytest` : 218 tests (était 210). `dac check` : 15 dashboards, tous verts, tableau de bord complété compris.
+
+**Phase 28** : Terminée. La définition d'une affaire chaude est ramenée à un seul critère.
+
+*La question était bonne.* « Pourquoi y a-t-il des offres à 100 % de pondération qui n'apparaissent pas dans les affaires chaudes ? » Le croisement pondération × statut a donné une réponse sans ambiguïté : les 88 opportunités à 100 % sont **exactement** les 88 déjà gagnées ou signées, zéro exception — ce n'était pas la pondération qui les écartait mais le statut. La colonne suit d'ailleurs une convention cohérente que ce croisement rend visible : une prévision tant que l'offre est ouverte (40 % ou 80 %), 100 % une fois gagnée, et vide une fois perdue (les 63 lignes).
+
+*Décision métier : le statut est écarté.* « Affaire chaude » ne retient plus que la probabilité ≥ 80 %. Le portefeuille passe de 14 à **105 opportunités** et de 7,3 à 51,3 M€ sur l'ensemble de l'historique (55 et 28,1 M€ sur la période affichée par défaut). Les offres perdues sortent d'elles-mêmes sans qu'aucun filtre de statut soit nécessaire : leur pondération est vide, et une comparaison avec une valeur absente est toujours fausse.
+
+*Ce que l'indicateur mesure désormais.* Ce n'est plus un pipeline à pousser mais un portefeuille à forte confiance, mêlant l'acquis et l'à-venir. Les intitulés le disent : « Budget en jeu » devient « Budget à forte confiance », « Montant pondéré en jeu » devient « Montant pondéré associé » — « en jeu » laissait entendre une affaire encore ouverte. Le chat suit la même définition, sans quoi la même question aurait donné deux chiffres.
+
+*Un défaut de génération attrapé au premier essai.* La première description bien ponctuée a cassé le YAML : un scalaire nu contenant « : » suivi d'un espace est lu comme une association clé/valeur. Les descriptions sont désormais émises en bloc plié, qui accepte n'importe quelle ponctuation.
+
+Suite `pytest` : 218 tests, dont quatre réécrits pour la nouvelle définition (une affaire gagnée est maintenant chaude, ce que l'ancien test interdisait explicitement). `dac check` : 15 dashboards, 124 widgets, tous verts.
 
 ## 📊 Bilan du Produit
 

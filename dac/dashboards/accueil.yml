@@ -63,7 +63,8 @@ rows:
       - name: Offres remises
         type: metric
         col: 3
-        description: Offres effectivement déposées sur la période, échéance déjà passée.
+        description: >-
+          Offres effectivement déposées sur la période, échéance déjà passée.
         sql: |
           WITH remises AS (
             SELECT *,
@@ -92,7 +93,8 @@ rows:
       - name: Gagnées
         type: metric
         col: 3
-        description: Offres gagnées ou déjà signées.
+        description: >-
+          Offres gagnées ou déjà signées.
         sql: |
           WITH remises AS (
             SELECT *,
@@ -149,7 +151,8 @@ rows:
       - name: En attente
         type: metric
         col: 3
-        description: Déposées, sans décision du client à ce jour.
+        description: >-
+          Déposées, sans décision du client à ce jour.
         sql: |
           WITH remises AS (
             SELECT *,
@@ -179,7 +182,9 @@ rows:
       - name: Taux de réussite
         type: metric
         col: 4
-        description: Gagnées rapportées aux seules offres DÉCIDÉES — les offres en attente ne sont ni un succès ni un échec, les compter au dénominateur écraserait le taux.
+        description: >-
+          Gagnées rapportées aux seules offres DÉCIDÉES — les offres en attente ne sont
+          ni un succès ni un échec, les compter au dénominateur écraserait le taux.
         sql: |
           WITH remises AS (
             SELECT *,
@@ -209,7 +214,8 @@ rows:
       - name: Budget remis
         type: metric
         col: 4
-        description: Montant total des offres déposées sur la période.
+        description: >-
+          Montant total des offres déposées sur la période.
         sql: |
           WITH remises AS (
             SELECT *,
@@ -426,17 +432,19 @@ rows:
         y: { field: nb, type: number, title: Offres remises, format: ",.0f" }
         color: { field: issue }
 
-  # === Affaires chaudes : l'offre est partie, la décision approche ===
+  # === Affaires chaudes : les opportunités à 80 % de probabilité ou plus ===
   - widgets:
       - name: Affaires chaudes
         type: metric
         col: 4
-        description: Offres remises dont la probabilité de gain est d'au moins 80 % — 90 % et 100 % compris — et dont la décision n'est pas tombée.
+        description: >-
+          Toute opportunité dont la probabilité de gain atteint au moins 80 % — 90 % et
+          100 % compris. Le statut n'entre pas en compte : les affaires déjà gagnées, à
+          100 %, en font donc partie.
         sql: |
           WITH chaudes AS (
             SELECT * FROM opportunities
             WHERE win_probability >= 0.8
-              AND status IN ('Offre remise', 'En attente du plan de charge')
           {% if filters.periode == 'Depuis novembre 2025' %}
             AND deadline >= DATE '2025-11-01'
           {% elif filters.periode == '12 derniers mois' %}
@@ -451,15 +459,15 @@ rows:
           SELECT COUNT(*) AS value FROM chaudes
         value: { field: value, type: number, format: ",.0f" }
 
-      - name: Budget en jeu
+      - name: Budget à forte confiance
         type: metric
         col: 4
-        description: Budget cumulé des affaires chaudes.
+        description: >-
+          Budget cumulé des opportunités à 80 % ou plus, affaires gagnées comprises.
         sql: |
           WITH chaudes AS (
             SELECT * FROM opportunities
             WHERE win_probability >= 0.8
-              AND status IN ('Offre remise', 'En attente du plan de charge')
           {% if filters.periode == 'Depuis novembre 2025' %}
             AND deadline >= DATE '2025-11-01'
           {% elif filters.periode == '12 derniers mois' %}
@@ -474,15 +482,15 @@ rows:
           SELECT SUM(budget) AS value FROM chaudes
         value: { field: value, type: number, format: ",.0f" }
 
-      - name: Montant pondéré en jeu
+      - name: Montant pondéré associé
         type: metric
         col: 4
-        description: Offre financière × probabilité — l'espérance de gain de ces affaires.
+        description: >-
+          Offre financière × probabilité, sur ce même périmètre.
         sql: |
           WITH chaudes AS (
             SELECT * FROM opportunities
             WHERE win_probability >= 0.8
-              AND status IN ('Offre remise', 'En attente du plan de charge')
           {% if filters.periode == 'Depuis novembre 2025' %}
             AND deadline >= DATE '2025-11-01'
           {% elif filters.periode == '12 derniers mois' %}
@@ -502,12 +510,11 @@ rows:
         type: chart
         chart: bar
         col: 12
-        description: Nombre d'affaires chaudes par practice.
+        description: Nombre d'opportunités à 80 % de probabilité ou plus, par practice.
         sql: |
           WITH chaudes AS (
             SELECT * FROM opportunities
             WHERE win_probability >= 0.8
-              AND status IN ('Offre remise', 'En attente du plan de charge')
           {% if filters.periode == 'Depuis novembre 2025' %}
             AND deadline >= DATE '2025-11-01'
           {% elif filters.periode == '12 derniers mois' %}
@@ -532,19 +539,17 @@ rows:
         type: table
         col: 12
         description: >-
-          Pondération SUPÉRIEURE OU ÉGALE à 80 % — 90 % ou 100 % y figureraient aussi.
-          Si aucune n'apparaît à 100 %, c'est que dans ces données 100 % n'est pas une
-          prévision mais un constat : les 88 opportunités à 100 % sont exactement les
-          88 déjà gagnées ou signées, et une affaire dont la décision est tombée n'est
-          plus en jeu. Classées par montant pondéré décroissant, les plus grosses
-          espérances de gain d'abord. La pondération est convertie en pourcentage dans
+          Pondération SUPÉRIEURE OU ÉGALE à 80 % — un seul critère, le statut n'entre pas
+          en compte. À savoir en lisant le total : dans ces données 100 % n'est pas une
+          prévision mais un constat, les 88 opportunités à 100 % étant exactement les 88
+          déjà gagnées ou signées. Le tableau mêle donc l'acquis et l'à-venir. Classé par
+          montant pondéré décroissant. La pondération est convertie en pourcentage dans
           la requête plutôt que confiée au format d'affichage, dont la prise en charge
           des pourcentages dans les tableaux DAC n'est pas garantie.
         sql: |
           WITH chaudes AS (
             SELECT * FROM opportunities
             WHERE win_probability >= 0.8
-              AND status IN ('Offre remise', 'En attente du plan de charge')
           {% if filters.periode == 'Depuis novembre 2025' %}
             AND deadline >= DATE '2025-11-01'
           {% elif filters.periode == '12 derniers mois' %}
@@ -575,7 +580,9 @@ rows:
       - name: Budget actif
         type: metric
         col: 3
-        description: Budget estimé côté client, hors affaires perdues, infructueuses, NO GO, hors scope et non shortlistées.
+        description: >-
+          Budget estimé côté client, hors affaires perdues, infructueuses, NO GO, hors
+          scope et non shortlistées.
         sql: |
           SELECT SUM(budget) AS value FROM opportunities
           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
@@ -594,7 +601,8 @@ rows:
       - name: Offre financière
         type: metric
         col: 3
-        description: Montant réellement proposé par DevoTeam, sur le même périmètre.
+        description: >-
+          Montant réellement proposé par DevoTeam, sur le même périmètre.
         sql: |
           SELECT SUM(financial_offer) AS value FROM opportunities
           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
@@ -613,7 +621,8 @@ rows:
       - name: Écart offre / budget
         type: metric
         col: 3
-        description: Négatif = nous chiffrons en dessous du budget annoncé par le client.
+        description: >-
+          Négatif = nous chiffrons en dessous du budget annoncé par le client.
         sql: |
           SELECT (SUM(financial_offer) - SUM(budget)) / NULLIF(SUM(budget), 0) AS value FROM opportunities
           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
@@ -632,7 +641,9 @@ rows:
       - name: Montant pondéré
         type: metric
         col: 3
-        description: Offre financière × probabilité de gain, sur les seules opportunités où elle est renseignée — environ la moitié du portefeuille.
+        description: >-
+          Offre financière × probabilité de gain, sur les seules opportunités où elle
+          est renseignée — environ la moitié du portefeuille.
         sql: |
           SELECT SUM(weighted_amount) AS value FROM opportunities
           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')

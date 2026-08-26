@@ -15,8 +15,8 @@ import sys
 
 sys.path.insert(0, ".")
 from backend.business_rules import (
-    FUNNEL_STAGE_ORDER, HOT_DEAL_MIN_PROBABILITY, HOT_DEAL_STATUSES, LOST_STATUSES,
-    PENDING_SUBMISSION, SUBMITTED_STATUSES, WON_STATUSES,
+    FUNNEL_STAGE_ORDER, HOT_DEAL_MIN_PROBABILITY, LOST_STATUSES, PENDING_SUBMISSION,
+    SUBMITTED_STATUSES, WON_STATUSES,
 )
 
 
@@ -85,8 +85,28 @@ ISSUES = ("          issues(issue, rang) AS (\n"
           "          )")
 
 
+def _bloc(texte, indent="          "):
+    """Description en bloc plié (`>-`) plutôt qu'en scalaire nu.
+
+    Un scalaire nu contenant « : » suivi d'un espace est lu par YAML comme une
+    association clé/valeur, et le fichier devient invalide — panne rencontrée sur la
+    première description qui a eu le tort d'être bien ponctuée. Le bloc plié accepte
+    n'importe quelle ponctuation.
+    """
+    mots, lignes, courante = texte.split(), [], ""
+    for mot in mots:
+        if courante and len(courante) + 1 + len(mot) > 78:
+            lignes.append(courante)
+            courante = mot
+        else:
+            courante = "%s %s" % (courante, mot) if courante else mot
+    if courante:
+        lignes.append(courante)
+    return ">-\n" + "\n".join(indent + ligne for ligne in lignes)
+
+
 def kpi(name, col, corps, fmt, desc=None):
-    d = "\n        description: %s" % desc if desc else ""
+    d = "\n        description: %s" % _bloc(desc) if desc else ""
     return ("      - name: %s\n"
             "        type: metric\n"
             "        col: %d%s\n"
@@ -99,16 +119,18 @@ def kpi_remises(name, col, expr, fmt, desc=None):
     return kpi(name, col, REMISES_CTE + "\n          SELECT %s AS value FROM remises" % expr, fmt, desc)
 
 
-# Affaire chaude : offre déjà partie chez le client, forte probabilité de gain,
-# décision pas encore tombée. Pas de borne haute sur l'échéance ici, contrairement
-# aux offres remises : ces affaires sont par définition tournées vers l'avenir, les
-# limiter aux échéances passées viderait le tableau de son intérêt.
+# Affaire chaude : UN SEUL critère, la probabilité de gain. Le statut ne joue aucun
+# rôle — une affaire déjà gagnée est à 100 %, donc chaude elle aussi. Les offres
+# perdues sortent d'elles-mêmes : leur probabilité est vide dans le Sheet, et une
+# comparaison avec une valeur absente est toujours fausse.
+#
+# Pas de borne haute sur l'échéance, contrairement aux offres remises : la question
+# porte sur la confiance, pas sur une fenêtre de dépôt.
 CHAUDES_CTE = """          WITH chaudes AS (
             SELECT * FROM opportunities
             WHERE win_probability >= %s
-              AND status IN (%s)
 %s
-          )""" % (HOT_DEAL_MIN_PROBABILITY, liste(HOT_DEAL_STATUSES), FILTRES)
+          )""" % (HOT_DEAL_MIN_PROBABILITY, FILTRES)
 
 
 def kpi_chaudes(name, col, expr, fmt, desc=None):
@@ -298,7 +320,7 @@ __ISSUES__,
         y: { field: nb, type: number, title: Offres remises, format: ",.0f" }
         color: { field: issue }
 
-  # === Affaires chaudes : l'offre est partie, la décision approche ===
+  # === Affaires chaudes : les opportunités à 80 % de probabilité ou plus ===
   - widgets:
 __CHAUDES_KPI__
 
@@ -307,7 +329,7 @@ __CHAUDES_KPI__
         type: chart
         chart: bar
         col: 12
-        description: Nombre d'affaires chaudes par practice.
+        description: Nombre d'opportunités à 80 % de probabilité ou plus, par practice.
         sql: |
 __CHAUDES__
           SELECT practice, COUNT(*) AS nb
@@ -323,12 +345,11 @@ __CHAUDES__
         type: table
         col: 12
         description: >-
-          Pondération SUPÉRIEURE OU ÉGALE à 80 % — 90 % ou 100 % y figureraient aussi.
-          Si aucune n'apparaît à 100 %, c'est que dans ces données 100 % n'est pas une
-          prévision mais un constat : les 88 opportunités à 100 % sont exactement les
-          88 déjà gagnées ou signées, et une affaire dont la décision est tombée n'est
-          plus en jeu. Classées par montant pondéré décroissant, les plus grosses
-          espérances de gain d'abord. La pondération est convertie en pourcentage dans
+          Pondération SUPÉRIEURE OU ÉGALE à 80 % — un seul critère, le statut n'entre pas
+          en compte. À savoir en lisant le total : dans ces données 100 % n'est pas une
+          prévision mais un constat, les 88 opportunités à 100 % étant exactement les 88
+          déjà gagnées ou signées. Le tableau mêle donc l'acquis et l'à-venir. Classé par
+          montant pondéré décroissant. La pondération est convertie en pourcentage dans
           la requête plutôt que confiée au format d'affichage, dont la prise en charge
           des pourcentages dans les tableaux DAC n'est pas garantie.
         sql: |
@@ -457,12 +478,13 @@ NOUVELLE_LIGNE = """
 
 chaudes_kpi = "\n\n".join([
     kpi_chaudes("Affaires chaudes", 4, "COUNT(*)", ",.0f",
-                "Offres remises dont la probabilité de gain est d'au moins 80 % — 90 % et "
-                "100 % compris — et dont la décision n'est pas tombée."),
-    kpi_chaudes("Budget en jeu", 4, "SUM(budget)", ",.0f",
-                "Budget cumulé des affaires chaudes."),
-    kpi_chaudes("Montant pondéré en jeu", 4, "SUM(weighted_amount)", ",.0f",
-                "Offre financière × probabilité — l'espérance de gain de ces affaires."),
+                "Toute opportunité dont la probabilité de gain atteint au moins 80 % — 90 % et "
+                "100 % compris. Le statut n'entre pas en compte : les affaires déjà gagnées, "
+                "à 100 %, en font donc partie."),
+    kpi_chaudes("Budget à forte confiance", 4, "SUM(budget)", ",.0f",
+                "Budget cumulé des opportunités à 80 % ou plus, affaires gagnées comprises."),
+    kpi_chaudes("Montant pondéré associé", 4, "SUM(weighted_amount)", ",.0f",
+                "Offre financière × probabilité, sur ce même périmètre."),
 ])
 
 doc = HEADER + ligne1 + NOUVELLE_LIGNE + ligne2 + BODY + ligne3 + FOOTER
@@ -492,7 +514,7 @@ attendus = [
     "Taux de réussite", "Budget remis", "Budget gagné",
     "Issue des offres remises", "Offres remises par practice",
     "Issue par practice", "Offres remises par mois",
-    "Affaires chaudes", "Budget en jeu", "Montant pondéré en jeu",
+    "Affaires chaudes", "Budget à forte confiance", "Montant pondéré associé",
     "Affaires chaudes par practice", "Détail des affaires chaudes",
     "Budget actif", "Offre financière", "Écart offre / budget", "Montant pondéré",
     "Entonnoir de vente", "Taux de passage entre étapes", "Budget actif par pays",

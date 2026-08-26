@@ -1142,12 +1142,25 @@ def build_guide_technique():
 
     add_h2(doc, "9.6 Affaires chaudes, et le piège du range_filter")
     add_body(doc,
-        "Une « affaire chaude » est une offre déjà partie chez le client, dont la "
-        "probabilité de gain atteint 80 % et dont la décision n'est pas tombée : le "
-        "pipeline le plus proche de se concrétiser. Le périmètre des statuts a été "
-        "arrêté avec le métier — inclure « En attente du plan de charge », l'étape "
-        "suivant immédiatement « Offre remise », fait passer le portefeuille chaud de "
-        "7 à 14 affaires et de 3,0 à 7,3 M€.")
+        "Une « affaire chaude » est toute opportunité dont la probabilité de gain "
+        "atteint 80 %. UN SEUL critère : le statut n'entre pas en compte. Le "
+        "portefeuille compte ainsi 105 opportunités et 51,3 M€ sur l'ensemble de "
+        "l'historique. Les offres perdues en sortent d'elles-mêmes sans qu'aucun "
+        "filtre soit nécessaire — leur pondération est vide dans le Sheet, et une "
+        "comparaison avec une valeur absente est toujours fausse.")
+    add_cue(doc,
+        "Ce périmètre a d'abord été restreint aux offres encore en jeu (14 affaires), "
+        "puis élargi sur décision métier. La question qui l'a déclenché — « pourquoi "
+        "des offres à 100 % n'apparaissent-elles pas ? » — a d'ailleurs mis au jour "
+        "une convention de saisie : la pondération est une PRÉVISION tant que l'offre "
+        "est ouverte (40 % ou 80 %), un CONSTAT à 100 % une fois gagnée, et vide une "
+        "fois perdue. Les 88 opportunités à 100 % sont exactement les 88 déjà gagnées "
+        "ou signées, sans une exception.")
+    add_body(doc,
+        "L'indicateur ne mesure donc plus un pipeline à pousser mais un portefeuille "
+        "à forte confiance, mêlant l'acquis et l'à-venir. Les intitulés le disent : "
+        "« Budget à forte confiance » plutôt que « Budget en jeu », qui laissait "
+        "entendre une affaire encore ouverte.")
     add_body(doc,
         "L'application connaissait déjà le terme « offre pondérée » avec la même "
         "intention mais un périmètre plus étroit. Deux définitions divergentes pour "

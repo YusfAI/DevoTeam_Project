@@ -6,7 +6,7 @@ from datetime import date
 from typing import Optional
 
 from .business_rules import (
-    HOT_DEAL_MIN_PROBABILITY, HOT_DEAL_STATUSES, SUBMITTED_STATUSES, choose_chart_type,
+    HOT_DEAL_MIN_PROBABILITY, SUBMITTED_STATUSES, choose_chart_type,
 )
 from .schema_and_whitelist import VALID_METRICS, VALID_DIMENSIONS, KNOWN_VALUES
 from .alerts import EXCLUDED_STATUSES
@@ -558,9 +558,11 @@ def refine_intent(query: str, intent: dict, today: Optional[date] = None) -> dic
     # de près : ça exclut "montant pondéré", où aucun des deux mots n'apparaît avant.
     # Ce n'est qu'un filtre — le type d'affichage (table/KPI/graphique) reste piloté
     # normalement par le reste de la question, jamais forcé ici.
+    # Un seul critère : la probabilité. Le statut ne joue plus aucun rôle — une
+    # affaire déjà gagnée est à 100 %, donc chaude elle aussi. Les offres perdues
+    # sortent d'elles-mêmes : leur probabilité est vide, et une comparaison avec une
+    # valeur absente est toujours fausse.
     if _WEIGHTED_OFFER_PATTERN.search(q) or _HOT_DEAL_PATTERN.search(q):
-        intent.setdefault("filters", {})
-        intent["filters"]["status"] = list(HOT_DEAL_STATUSES)
         intent.setdefault("range_filters", {})
         intent["range_filters"]["win_probability"] = {
             "op": ">=", "value": HOT_DEAL_MIN_PROBABILITY,

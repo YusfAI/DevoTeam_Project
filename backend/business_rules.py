@@ -81,15 +81,20 @@ PENDING_SUBMISSION = ["Offre remise", "En attente du plan de charge"]
 # ---------------------------------------------------------------------------
 # Affaires chaudes
 #
-# Une offre déjà partie chez le client, dont la probabilité de gain est au plus
-# haut et dont la décision n'est pas encore tombée. C'est le pipeline le plus
-# proche de se concrétiser : ce qu'un commercial regarde en premier le lundi matin.
+# Toute opportunité dont la probabilité de gain atteint 80 %. UN SEUL critère : le
+# statut ne joue aucun rôle (décision métier explicite).
 #
-# Les statuts retenus sont ceux d'une offre remise ET encore en jeu : une offre
-# gagnée ou perdue n'a plus rien de « chaud », sa décision est prise. « En attente
-# du plan de charge » en fait partie — l'offre est bien partie chez le client,
-# c'est l'étape suivante du pipeline (confirmé avec le métier ; l'inclure fait
-# passer le portefeuille chaud de 7 à 14 affaires, et de 3,0 à 7,3 M€).
+# Conséquence à connaître, car elle change le sens de l'indicateur : dans ces
+# données, 100 % n'est pas une prévision mais un constat — les 88 opportunités à
+# 1,0 sont exactement les 88 déjà gagnées ou signées. Les affaires chaudes
+# comptent donc l'acquis avec l'à-venir : 105 opportunités et 51,3 M€, dont 88
+# affaires déjà remportées. Ce n'est pas un pipeline à pousser mais un
+# portefeuille à forte confiance, et c'est ce qui a été demandé.
+#
+# Le seuil est un MINIMUM : une prévision à 90 % y entrerait aussi. Aucune n'existe
+# aujourd'hui (les offres encore ouvertes ne portent que 40 % ou 80 %), ce qui rend
+# le point invérifiable sur les vraies données — d'où les tests sur lignes
+# fabriquées de tests/test_accueil_dashboard.py.
 #
 # Cette définition est aussi celle du terme « offre pondérée » employé dans le chat :
 # c'est le même concept sous deux noms, et deux définitions divergentes pour une
@@ -97,7 +102,6 @@ PENDING_SUBMISSION = ["Offre remise", "En attente du plan de charge"]
 # ---------------------------------------------------------------------------
 
 HOT_DEAL_MIN_PROBABILITY = 0.8
-HOT_DEAL_STATUSES = list(PENDING_SUBMISSION)
 
 # Au-delà, un croisement dimension × practice devient illisible. On garde les N
 # valeurs les plus fortes plutôt que de tronquer arbitrairement ou de tout afficher.
