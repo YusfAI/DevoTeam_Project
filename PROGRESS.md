@@ -33,6 +33,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 26 — Bloc « affaires chaudes » (KPI, graphique par practice, détail), et alignement des trois moteurs sur le sens d'un range_filter
 - [x] Phase 27 — Un seul tableau de bord, transitions en fondu enchaîné, et « ajoute … » qui complète au lieu de remplacer
 - [x] Phase 28 — Affaire chaude = probabilité ≥ 80 %, sans condition de statut
+- [x] Phase 29 — Tableau des affaires chaudes au format des autres visuels (DAC ne sait ni régler une hauteur ni faire défiler un tableau)
 
 ## 📝 Journaux
 
@@ -209,6 +210,18 @@ Suite `pytest` : 218 tests (était 210). `dac check` : 15 dashboards, tous verts
 *Un défaut de génération attrapé au premier essai.* La première description bien ponctuée a cassé le YAML : un scalaire nu contenant « : » suivi d'un espace est lu comme une association clé/valeur. Les descriptions sont désormais émises en bloc plié, qui accepte n'importe quelle ponctuation.
 
 Suite `pytest` : 218 tests, dont quatre réécrits pour la nouvelle définition (une affaire gagnée est maintenant chaude, ce que l'ancien test interdisait explicitement). `dac check` : 15 dashboards, 124 widgets, tous verts.
+
+**Phase 29** : Terminée. Le tableau des affaires chaudes prend la taille des autres visuels.
+
+*Ce que Bruin DAC ne permet pas.* La demande était un tableau plus petit, défilable au curseur pour en voir le reste. Les deux schémas ont été sondés plutôt que supposés : `height` sur un widget est **explicitement refusé** (« additional properties 'height' not allowed »), et un thème n'accepte pas davantage de CSS personnalisé. Le bundle servi confirme le reste — le tableau est enveloppé dans un `overflow-x-auto`, donc il défile à l'horizontale et **pas à la verticale**, et son conteneur est en `h-full overflow-hidden`. La documentation de DAC (`dac skills`, installée pour l'occasion) ne mentionne aucun réglage de taille hors `col`, et confirme que le TSX partage exactement le même modèle que le YAML — il n'y avait donc pas d'échappatoire de ce côté.
+
+*Ce qui a été fait.* Le nombre de lignes étant le seul levier restant sur la hauteur, le tableau est plafonné à ses 10 plus fortes espérances de gain et passe en `col: 8`, sur la même ligne que le graphique par practice ramené à `col: 4`. Le bloc occupe désormais deux lignes de grille au lieu de trois, et la vue d'ensemble passe de 11 à 10 lignes. La description du widget dit ce qu'elle montre, pourquoi elle est plafonnée, et où trouver la liste entière — le chat, qui la rend complète.
+
+*L'invariant à ne pas casser.* Le KPI « Affaires chaudes » continue de compter TOUT le périmètre (55 sur la période par défaut, 105 sur l'historique) pendant que le tableau n'en montre que dix. Un test le vérifie sur 25 lignes fabriquées, et contrôle au passage que ce sont bien les dix plus fortes et non dix lignes au hasard.
+
+*Un incident de manipulation.* Le nettoyage de la sonde de thème a coupé le serveur DAC en service — un `taskkill` sur l'image entière, trop large pour ce qu'il visait. Relancé aussitôt.
+
+Suite `pytest` : 219 tests. `dac check` : 15 dashboards, 122 widgets, tous verts.
 
 ## 📊 Bilan du Produit
 

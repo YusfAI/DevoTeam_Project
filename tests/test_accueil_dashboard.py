@@ -184,3 +184,19 @@ def test_the_win_rate_ignores_the_offers_still_pending(base):
         _opportunite(status="Offre remise"),
     ])
     assert _executer(base, "Taux de réussite")[0][0] == pytest.approx(0.75)
+
+
+def test_the_table_is_capped_but_the_kpi_still_counts_everything(base):
+    # Bruin DAC n'offre aucun réglage de hauteur et son tableau ne défile pas
+    # verticalement : le nombre de lignes est le seul levier pour que le widget garde
+    # la taille des autres. Le KPI, lui, doit continuer de compter TOUT le périmètre —
+    # sans quoi le chiffre affiché ne serait que la hauteur du tableau.
+    _remplir(base, [_opportunite(buyer="Client %02d" % i, win_probability=0.8,
+                                  weighted_amount=float(1000 - i))
+                     for i in range(25)])
+
+    assert _executer(base, "Affaires chaudes")[0][0] == 25
+    lignes = _executer(base, "Détail des affaires chaudes")
+    assert len(lignes) == 10
+    # Et ce sont bien les plus fortes espérances de gain, pas dix lignes au hasard.
+    assert [l[1] for l in lignes] == ["Client %02d" % i for i in range(10)]

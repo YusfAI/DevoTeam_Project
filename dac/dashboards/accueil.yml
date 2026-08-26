@@ -509,7 +509,7 @@ rows:
       - name: Affaires chaudes par practice
         type: chart
         chart: bar
-        col: 12
+        col: 4
         description: Nombre d'opportunités à 80 % de probabilité ou plus, par practice.
         sql: |
           WITH chaudes AS (
@@ -534,18 +534,19 @@ rows:
         y: { field: nb, type: number, title: Affaires chaudes, format: ",.0f" }
         color: { field: practice }
 
-  - widgets:
       - name: Détail des affaires chaudes
         type: table
-        col: 12
+        col: 8
         description: >-
-          Pondération SUPÉRIEURE OU ÉGALE à 80 % — un seul critère, le statut n'entre pas
-          en compte. À savoir en lisant le total : dans ces données 100 % n'est pas une
-          prévision mais un constat, les 88 opportunités à 100 % étant exactement les 88
-          déjà gagnées ou signées. Le tableau mêle donc l'acquis et l'à-venir. Classé par
-          montant pondéré décroissant. La pondération est convertie en pourcentage dans
-          la requête plutôt que confiée au format d'affichage, dont la prise en charge
-          des pourcentages dans les tableaux DAC n'est pas garantie.
+          Les 10 plus fortes espérances de gain, parmi toutes les
+          opportunités à 80 % de probabilité ou plus. Le nombre de lignes est plafonné
+          pour que le widget garde la hauteur des autres : Bruin DAC n'offre aucun
+          réglage de hauteur et son tableau ne défile qu'à l'horizontale, si bien
+          qu'une liste complète s'étirerait sur toute la page et repousserait tout le
+          reste vers le bas. Pour la liste entière, demandez « liste des affaires
+          chaudes » dans le chat. À savoir en lisant les montants : dans ces données
+          100 % n'est pas une prévision mais un constat, les 88 opportunités à 100 %
+          étant exactement les 88 déjà gagnées ou signées.
         sql: |
           WITH chaudes AS (
             SELECT * FROM opportunities
@@ -566,6 +567,7 @@ rows:
                  weighted_amount, deadline
           FROM chaudes
           ORDER BY weighted_amount DESC
+          LIMIT 10
         columns:
           - { name: description, label: Opportunité }
           - { name: buyer, label: Client }

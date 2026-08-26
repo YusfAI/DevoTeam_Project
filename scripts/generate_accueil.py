@@ -155,6 +155,13 @@ def etapes_cte():
             "          )")
 
 
+# Nombre de lignes du tableau des affaires chaudes. Bruin DAC n'offre aucun réglage
+# de hauteur — son schéma refuse explicitement `height` — et son tableau ne défile
+# qu'à l'horizontale (`overflow-x-auto`, vérifié dans le bundle servi). Le nombre de
+# lignes est donc le SEUL levier sur la hauteur du widget ; dix tient dans la même
+# hauteur qu'un graphique voisin.
+MAX_LIGNES_CHAUDES = 10
+
 HEADER = """schema: https://getbruin.com/schemas/dac/dashboard/v1
 name: Vue d'ensemble commerciale
 description: Les offres remises depuis novembre 2025, ce qu'elles sont devenues, et l'état du portefeuille
@@ -328,7 +335,7 @@ __CHAUDES_KPI__
       - name: Affaires chaudes par practice
         type: chart
         chart: bar
-        col: 12
+        col: 4
         description: Nombre d'opportunités à 80 % de probabilité ou plus, par practice.
         sql: |
 __CHAUDES__
@@ -340,18 +347,19 @@ __CHAUDES__
         y: { field: nb, type: number, title: Affaires chaudes, format: ",.0f" }
         color: { field: practice }
 
-  - widgets:
       - name: Détail des affaires chaudes
         type: table
-        col: 12
+        col: 8
         description: >-
-          Pondération SUPÉRIEURE OU ÉGALE à 80 % — un seul critère, le statut n'entre pas
-          en compte. À savoir en lisant le total : dans ces données 100 % n'est pas une
-          prévision mais un constat, les 88 opportunités à 100 % étant exactement les 88
-          déjà gagnées ou signées. Le tableau mêle donc l'acquis et l'à-venir. Classé par
-          montant pondéré décroissant. La pondération est convertie en pourcentage dans
-          la requête plutôt que confiée au format d'affichage, dont la prise en charge
-          des pourcentages dans les tableaux DAC n'est pas garantie.
+          Les __MAX_CHAUDES__ plus fortes espérances de gain, parmi toutes les
+          opportunités à 80 % de probabilité ou plus. Le nombre de lignes est plafonné
+          pour que le widget garde la hauteur des autres : Bruin DAC n'offre aucun
+          réglage de hauteur et son tableau ne défile qu'à l'horizontale, si bien
+          qu'une liste complète s'étirerait sur toute la page et repousserait tout le
+          reste vers le bas. Pour la liste entière, demandez « liste des affaires
+          chaudes » dans le chat. À savoir en lisant les montants : dans ces données
+          100 % n'est pas une prévision mais un constat, les 88 opportunités à 100 %
+          étant exactement les 88 déjà gagnées ou signées.
         sql: |
 __CHAUDES__
           SELECT description, buyer, practice, budget,
@@ -359,6 +367,7 @@ __CHAUDES__
                  weighted_amount, deadline
           FROM chaudes
           ORDER BY weighted_amount DESC
+          LIMIT __MAX_CHAUDES__
         columns:
           - { name: description, label: Opportunité }
           - { name: buyer, label: Client }
@@ -488,7 +497,8 @@ chaudes_kpi = "\n\n".join([
 ])
 
 doc = HEADER + ligne1 + NOUVELLE_LIGNE + ligne2 + BODY + ligne3 + FOOTER
-doc = (doc.replace("__CHAUDES_KPI__", chaudes_kpi)
+doc = (doc.replace("__MAX_CHAUDES__", str(MAX_LIGNES_CHAUDES))
+          .replace("__CHAUDES_KPI__", chaudes_kpi)
           .replace("__CHAUDES__", CHAUDES_CTE)
           .replace("__REMISES__", REMISES_CTE)
           .replace("__ISSUES__", ISSUES)
