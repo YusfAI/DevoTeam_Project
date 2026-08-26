@@ -73,59 +73,14 @@ def _executer(con, nom_widget):
 
 
 # ---------------------------------------------------------------------------
-# Affaires chaudes : le seuil est un MINIMUM, pas une égalité
+# Affaires chaudes : les KPI restés dans le dashboard
+#
+# Le tableau de détail, lui, a quitté le YAML : il est rendu par l'application faute
+# de défilement vertical dans le tableau de DAC. Sa définition et son accord avec ces
+# KPI sont vérifiés dans tests/test_hot_deals.py.
 # ---------------------------------------------------------------------------
 
-def test_a_deal_above_the_threshold_is_included(base):
-    # Le cœur du sujet : 100 % doit entrer. Sur les vraies données aucune affaire en
-    # jeu ne dépasse 80 %, donc seule une ligne fabriquée peut le prouver.
-    _remplir(base, [
-        _opportunite(buyer="Certaine", win_probability=1.0),
-        _opportunite(buyer="Presque sûre", win_probability=0.9,
-                      status="En attente du plan de charge"),
-        _opportunite(buyer="Au seuil", win_probability=0.8),
-    ])
-    lignes = _executer(base, "Détail des affaires chaudes")
-    assert {l[1] for l in lignes} == {"Certaine", "Presque sûre", "Au seuil"}
-
-
-def test_a_deal_below_the_threshold_is_excluded(base):
-    _remplir(base, [
-        _opportunite(buyer="Au seuil", win_probability=0.8),
-        _opportunite(buyer="Juste en dessous", win_probability=0.79),
-    ])
-    lignes = _executer(base, "Détail des affaires chaudes")
-    assert [l[1] for l in lignes] == ["Au seuil"]
-
-
-def test_the_status_plays_no_part(base):
-    # Décision métier explicite : seule la probabilité décide. Une affaire déjà
-    # gagnée est à 100 %, donc chaude elle aussi — c'est ce qui fait passer le
-    # compte de 14 à 105 sur les vraies données.
-    _remplir(base, [
-        _opportunite(buyer="Gagnée", status="Offre gagnée", win_probability=1.0),
-        _opportunite(buyer="Signée", status="Offre signée", win_probability=1.0),
-        _opportunite(buyer="Remise", status="Offre remise", win_probability=0.8),
-        _opportunite(buyer="Amont", status="Lead", win_probability=1.0),
-    ])
-    lignes = _executer(base, "Détail des affaires chaudes")
-    assert {l[1] for l in lignes} == {"Gagnée", "Signée", "Remise", "Amont"}
-
-
-def test_an_opportunity_without_a_probability_stays_out(base):
-    # Les 63 offres perdues ont une pondération vide dans le Sheet : elles sortent
-    # d'elles-mêmes, une comparaison avec une valeur absente étant toujours fausse.
-    # Aucun filtre de statut n'est donc nécessaire pour les écarter.
-    _remplir(base, [
-        _opportunite(buyer="Sans pondération", status="Offre perdue", win_probability=None,
-                      weighted_amount=None),
-        _opportunite(buyer="Avec pondération", win_probability=0.8),
-    ])
-    lignes = _executer(base, "Détail des affaires chaudes")
-    assert [l[1] for l in lignes] == ["Avec pondération"]
-
-
-def test_the_hot_deal_kpis_agree_with_the_table(base):
+def test_the_hot_deal_kpis_count_every_deal_above_the_threshold(base):
     _remplir(base, [
         _opportunite(win_probability=1.0, budget=200000.0, weighted_amount=200000.0),
         _opportunite(win_probability=0.8, budget=100000.0, weighted_amount=72000.0),
@@ -134,7 +89,16 @@ def test_the_hot_deal_kpis_agree_with_the_table(base):
     assert _executer(base, "Affaires chaudes")[0][0] == 2
     assert _executer(base, "Budget à forte confiance")[0][0] == 300000.0
     assert _executer(base, "Montant pondéré associé")[0][0] == 272000.0
-    assert len(_executer(base, "Détail des affaires chaudes")) == 2
+
+
+def test_a_won_deal_counts_as_hot_for_the_kpis_too(base):
+    # Le statut ne joue aucun rôle, côté SQL comme côté Python.
+    _remplir(base, [
+        _opportunite(status="Offre gagnée", win_probability=1.0),
+        _opportunite(status="Lead", win_probability=1.0),
+        _opportunite(status="Offre perdue", win_probability=None, weighted_amount=None),
+    ])
+    assert _executer(base, "Affaires chaudes")[0][0] == 2
 
 
 # ---------------------------------------------------------------------------
@@ -184,38 +148,6 @@ def test_the_win_rate_ignores_the_offers_still_pending(base):
         _opportunite(status="Offre remise"),
     ])
     assert _executer(base, "Taux de réussite")[0][0] == pytest.approx(0.75)
-
-
-def test_the_table_holds_every_hot_deal(base):
-    # Aucune ligne n'est retirée : la taille du widget est bornée par la hauteur de sa
-    # LIGNE de grille, pas en amputant la requête. Un LIMIT rendrait les affaires
-    # suivantes définitivement inatteignables, molette ou pas.
-    _remplir(base, [_opportunite(buyer="Client %02d" % i, win_probability=0.8,
-                                  weighted_amount=float(1000 - i))
-                     for i in range(25)])
-
-    assert _executer(base, "Affaires chaudes")[0][0] == 25
-    lignes = _executer(base, "Détail des affaires chaudes")
-    assert len(lignes) == 25
-    # Et triées par espérance de gain décroissante : la plus forte se lit sans défiler.
-    assert [l[1] for l in lignes] == ["Client %02d" % i for i in range(25)]
-
-
-def test_the_hot_deal_row_is_height_bounded():
-    """C'est ce qui rend le défilement possible.
-
-    Le widget est en `h-full` dans sa cellule de grille ; sans hauteur sur la ligne,
-    la cellule s'étire avec le contenu et le tableau occupe toute la page. Avec elle,
-    le conteneur du tableau — qui porte `overflow-x-auto`, ce qui fait calculer `auto`
-    pour l'axe vertical — défile à la molette. `height` n'est accepté QUE sur la
-    ligne : le schéma DAC le refuse sur un widget.
-    """
-    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
-    lignes = [r for r in doc["rows"]
-               if any(w["name"] == "Détail des affaires chaudes" for w in r["widgets"])]
-
-    assert len(lignes) == 1
-    assert isinstance(lignes[0].get("height"), int)
 
 
 def test_every_widget_explains_itself_briefly():

@@ -243,3 +243,16 @@ def choose_chart_type(intent: dict) -> tuple[str, str]:
         return "line", ""
 
     return chart, ""
+
+
+def hot_deals(df):
+    """Les affaires chaudes du DataFrame, la plus forte espérance de gain d'abord.
+
+    Vit ici plutôt que dans l'endpoint : la même définition sert le dashboard DAC
+    (via le SQL généré) et le chat (via l'intention). Une troisième écriture du
+    critère dans une couche web aurait fini par diverger des deux autres.
+    """
+    if df is None or df.empty or "win_probability" not in df.columns:
+        return df.iloc[0:0] if df is not None else None
+    chaudes = df[df["win_probability"] >= HOT_DEAL_MIN_PROBABILITY]
+    return chaudes.sort_values("weighted_amount", ascending=False, na_position="last")

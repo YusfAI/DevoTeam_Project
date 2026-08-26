@@ -33,7 +33,8 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 26 — Bloc « affaires chaudes » (KPI, graphique par practice, détail), et alignement des trois moteurs sur le sens d'un range_filter
 - [x] Phase 27 — Un seul tableau de bord, transitions en fondu enchaîné, et « ajoute … » qui complète au lieu de remplacer
 - [x] Phase 28 — Affaire chaude = probabilité ≥ 80 %, sans condition de statut
-- [x] Phase 29 — Tableau des affaires chaudes défilable (hauteur de LIGNE), et une phrase d'explication sous chaque visuel
+- [x] Phase 29 — Une phrase d'explication sous chaque visuel
+- [x] Phase 30 — Tableau des affaires chaudes défilant, rendu par l'application faute de défilement vertical dans DAC
 
 ## 📝 Journaux
 
@@ -222,6 +223,18 @@ Suite `pytest` : 218 tests, dont quatre réécrits pour la nouvelle définition 
 *Un incident de manipulation.* Le nettoyage de la sonde de thème a coupé le serveur DAC en service — un `taskkill` sur l'image entière, trop large pour ce qu'il visait. Relancé aussitôt.
 
 Suite `pytest` : 221 tests. `dac check` : 15 dashboards, 122 widgets, tous verts.
+
+**Phase 30** : Terminée. Le tableau des affaires chaudes défile enfin — en sortant de l'iframe.
+
+*Le diagnostic, cette fois complet.* Poser une hauteur sur la ligne de grille (Phase 29) ne suffisait pas : le composant tableau de DAC, lu cette fois en entier et non par fragments, a pour élément externe un simple `overflow-x-auto` — **sans hauteur ni `overflow-y`** — à l'intérieur d'un cadre `h-full overflow-hidden`. Borner la ligne le CLIPPE donc au lieu de le rendre défilable, ce que l'utilisateur constatait. Aucun réglage n'existe : le schéma refuse `height` sur un widget, le thème refuse le CSS, et le TSX partage le même modèle que le YAML.
+
+*La seule issue.* Ce tableau est désormais rendu par l'application, sous le dashboard, dans son propre bloc : hauteur bornée à 264 px, en-tête figé, défilement à la molette, et **les 105 affaires** servies par un nouvel endpoint `GET /hot-deals`. Aucune n'est tronquée — c'était tout l'enjeu. Le widget correspondant est retiré du YAML ; les KPI et le graphique par practice restent dans DAC, où ils suivent les filtres de la page.
+
+*La contrepartie, dite plutôt que subie.* Ce tableau ne peut pas suivre le filtre de période du dashboard, qui vit dans l'iframe et lui est inaccessible. Il montre donc toujours l'ensemble, et son en-tête l'écrit en toutes lettres. Un filtre silencieusement ignoré serait un piège ; annoncé, c'est une portée.
+
+*Un piège de DuckDB trouvé en écrivant le test croisé.* Le tableau passe par pandas, les KPI par du SQL : un test confronte les deux sur les mêmes lignes. Il a d'abord échoué — 3 contre 2 — et l'écart venait de **« NaN >= 0.8 » qui vaut VRAI en DuckDB**. Le vrai export écrit bien des NULL (vérifié : 170 NULL, 0 NaN), donc aucun bug en production ; mais si un jour il écrivait des NaN, le KPI passerait de 105 à 275 sans qu'aucune requête n'échoue. Un test l'interdit désormais. Au passage : sur une colonne flottante, pandas recoerce un `None` en `NaN`, et `where(notnull, None)` n'y change rien — la conversion doit se faire valeur par valeur.
+
+Suite `pytest` : 224 tests (était 221). `dac check` : 15 dashboards, 121 widgets, tous verts.
 
 ## 📊 Bilan du Produit
 

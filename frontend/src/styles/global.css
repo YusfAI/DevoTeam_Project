@@ -909,3 +909,123 @@ body::before {
   color: var(--brand-primary);
   font-weight: 600;
 }
+
+/* --- Affaires chaudes : le seul bloc rendu hors de l'iframe ---------------- */
+/* Bruin DAC ne sait pas faire défiler un tableau verticalement — l'élément externe
+   de son widget porte `overflow-x-auto`, sans hauteur ni `overflow-y`, dans un cadre
+   `overflow-hidden` : borner la hauteur le clippe au lieu de le rendre défilable.
+   Ce tableau est donc rendu par l'application, où la hauteur et le défilement sont
+   à nous. Il occupe sa propre ligne, sous le tableau de bord. */
+.hot-deals {
+  flex-shrink: 0;
+  margin-top: 16px;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.hot-deals-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.hot-deals-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.hot-deals-header p {
+  margin: 3px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  max-width: 62ch;
+}
+
+.hot-deals-totaux {
+  text-align: right;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.hot-deals-totaux span {
+  display: block;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.hot-deals-totaux small {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Le cœur de la demande : une hauteur bornée, et la molette pour le reste. */
+.hot-deals-scroll {
+  max-height: 264px;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.hot-deals-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+/* En-tête figé : sans lui, faire défiler cent lignes fait perdre le nom des colonnes. */
+.hot-deals-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-page);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.hot-deals-scroll tbody td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--baseline);
+  color: var(--text-secondary);
+  /* Un intitulé d'opportunité peut faire une ligne entière : on le tronque plutôt
+     que de laisser une colonne pousser le tableau hors de sa largeur. */
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hot-deals-scroll tbody tr:hover td {
+  background: var(--surface-page);
+}
+
+.hot-deals-scroll .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.hot-deals-erreur {
+  margin: 0;
+  padding: 18px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}

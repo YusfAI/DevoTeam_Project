@@ -42,3 +42,11 @@ export async function postDashboardQuery(query, previousIntent) {
   }
   return data
 }
+
+export async function getHotDeals() {
+  // Le tableau des affaires chaudes est rendu par l'application, pas par DAC, faute
+  // de défilement vertical dans le tableau de DAC (voir HotDealsTable.jsx).
+  const response = await fetch('/hot-deals')
+  if (!response.ok) throw new Error('Liste des affaires chaudes indisponible.')
+  return response.json()
+}

@@ -155,12 +155,6 @@ def etapes_cte():
             "          )")
 
 
-# Hauteur, en pixels, de la ligne portant les affaires chaudes. C'est ce qui borne
-# le tableau et déclenche son défilement vertical : aucune ligne n'est retirée, la
-# liste entière reste accessible à la molette. Valeur à ajuster si le bloc paraît
-# trop court ou trop haut à l'écran.
-HAUTEUR_LIGNE_CHAUDES = 360
-
 HEADER = """schema: https://getbruin.com/schemas/dac/dashboard/v1
 name: Vue d'ensemble commerciale
 description: Les offres remises depuis novembre 2025, ce qu'elles sont devenues, et l'état du portefeuille
@@ -330,18 +324,16 @@ __ISSUES__,
   - widgets:
 __CHAUDES_KPI__
 
-  # `height` sur la LIGNE (et non sur le widget, où le schéma le refuse) fixe la
-  # hauteur de la cellule de grille. Le tableau, en `h-full` à l'intérieur, cesse
-  # alors de s'étirer avec son contenu : son conteneur porte `overflow-x-auto`, et
-  # CSS fait calculer `auto` pour l'axe vertical dès qu'un axe n'est plus `visible`
-  # — le défilement à la molette apparaît donc, et TOUTES les affaires restent
-  # atteignables sans que le widget prenne toute la page.
-  - height: __HAUTEUR_CHAUDES__
-    widgets:
+  # Le tableau de détail ne figure PAS ici : le tableau de Bruin DAC ne défile pas
+  # verticalement (son élément externe porte `overflow-x-auto`, sans hauteur ni
+  # `overflow-y`, dans un cadre `overflow-hidden`), si bien que borner la hauteur de
+  # la ligne le clippe au lieu de le rendre défilable. Il est rendu par l'application,
+  # sous le dashboard — voir frontend/src/components/HotDealsTable.jsx.
+  - widgets:
       - name: Affaires chaudes par practice
         type: chart
         chart: bar
-        col: 4
+        col: 12
         description: Répartition des affaires chaudes entre les practices.
         sql: |
 __CHAUDES__
@@ -353,30 +345,6 @@ __CHAUDES__
         y: { field: nb, type: number, title: Affaires chaudes, format: ",.0f" }
         color: { field: practice }
 
-      - name: Détail des affaires chaudes
-        type: table
-        col: 8
-        # Aucune ligne n'est retirée : la hauteur de la LIGNE de grille borne le
-        # widget, et le tableau défile à la molette pour la suite (voir
-        # HAUTEUR_LIGNE_CHAUDES). À savoir en lisant les montants : dans ces données
-        # 100 % n'est pas une prévision mais un constat — les 88 opportunités à 100 %
-        # sont exactement les 88 déjà gagnées ou signées.
-        description: Toutes les affaires chaudes, la plus forte espérance d'abord. Faites défiler pour la suite.
-        sql: |
-__CHAUDES__
-          SELECT description, buyer, practice, budget,
-                 ROUND(win_probability * 100) AS ponderation,
-                 weighted_amount, deadline
-          FROM chaudes
-          ORDER BY weighted_amount DESC
-        columns:
-          - { name: description, label: Opportunité }
-          - { name: buyer, label: Client }
-          - { name: practice, label: Practice }
-          - { name: budget, label: Budget, number: currency }
-          - { name: ponderation, label: Pondération %, number: number }
-          - { name: weighted_amount, label: Montant pondéré, number: currency }
-          - { name: deadline, label: Échéance }
 
   # === Santé du portefeuille — affaires perdues exclues ===
   - widgets:
@@ -494,8 +462,7 @@ chaudes_kpi = "\n\n".join([
 ])
 
 doc = HEADER + ligne1 + NOUVELLE_LIGNE + ligne2 + BODY + ligne3 + FOOTER
-doc = (doc.replace("__HAUTEUR_CHAUDES__", str(HAUTEUR_LIGNE_CHAUDES))
-          .replace("__CHAUDES_KPI__", chaudes_kpi)
+doc = (doc.replace("__CHAUDES_KPI__", chaudes_kpi)
           .replace("__CHAUDES__", CHAUDES_CTE)
           .replace("__REMISES__", REMISES_CTE)
           .replace("__ISSUES__", ISSUES)
@@ -522,7 +489,7 @@ attendus = [
     "Issue des offres remises", "Offres remises par practice",
     "Issue par practice", "Offres remises par mois",
     "Affaires chaudes", "Budget à forte confiance", "Montant pondéré associé",
-    "Affaires chaudes par practice", "Détail des affaires chaudes",
+    "Affaires chaudes par practice",
     "Budget actif", "Offre financière", "Écart offre / budget", "Montant pondéré",
     "Entonnoir de vente", "Taux de passage entre étapes", "Budget actif par pays",
     "Opportunités urgentes (échéance ≤ 7 jours)",
