@@ -40,3 +40,4 @@ dac/dashboards/_analyse_*.yml
 dac/dashboards/_principal.yml
 
 logs/queries
+.bruin.yml

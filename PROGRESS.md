@@ -43,6 +43,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 36 — Correction du défaut du sélecteur de plage, qui rendait le dashboard invisible
 - [x] Phase 37 — Deux champs de date nommés (« début » / « fin ») à la place du sélecteur de plage
 - [x] Phase 38 — Unité DT sur tous les montants, et jetons d'élévation pour l'interface
+- [x] Phase 39 — Synchro Sheets 2,5× plus rapide (seules les cellules modifiées repartent), composition faite une fois
 
 ## 📝 Journaux
 
@@ -331,6 +332,18 @@ Suite `pytest` : 234 tests. `dac check` : 15 dashboards, 122 widgets, tous verts
 *Ce qui reste hors de portée, et pourquoi.* Formes des marques, animations d'apparition, typographie des graphiques : tout cela vit dans le code de Bruin DAC. Son bundle ne lit que onze variables de thème et huit teintes, et il désactive lui-même les animations de Recharts (`isAnimationActive: false`).
 
 Suite `pytest` : 235 tests. `dac check` : 15 dashboards, 122 widgets, tous verts.
+
+**Phase 39** : Terminée. Recherche de temps d'exécution, mesures à l'appui.
+
+*Où le temps passe VRAIMENT.* Rien n'a été optimisé avant d'avoir été chronométré, et les mesures ont écarté la moitié des suspects : composition d'un dashboard **0,9 ms**, requête pandas du message **9 ms**, endpoint `POST /dashboard` complet **105 ms**. Le backend n'était pas en cause.
+
+*Le vrai coût, et pourquoi il est hors de portée.* Bruin DAC lance un processus `bruin query` par widget. Mesuré : ~180 à 320 ms par appel, dont la quasi-totalité est le démarrage du binaire Go — la requête elle-même prend **1 ms** en DuckDB direct, et l'ouverture du fichier 24 ms. Trois pistes ont été explorées puis écartées, chacune vérifiée : `dac serve` n'expose ni cache ni réglage de parallélisme ; les « requêtes nommées » ne dédupliquent PAS l'exécution (test A/B : six widgets partageant une requête nommée coûtent 4,1 s, les mêmes en SQL répété 3,8 s) ; et le fichier DuckDB, bien que gonflé à 1,3 Mo pour 367 lignes, s'ouvre en 24 ms. Côté navigateur, les widgets partent en parallèle (une requête React Query chacun), donc l'attente n'est pas la somme.
+
+*Ce qui a pu être gagné.* La réécriture des colonnes calculées dans le Google Sheet renvoyait **1 448 cellules à chaque chargement**, y compris quand aucune n'avait bougé. Les valeurs brutes étant déjà en mémoire, il suffisait de comparer avant d'écrire — avec une comparaison NUMÉRIQUE, le Sheet rendant « 72000 » là où Python écrit « 72000.0 ». Résultat mesuré : `POST /sheets/sync` passe de **1 139 ms à ~450 ms**, soit 2,5×, et le rafraîchissement de fond cesse d'appeler l'API Sheets pour rien toutes les quinze minutes. Par ailleurs, chaque question composait le dashboard deux fois — une pour le tableau de bord de travail, une pour l'instantané — alors que les widgets sont identiques ; il est désormais composé une fois. `POST /dashboard` descend à **49 ms**.
+
+*Trois tests tiennent le nouveau comportement*, dont celui qui compte le plus : une valeur réellement modifiée DOIT toujours partir. Sauter une écriture nécessaire laisserait une donnée périmée dans le Sheet de l'utilisateur — bien pire que la lenteur qu'on cherchait à corriger.
+
+Suite `pytest` : 238 tests (était 235).
 
 ## 📊 Bilan du Produit
 

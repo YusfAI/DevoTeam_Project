@@ -672,12 +672,12 @@ def _write_dashboard(filename: str, name: str, description: str, widgets: list) 
     )
 
 
-def write_main_dashboard(query: str, intent: dict) -> str:
+def write_main_dashboard(query: str, intent: dict, widgets: list | None = None) -> str:
     """Réécrit LE dashboard de travail et renvoie son nom — toujours le même, donc
     la même URL d'iframe d'une question à l'autre. C'est ce qui fait qu'une demande
     modifie le tableau de bord sous les yeux de l'utilisateur au lieu d'en ouvrir un
     autre. Lève si l'écriture échoue : l'appelant retombe alors sur l'instantané."""
-    widgets = compose_widgets(intent)
+    widgets = compose_widgets(intent) if widgets is None else widgets
     _write_dashboard(MAIN_FILENAME, MAIN_DASHBOARD_NAME,
                       _dashboard_name(_analysis_title(query, intent)), widgets)
     logger.info("Dashboard de travail réécrit pour %r (%d widgets)", query, len(widgets))
@@ -729,7 +729,7 @@ def append_to_main_dashboard(query: str, intent: dict) -> tuple[str | None, bool
     return MAIN_DASHBOARD_NAME, True
 
 
-def write_generated_dashboard(query: str, intent: dict) -> str:
+def write_generated_dashboard(query: str, intent: dict, widgets: list | None = None) -> str:
     """Écrit l'INSTANTANÉ de la question et renvoie son nom (= sa route DAC).
 
     Le dashboard de travail est réécrit à chaque question ; cet instantané, lui,
@@ -737,7 +737,10 @@ def write_generated_dashboard(query: str, intent: dict) -> str:
     de rouvrir une analyse passée telle qu'elle était, sans repasser par le modèle.
     Lève une exception si l'écriture échoue — l'appelant décide alors de retomber
     sur l'affichage classique."""
-    widgets = compose_widgets(intent)
+    # Les widgets peuvent être fournis par l'appelant : le tableau de bord de travail
+    # et l'instantané portent exactement les mêmes, et les composer deux fois refait
+    # pour rien le comptage de cardinalité qui décide camembert ou barres.
+    widgets = compose_widgets(intent) if widgets is None else widgets
     name = _dashboard_name(_analysis_title(query, intent))
     filename = _generated_filename(name)
     _write_dashboard(

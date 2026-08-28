@@ -205,6 +205,27 @@ def _probability_or_none(raw: str, repairs: list):
         return None
 
 
+def _valeur_identique(brut: str, valeur) -> bool:
+    """La cellule du Sheet porte-t-elle déjà cette valeur ?
+
+    Comparaison NUMÉRIQUE quand les deux côtés sont des nombres : le Sheet rend
+    « 72000 » là où Python écrit « 72000.0 », et une comparaison de texte conclurait
+    à tort qu'il faut réécrire. En cas de doute, on renvoie False — réécrire une
+    cellule déjà juste ne coûte qu'un peu de réseau, la laisser périmée fausserait
+    ce que l'utilisateur lit dans son Sheet.
+    """
+    brut = (brut or "").strip()
+    attendu = "" if valeur is None else str(valeur).strip()
+    if brut == attendu:
+        return True
+    if not brut or not attendu:
+        return False
+    try:
+        return abs(float(brut.replace(",", ".")) - float(attendu)) < 0.005
+    except ValueError:
+        return False
+
+
 def _parse_row(headers: list, values: list) -> tuple[dict, list]:
     """Transforme une ligne brute du Sheet en dict, champs dérivés déjà calculés.
 
@@ -294,6 +315,9 @@ def _load_from_sheet() -> tuple[list[dict], dict]:
     derived_col_index = {c: headers.index(c) + 1 for c in _DERIVED_SHEET_COLUMNS if c in headers}
 
     parsed_rows: list[tuple[int, dict]] = []  # (row_number, row)
+    # Texte BRUT des colonnes calculées, tel qu'il est actuellement dans le Sheet.
+    # Sert à ne renvoyer que les cellules qui changent réellement (voir plus bas).
+    brut_par_ligne: dict[int, dict] = {}
     for offset, values in enumerate(all_values[1:], start=1):
         row_number = offset + 1  # +1 pour la ligne d'en-tête
         if not any(v.strip() for v in values):
@@ -322,6 +346,8 @@ def _load_from_sheet() -> tuple[list[dict], dict]:
                 ", ".join(r["field"] for r in repairs),
             )
 
+        cellules = dict(zip(headers, values))
+        brut_par_ligne[row_number] = {c: cellules.get(c, "") for c in _DERIVED_SHEET_COLUMNS}
         parsed_rows.append((row_number, row))
 
     # Un id existant a priorité ; une ligne sans id en reçoit un nouveau (max + 1),
@@ -350,7 +376,13 @@ def _load_from_sheet() -> tuple[list[dict], dict]:
                 value = ""
             elif col_name == "weighted_amount":
                 value = round(value, 2)  # cosmétique seulement — la valeur exacte reste dans les données
-            pending_cells.append(gspread.Cell(row_number, col_index, value))
+            # Seules les cellules qui CHANGENT sont renvoyées. Auparavant les quatre
+            # colonnes calculées de chaque ligne repartaient à chaque chargement —
+            # près de 1 500 cellules toutes les quinze minutes, pour un contenu le
+            # plus souvent identique. Les valeurs brutes sont déjà en mémoire, la
+            # comparaison ne coûte rien et supprime l'aller-retour réseau.
+            if not _valeur_identique(brut_par_ligne.get(row_number, {}).get(col_name), value):
+                pending_cells.append(gspread.Cell(row_number, col_index, value))
 
         valid_rows.append(row)
 

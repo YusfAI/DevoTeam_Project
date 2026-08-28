@@ -302,3 +302,55 @@ def test_get_dataframe_lazily_loads_on_first_call(monkeypatch):
     df = get_dataframe()  # jamais appelé refresh_dataframe() explicitement avant
 
     assert len(df) == 1
+
+
+# ---------------------------------------------------------------------------
+# Écriture retour : seules les cellules qui changent repartent
+# ---------------------------------------------------------------------------
+
+def test_unchanged_derived_columns_are_not_rewritten(monkeypatch):
+    """Renvoyer 1 500 cellules identiques à chaque chargement coûtait un aller-retour
+    réseau pour rien — mesuré : la synchro passe de ~1 100 ms à ~450 ms."""
+    kwargs = _valid_row_kwargs(id="1")
+    entetes = SHEET_COLUMNS + list(data_store._DERIVED_SHEET_COLUMNS)
+
+    # Premier passage : les colonnes calculées sont vides, tout doit être écrit.
+    ws = _FakeWorksheet([entetes, _row_values(entetes, **kwargs)])
+    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws)
+    refresh_dataframe()
+    ecrites = {c for _, c, _ in ws.update_calls}
+    assert ecrites, "les colonnes calculées doivent être écrites la première fois"
+
+    # Second passage : le Sheet porte déjà ce qui vient d'être calculé.
+    ligne = dict(kwargs)
+    for nom, _, valeur in ws.update_calls:
+        ligne[entetes[_ - 1]] = valeur
+    ws2 = _FakeWorksheet([entetes, _row_values(entetes, **ligne)])
+    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws2)
+    refresh_dataframe()
+
+    assert ws2.update_calls == [], "aucune cellule ne devait repartir"
+
+
+def test_a_derived_value_that_really_changed_is_still_written(monkeypatch):
+    # Le garde-fou de l'autre côté : sauter une écriture nécessaire laisserait une
+    # valeur périmée dans le Sheet de l'utilisateur.
+    entetes = SHEET_COLUMNS + list(data_store._DERIVED_SHEET_COLUMNS)
+    ligne = _valid_row_kwargs(id="1")
+    ligne["deadline_month"] = "1999-01"  # volontairement faux
+
+    ws = _FakeWorksheet([entetes, _row_values(entetes, **ligne)])
+    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws)
+    refresh_dataframe()
+
+    colonne = entetes.index("deadline_month") + 1
+    assert any(c == colonne for _, c, _ in ws.update_calls)
+
+
+def test_a_number_written_differently_is_not_rewritten():
+    # Le Sheet rend « 72000 » là où Python écrit « 72000.0 » : une comparaison de
+    # texte conclurait à tort qu'il faut réécrire, à chaque chargement.
+    assert data_store._valeur_identique("72000", 72000.0)
+    assert data_store._valeur_identique("", None)
+    assert not data_store._valeur_identique("72000", 72001.0)
+    assert not data_store._valeur_identique("", 5)

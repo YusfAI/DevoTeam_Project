@@ -24,7 +24,8 @@ from .data_store import get_dataframe, get_last_refresh_summary, refresh_datafra
 from .duckdb_export import export_dataframe
 # pyrefly: ignore [missing-import]
 from .dac_composer import (
-    append_to_main_dashboard, write_generated_dashboard, write_main_dashboard,
+    append_to_main_dashboard, compose_widgets, write_generated_dashboard,
+    write_main_dashboard,
 )
 
 logger = logging.getLogger(__name__)
@@ -107,19 +108,23 @@ async def generate_dashboard(request: ChatRequest):
         # est la première de la session.
         ajout = False
         deja_present = False
+        # Composés UNE fois : le tableau de bord de travail et l'instantané portent
+        # les mêmes widgets. Les composer deux fois refaisait pour rien le comptage
+        # de cardinalité qui décide entre camembert et barres.
+        widgets = compose_widgets(intent)
         try:
             dac_dashboard = None
             if intent.get("append"):
                 dac_dashboard, ajout = append_to_main_dashboard(request.query, intent)
                 deja_present = dac_dashboard is not None and not ajout
             if dac_dashboard is None:
-                dac_dashboard = write_main_dashboard(request.query, intent)
+                dac_dashboard = write_main_dashboard(request.query, intent, widgets)
         except Exception:
             logger.exception("Écriture du dashboard de travail en échec pour %r", request.query)
             dac_dashboard = None
 
         try:
-            dashboard_snapshot = write_generated_dashboard(request.query, intent)
+            dashboard_snapshot = write_generated_dashboard(request.query, intent, widgets)
         except Exception:
             logger.exception("Écriture de l'instantané en échec pour %r", request.query)
             dashboard_snapshot = None
