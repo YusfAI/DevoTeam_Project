@@ -41,6 +41,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 34 — Palette revalidée sans avertissement, garde-fou contre la divergence, et taille d'affichage réglable
 - [x] Phase 35 — Sélecteur de plage de dates natif : raccourcis + calendrier, valeur partageable par l'URL
 - [x] Phase 36 — Correction du défaut du sélecteur de plage, qui rendait le dashboard invisible
+- [x] Phase 37 — Deux champs de date nommés (« début » / « fin ») à la place du sélecteur de plage
 
 ## 📝 Journaux
 
@@ -307,6 +308,16 @@ Suite `pytest` : 234 tests (était 230). `dac check` : 15 dashboards, 124 widget
 *Le correctif.* Le défaut devient un objet `{start, end}`, que DAC transmet inchangé. Un test le verrouille — il ne pouvait pas être écrit avant, puisque `dac validate` et `dac check` passaient tous deux sur la version fautive : seul le rendu dans le navigateur la distinguait.
 
 Suite `pytest` : 235 tests. `dac check` : 15 dashboards, 127 widgets, tous verts.
+
+**Phase 37** : Terminée. Deux champs de date nommés remplacent le sélecteur de plage.
+
+*Ce qui n'allait pas.* Le sélecteur de plage groupait tout dans un seul contrôle — un raccourci OU un calendrier — sans que les deux bornes soient jamais nommées. On ne voyait pas ce qu'on filtrait.
+
+*Ce qui le remplace.* Deux filtres `date`, « Date de debut » et « Date de fin », chacun rendu par un `<input type="date">` natif : le calendrier du navigateur, familier, avec la borne écrite au-dessus. Détail qui a dicté les noms : le libellé affiché EST le nom du filtre, tirets bas convertis en espaces (`e.name.replace(/_/g, ' ')` dans le bundle). Le schéma n'a pas de champ `label`, et le nom sert aussi d'identifiant Jinja — d'où des noms porteurs de sens et sans accent.
+
+*Chaque borne sous sa propre condition.* Vider un champ doit lever CETTE borne et garder l'autre. Un `BETWEEN` sur les deux ne le permettrait pas : effacer une date ne rendrait plus une seule ligne au lieu d'ouvrir ce côté de la période. Vérifié sur les quatre combinaisons — les deux bornes (57 offres remises, comme avant), fin seule (125), début seul (42), aucune (146) — et le tableau des urgences reste exempt dans les quatre cas.
+
+Suite `pytest` : 234 tests. `dac check` : 15 dashboards, 122 widgets, tous verts.
 
 ## 📊 Bilan du Produit
 

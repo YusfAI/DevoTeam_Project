@@ -168,44 +168,33 @@ def test_every_widget_explains_itself_briefly():
 # Le filtre de période
 # ---------------------------------------------------------------------------
 
-def test_the_period_is_a_real_date_range_picker():
-    # Un menu à quatre choix ne permettait pas de borner une période à la main.
-    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
-    periode = next(f for f in doc["filters"] if f["name"] == "periode")
-    assert periode["type"] == "date-range"
+def test_the_period_is_two_named_date_fields():
+    """Deux champs plutôt qu'un sélecteur de plage : les bornes sont nommées.
 
-
-def test_the_default_range_is_an_object_not_a_string():
-    """Le piège qui a fait disparaître le dashboard entier.
-
-    À l'initialisation, DAC ne résout une chaîne que si c'est une clé de raccourci
-    (« last_30_days »…) et la transmet TELLE QUELLE sinon. La forme « début..fin » ne
-    vaut que dans l'URL : passée en défaut, le sélecteur recevait un texte là où il
-    attend {start, end}, et plus rien ne s'affichait. Un objet est transmis inchangé.
-
-    Le schéma accepte les deux formes — seul le comportement les distingue, d'où ce
-    test plutôt qu'une confiance dans `dac validate`.
+    Le libellé affiché EST le nom du filtre, tirets bas convertis en espaces — le
+    schéma n'a pas de champ `label`. Le nom porte donc ce que l'utilisateur lit, et
+    reste sans accent puisqu'il sert aussi d'identifiant dans les gabarits Jinja.
     """
     doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
-    defaut = next(f for f in doc["filters"] if f["name"] == "periode")["default"]
+    dates = [f for f in doc["filters"] if f["type"] == "date"]
 
-    assert isinstance(defaut, dict), "une chaîne « début..fin » ne serait pas résolue"
-    assert set(defaut) == {"start", "end"}
-    assert defaut["start"] < defaut["end"]
+    assert [f["name"] for f in dates] == ["Date_de_debut", "Date_de_fin"]
+    assert all(f["name"].isascii() for f in dates)
+    assert dates[0]["default"] < dates[1]["default"]
 
 
 def test_each_bound_applies_only_if_it_exists():
-    """Le raccourci « tout l'historique » laisse la plage vide.
+    """Vider un champ doit lever CETTE borne et garder l'autre.
 
-    Un BETWEEN sur des bornes absentes ne renverrait plus une seule ligne. Chaque
-    borne est donc posée dans son propre bloc conditionnel.
+    Un BETWEEN sur les deux ne le permettrait pas : effacer une date ne rendrait
+    plus une seule ligne au lieu d'ouvrir ce côté de la période.
     """
     doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
     sql = next(w for row in doc["rows"] for w in row["widgets"]
                 if w["name"] == "Budget actif")["sql"]
 
-    assert "{% if filters.periode.start %}" in sql
-    assert "{% if filters.periode.end %}" in sql
+    assert "{% if filters.Date_de_debut %}" in sql
+    assert "{% if filters.Date_de_fin %}" in sql
     assert "BETWEEN DATE" not in sql
 
 
@@ -217,15 +206,17 @@ def test_the_urgent_table_ignores_the_period():
     sql = next(w for row in doc["rows"] for w in row["widgets"]
                 if w["name"].startswith("Opportunités urgentes"))["sql"]
 
-    assert "filters.periode" not in sql
+    assert "filters.Date_de_debut" not in sql
+    assert "filters.Date_de_fin" not in sql
     assert "filters.practice" in sql
 
 
-def test_every_other_widget_follows_the_period():
+def test_every_other_widget_follows_the_two_dates():
     # Un widget oublié afficherait un chiffre d'un autre périmètre que ses voisins,
     # sans qu'aucune requête n'échoue.
     doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
     oublis = [w["name"] for row in doc["rows"] for w in row["widgets"]
-               if "filters.periode" not in w["sql"]
+               if ("filters.Date_de_debut" not in w["sql"]
+                    or "filters.Date_de_fin" not in w["sql"])
                and not w["name"].startswith("Opportunités urgentes")]
     assert not oublis, oublis

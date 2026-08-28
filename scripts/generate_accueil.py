@@ -37,22 +37,21 @@ STAGES = ",\n".join(
     for i in range(0, len(FUNNEL_STAGE_ORDER), 3)
 )
 
-# Les deux filtres de tête, injectés en Jinja dans CHAQUE requête — sauf le
-# tableau des urgences, qui échappe à la période (voir son commentaire).
+# Les trois filtres de tête, injectés en Jinja dans CHAQUE requête — sauf le
+# tableau des urgences, qui échappe aux deux dates (voir son commentaire).
 PRACTICE = (
     "          {% if filters.practice != 'Toutes' %}\n"
     "            AND practice = '{{ filters.practice }}'\n"
     "          {% endif %}"
 )
-# Les deux bornes sont posées séparément et chacune sous condition : le raccourci
-# « tout l'historique » laisse la plage vide, et un `BETWEEN` sur des bornes absentes
-# ne renverrait plus rien. Chacune ne s'applique donc que si elle existe.
+# Chaque borne sous sa propre condition : vider un champ de date doit lever CETTE
+# borne-là et garder l'autre, ce qu'un BETWEEN ne permettrait pas.
 PERIODE = (
-    "          {% if filters.periode.start %}\n"
-    "            AND deadline >= DATE '{{ filters.periode.start }}'\n"
+    "          {% if filters.Date_de_debut %}\n"
+    "            AND deadline >= DATE '{{ filters.Date_de_debut }}'\n"
     "          {% endif %}\n"
-    "          {% if filters.periode.end %}\n"
-    "            AND deadline <= DATE '{{ filters.periode.end }}'\n"
+    "          {% if filters.Date_de_fin %}\n"
+    "            AND deadline <= DATE '{{ filters.Date_de_fin }}'\n"
     "          {% endif %}"
 )
 FILTRES = PERIODE + "\n" + PRACTICE
@@ -238,25 +237,25 @@ connection: devoteam_duckdb
 # jointes en LEFT JOIN pour rester dans un ordre constant même à zéro, et ce sont les
 # étiquettes — pas la couleur — qui portent le sens.
 filters:
-  # Sélecteur de plage natif : liste de raccourcis (aujourd'hui, 7/30/90 derniers
-  # jours, ce mois, mois dernier, ce trimestre, cette année, depuis le 1er janvier,
-  # tout l'historique) ET calendrier pour une période libre. Sa valeur passe dans
-  # l'URL, donc un dashboard filtré se partage par lien.
+  # Deux champs de date plutôt qu'un sélecteur de plage : les bornes sont nommées et
+  # se lisent d'un coup d'œil. Chacune ouvre le calendrier natif du navigateur.
   #
-  # La borne haute par défaut dépasse volontairement la dernière échéance des données
+  # Le libellé affiché EST le nom du filtre, tirets bas convertis en espaces — le
+  # schéma n'a pas de champ `label`. D'où ces noms, choisis pour ce qu'ils affichent
+  # (« Date de debut », « Date de fin ») et sans accent, puisqu'ils servent aussi
+  # d'identifiants dans les gabarits Jinja.
+  #
+  # La borne de fin par défaut dépasse volontairement la dernière échéance des données
   # (2026-12-29) : plusieurs widgets regardent vers l'AVENIR — budget actif, entonnoir,
   # pipeline — et une borne fixée à aujourd'hui les amputerait de tout le portefeuille
   # en cours. À étendre le jour où des échéances iront au-delà.
-  - name: periode
-    type: date-range
-    # Un OBJET, pas la chaîne « début..fin ». Cette dernière ne vaut que dans l'URL :
-    # à l'initialisation, le bundle ne résout une chaîne que si c'est une clé de
-    # raccourci et la transmet telle quelle sinon, si bien que le sélecteur recevait
-    # un texte là où il attend {start, end} — et le dashboard entier ne s'affichait
-    # plus. Un objet est transmis inchangé, donc directement exploitable.
-    default:
-      start: "2025-11-01"
-      end: "2026-12-31"
+  - name: Date_de_debut
+    type: date
+    default: "2025-11-01"
+
+  - name: Date_de_fin
+    type: date
+    default: "2026-12-31"
 
   - name: practice
     type: select
@@ -490,8 +489,8 @@ __FILTRES__
         col: 12
         # Seul widget tourné vers l'avenir : la borne « à date » des offres remises ne
         # s'y applique pas, sinon il serait toujours vide.
-        # Volontairement HORS du filtre de période : sa fenêtre est « les 7 prochains
-        # jours », elle se définit toute seule. Une plage se terminant aujourd'hui le
+        # Volontairement HORS des deux dates : sa fenêtre est « les 7 prochains
+        # jours », elle se définit toute seule. Une date de fin posée à aujourd'hui le
         # viderait entièrement, ce qui est exactement le contraire de son propos.
         # Le filtre de practice, lui, s'applique normalement.
         description: Affaires encore ouvertes dont l'échéance tombe dans les 7 jours.

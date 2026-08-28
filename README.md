@@ -53,10 +53,10 @@ données à installer.
   remises sur la période, comment elles se répartissent par practice, et ce qu'elles
   sont devenues (gagnées / perdues / en attente) — puis donne l'état du portefeuille,
   le pipeline et les échéances urgentes. 19 widgets.
-- **Période choisie à la main** : sélecteur de plage natif — liste de raccourcis
-  (aujourd'hui, 7/30/90 derniers jours, ce mois, mois dernier, ce trimestre, cette
-  année, tout) et calendrier pour une période libre. La valeur passe dans l'URL, donc
-  un dashboard filtré se partage par lien.
+- **Période choisie à la main** : deux champs de date nommés, « Date de debut » et
+  « Date de fin », chacun ouvrant le calendrier du navigateur. Vider l'un lève cette
+  borne et garde l'autre. Les valeurs passent dans l'URL, donc un dashboard filtré se
+  partage par lien.
 - **Palette revalidée** : huit teintes qui passent tous les contrôles du validateur
   daltonien sans avertissement, contraste compris — les trois teintes claires de la
   version précédente passaient sous 3:1. Un test empêche la régression et vérifie que
