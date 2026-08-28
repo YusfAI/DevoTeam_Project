@@ -213,9 +213,21 @@ cd dac && dac serve --dir . --port 8321 --template themes/devoteam.yml
 cd frontend && npm run dev                 # UI sur http://127.0.0.1:5173 (proxy /dashboard -> :8000)
 ```
 
-**Windows** : `scripts/start_dev.bat` démarre l'API et le frontend en une seule fois,
-puis ouvre le dashboard dans le navigateur — pratique en raccourci bureau (icône
-fournie : `scripts/devoteam.ico`). Ne pas fermer les fenêtres de terminal qu'il ouvre.
+**Windows** : `scripts/start_dev.bat` démarre les trois services en une seule fois,
+chacun dans sa fenêtre, attend une quinzaine de secondes (le premier widget DAC
+déclenche un démarrage à froid du moteur de requête) puis ouvre
+http://localhost:5173. Il n'en relance aucun s'il tourne déjà. Ne pas fermer les
+fenêtres qu'il ouvre.
+
+Pour le raccourci du Bureau :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\create_shortcut.ps1
+```
+
+Il (re)crée « DevoTeam Dashboard » avec l'icône `scripts/devoteam.ico`, en pointant
+sur le chemin réel du dépôt — à rejouer après un déplacement du projet ou sur une
+machine neuve, un raccourci vivant hors du dépôt.
 
 ## Lancer en local "prod" (un seul processus)
 
