@@ -41,3 +41,7 @@ dac/dashboards/_principal.yml
 
 logs/queries
 .bruin.yml
+# Documentation de reference installee a la demande par `dac skills install` :
+# fichier tiers, regenerable, sans interet en revue.
+dac/.claude/
+dac/.codex/
