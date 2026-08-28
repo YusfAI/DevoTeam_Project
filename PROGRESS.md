@@ -42,6 +42,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 35 — Sélecteur de plage de dates natif : raccourcis + calendrier, valeur partageable par l'URL
 - [x] Phase 36 — Correction du défaut du sélecteur de plage, qui rendait le dashboard invisible
 - [x] Phase 37 — Deux champs de date nommés (« début » / « fin ») à la place du sélecteur de plage
+- [x] Phase 38 — Unité DT sur tous les montants, et jetons d'élévation pour l'interface
 
 ## 📝 Journaux
 
@@ -318,6 +319,18 @@ Suite `pytest` : 235 tests. `dac check` : 15 dashboards, 127 widgets, tous verts
 *Chaque borne sous sa propre condition.* Vider un champ doit lever CETTE borne et garder l'autre. Un `BETWEEN` sur les deux ne le permettrait pas : effacer une date ne rendrait plus une seule ligne au lieu d'ouvrir ce côté de la période. Vérifié sur les quatre combinaisons — les deux bornes (57 offres remises, comme avant), fin seule (125), début seul (42), aucune (146) — et le tableau des urgences reste exempt dans les quatre cas.
 
 Suite `pytest` : 234 tests. `dac check` : 15 dashboards, 122 widgets, tous verts.
+
+**Phase 38** : Terminée. Unité DT sur les montants, et passe d'apparence sur l'interface.
+
+*L'unité, et un bug de devise au passage.* Les montants sont en dinars ; l'application affichait des euros dans le chat, et les colonnes de tableau utilisaient le format `currency` de DAC — qui applique le préfixe `$` de son formateur d3, donc des **dollars** pour des dinars. Bruin DAC n'accepte ni `suffix`, ni `unit`, ni `prefix` sur une valeur (sondé : le schéma refuse les trois), l'unité vit donc sur les LIBELLÉS — nom de KPI, titre d'axe, en-tête de colonne. Le nombre reste un nombre, donc triable et aligné à droite. Le format `currency` a disparu du projet ; un test l'interdit désormais, et vérifie que tout libellé affichant un montant porte l'unité — en se fondant sur le FORMAT et non sur l'intitulé, « Écart offre / budget » étant un pourcentage auquel « DT » serait faux.
+
+*Les couleurs : l'optimum était déjà atteint.* Neuf palettes candidates ont été mesurées au validateur pour répondre à la demande d'un rendu plus vif. **Toutes échouent**, et pour une raison structurelle : la palette compte deux verts, un rouge et un magenta, qui se confondent en deutéranopie dès qu'on monte en vivacité — la séparation tombe à 3,0-5,2 ΔE contre 8 exigés. Éclaircir seulement les teintes disposant de marge fait repasser l'orange sous la cible (8,1 → 7,3 ΔE), et éclaircir tout fait revenir l'avertissement de contraste corrigé à la phase 34. La palette actuelle est donc conservée : c'est la plus vive qui satisfasse encore les deux contraintes. Une opinion sur le « plus joli » ne vaut pas contre une mesure.
+
+*Ce qui restait réglable, c'est le cadre.* Rayons et élévations passent en jetons plutôt qu'en valeurs recopiées — une ombre écrite huit fois à la main finit par diverger huit fois. Les ombres sont désormais à deux couches (un contact net très proche, puis une diffusion large et douce) là où une couche unique donnait le halo gris caractéristique des interfaces datées ; en mode sombre, où une ombre noire ne se voit pas, l'élévation passe par un liseré clair simulant la lumière rasante. Les cartes s'arrondissent, les boutons se soulèvent au survol.
+
+*Ce qui reste hors de portée, et pourquoi.* Formes des marques, animations d'apparition, typographie des graphiques : tout cela vit dans le code de Bruin DAC. Son bundle ne lit que onze variables de thème et huit teintes, et il désactive lui-même les animations de Recharts (`isAnimationActive: false`).
+
+Suite `pytest` : 235 tests. `dac check` : 15 dashboards, 122 widgets, tous verts.
 
 ## 📊 Bilan du Produit
 

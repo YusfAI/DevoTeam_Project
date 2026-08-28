@@ -18,7 +18,7 @@ from pathlib import Path
 
 import yaml
 
-from .labels import DIMENSION_LABELS, METRIC_LABELS
+from .labels import DEVISE, DIMENSION_LABELS, METRIC_LABELS, with_unit
 from .sql_builder import (
     MAX_CATEGORIES, METRIC_SQL, RAW_COLUMNS, _where_clause, build_sql, funnel_sql,
 )
@@ -144,15 +144,16 @@ def _widget_from_intent(intent: dict, title: str, col: int) -> dict:
         labels = {
             "buyer": "Client", "country": "Pays", "practice": "Practice",
             "status": "Statut", "deadline": "Échéance",
-            "days_remaining": "Jours restants", "budget": "Budget",
+            "days_remaining": "Jours restants", "budget": "Budget (%s)" % DEVISE,
             "win_probability": "Probabilité",
         }
         columns = []
         for name in RAW_COLUMNS:
             column = {"name": name, "label": labels.get(name, name)}
-            if name == "budget":
-                column["number"] = "currency"
-            elif name == "days_remaining":
+            if name in ("budget", "days_remaining"):
+                # Pas `currency` pour le budget : ce format applique le préfixe `$`
+                # du formateur d3 de DAC, soit des dollars affichés là où il s'agit
+                # de dinars. L'unité est portée par le libellé de la colonne.
                 column["number"] = "number"
             columns.append(column)
         return {"name": title, "type": "table", "col": col, "sql": sql, "columns": columns}
@@ -190,7 +191,8 @@ def _widget_from_intent(intent: dict, title: str, col: int) -> dict:
     widget = {
         "name": title, "type": "chart", "chart": chart, "col": col, "sql": sql,
         "x": {"field": dimension, "type": "category", "title": _dimension_label(dimension)},
-        "y": {"field": metric, "type": "number", "title": _metric_label(metric), "format": fmt},
+        "y": {"field": metric, "type": "number",
+               "title": with_unit(_metric_label(metric), metric), "format": fmt},
     }
     if chart == "bar" and dimension:
         # Une couleur par catégorie plutôt qu'une teinte unique pour toutes les
@@ -289,7 +291,8 @@ def _kpi_row(intent: dict, metric: str) -> list:
     Un total seul ne veut rien dire : on ajoute donc systématiquement un point de
     comparaison — le poids du périmètre dans le portefeuille quand la question
     filtre, sinon la valeur moyenne par opportunité."""
-    widgets = [_widget_from_intent(_kpi_intent(intent, metric), _metric_label(metric), col=3)]
+    widgets = [_widget_from_intent(_kpi_intent(intent, metric),
+                                    with_unit(_metric_label(metric), metric), col=3)]
     if metric != "nb_opportunities":
         widgets.append(_widget_from_intent(
             _kpi_intent(intent, "nb_opportunities"), "Opportunités", col=3))
@@ -304,7 +307,7 @@ def _kpi_row(intent: dict, metric: str) -> list:
 
     if metric != "weighted_amount":
         widget = _widget_from_intent(
-            _kpi_intent(intent, "weighted_amount"), "Montant pondéré", col=3)
+            _kpi_intent(intent, "weighted_amount"), "Montant pondéré (%s)" % DEVISE, col=3)
         # Mention explicite : weighted_amount est vide pour ~49 % des opportunités
         # (probabilité de gain non renseignée). Sans cette précision, le chiffre se
         # lit comme un total du portefeuille alors qu'il n'en couvre que la moitié.
@@ -413,7 +416,7 @@ def _average_widget(intent: dict, metric: str, col: int) -> dict:
               "weighted_amount": "weighted_amount"}.get(metric, "budget")
     where = _where_clause(intent)
     return {
-        "name": f"{_metric_label(metric)} moyen", "type": "metric", "col": col,
+        "name": with_unit(f"{_metric_label(metric)} moyen", metric), "type": "metric", "col": col,
         "sql": f"SELECT AVG({column}) AS value\nFROM opportunities\nWHERE {where}",
         "description": "Moyenne par opportunité du périmètre.",
         "value": {"field": "value", "type": "number", "format": ",.0f"},
@@ -552,7 +555,8 @@ def _grouped_bar_widget(intent: dict, metric: str, axis: str, series: str, col: 
         "type": "chart", "chart": "bar", "col": col, "sql": sql, "stacked": True,
         "color": {"field": series},
         "x": {"field": axis, "type": "category", "title": _dimension_label(axis)},
-        "y": {"field": metric, "type": "number", "title": _metric_label(metric), "format": _fmt(metric)},
+        "y": {"field": metric, "type": "number",
+               "title": with_unit(_metric_label(metric), metric), "format": _fmt(metric)},
     }
 
 

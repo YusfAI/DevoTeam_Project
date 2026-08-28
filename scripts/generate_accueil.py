@@ -164,7 +164,7 @@ def table_chaudes(rang, description):
         "          - { name: rang, label: \"N°\", number: number }\n"
         "          - { name: description, label: Opportunité }\n"
         "          - { name: buyer, label: Client }\n"
-        "          - { name: weighted_amount, label: Montant pondéré, number: currency }"
+        "          - { name: weighted_amount, label: Montant pondéré (DT), number: number }"
         % (rang, COLONNES_CHAUDES, 12 // COLONNES_CHAUDES, description,
             CHAUDES_CTE, COLONNES_CHAUDES, rang)
     )
@@ -286,9 +286,9 @@ ligne2 = "\n\n".join([
                 "                 / NULLIF(COUNT(*) FILTER (WHERE issue <> 'En attente'), 0)",
                 ".1%",
                 "Gagnées ÷ offres décidées. Les offres en attente ne comptent pas au dénominateur."),
-    kpi_remises("Budget remis", 4, "SUM(budget)", ",.0f",
+    kpi_remises("Budget remis (DT)", 4, "SUM(budget)", ",.0f",
                 "Budget cumulé des offres déposées."),
-    kpi_remises("Budget gagné", 4, "SUM(budget) FILTER (WHERE issue = 'Gagnée')", ",.0f",
+    kpi_remises("Budget gagné (DT)", 4, "SUM(budget) FILTER (WHERE issue = 'Gagnée')", ",.0f",
                 "Part du budget remis effectivement remportée."),
 ])
 
@@ -414,14 +414,14 @@ __CHAUDES_COLONNES__
 """
 
 ligne3 = "\n\n".join([
-    kpi("Budget actif", 3, actif("SUM(budget)"), ",.0f",
+    kpi("Budget actif (DT)", 3, actif("SUM(budget)"), ",.0f",
         "Budget annoncé par le client, hors affaires perdues."),
-    kpi("Offre financière", 3, actif("SUM(financial_offer)"), ",.0f",
+    kpi("Offre financière (DT)", 3, actif("SUM(financial_offer)"), ",.0f",
         "Montant proposé par DevoTeam, sur le même périmètre."),
     kpi("Écart offre / budget", 3,
         actif("(SUM(financial_offer) - SUM(budget)) / NULLIF(SUM(budget), 0)"), "+.1%",
         "Négatif = nous chiffrons sous le budget du client."),
-    kpi("Montant pondéré", 3, actif("SUM(weighted_amount)"), ",.0f",
+    kpi("Montant pondéré (DT)", 3, actif("SUM(weighted_amount)"), ",.0f",
         "Offre × probabilité, sur les seules lignes où la probabilité est renseignée."),
 ])
 
@@ -466,7 +466,7 @@ __ETAPES__,
         color: { field: status }
 
   - widgets:
-      - name: Budget actif par pays
+      - name: Budget actif par pays (DT)
         type: chart
         chart: bar
         col: 12
@@ -479,7 +479,7 @@ __FILTRES__
           ORDER BY 2 DESC
           LIMIT 10
         x: { field: country, type: category, title: Pays }
-        y: { field: budget, type: number, title: Budget, format: ",.0f" }
+        y: { field: budget, type: number, title: Budget (DT), format: ",.0f" }
         color: { field: country }
 
   # === Ce qu'il faut traiter maintenant ===
@@ -511,7 +511,7 @@ __PRACTICE_SEULE__
           - { name: status, label: Statut }
           - { name: deadline, label: Échéance }
           - { name: days_remaining, label: Jours restants, number: number }
-          - { name: budget, label: Budget, number: currency }
+          - { name: budget, label: Budget (DT), number: number }
 """
 
 NOUVELLE_LIGNE = """
@@ -522,9 +522,9 @@ NOUVELLE_LIGNE = """
 chaudes_kpi = "\n\n".join([
     kpi_chaudes("Affaires chaudes", 4, "COUNT(*)", ",.0f",
                 "Opportunités à 80 % de probabilité ou plus. Le statut n'entre pas en compte."),
-    kpi_chaudes("Budget à forte confiance", 4, "SUM(budget)", ",.0f",
+    kpi_chaudes("Budget à forte confiance (DT)", 4, "SUM(budget)", ",.0f",
                 "Budget cumulé des affaires chaudes."),
-    kpi_chaudes("Montant pondéré associé", 4, "SUM(weighted_amount)", ",.0f",
+    kpi_chaudes("Montant pondéré associé (DT)", 4, "SUM(weighted_amount)", ",.0f",
                 "Offre financière × probabilité, sur ce même périmètre."),
 ])
 
@@ -560,14 +560,14 @@ for r in parsed["rows"]:
 noms = [w["name"] for r in parsed["rows"] for w in r["widgets"]]
 attendus = [
     "Offres remises", "Gagnées", "Perdues", "En attente",
-    "Taux de réussite", "Budget remis", "Budget gagné",
+    "Taux de réussite", "Budget remis (DT)", "Budget gagné (DT)",
     "Issue des offres remises", "Offres remises par practice",
     "Issue par practice", "Offres remises par mois",
-    "Affaires chaudes", "Budget à forte confiance", "Montant pondéré associé",
+    "Affaires chaudes", "Budget à forte confiance (DT)", "Montant pondéré associé (DT)",
     "Affaires chaudes par practice",
     "Affaires chaudes (1/3)", "Affaires chaudes (2/3)", "Affaires chaudes (3/3)",
-    "Budget actif", "Offre financière", "Écart offre / budget", "Montant pondéré",
-    "Entonnoir de vente", "Taux de passage entre étapes", "Budget actif par pays",
+    "Budget actif (DT)", "Offre financière (DT)", "Écart offre / budget", "Montant pondéré (DT)",
+    "Entonnoir de vente", "Taux de passage entre étapes", "Budget actif par pays (DT)",
     "Opportunités urgentes (échéance ≤ 7 jours)",
 ]
 manquants = [n for n in attendus if n not in noms]

@@ -87,8 +87,8 @@ def test_the_hot_deal_kpis_count_every_deal_above_the_threshold(base):
         _opportunite(win_probability=0.4, budget=999999.0, weighted_amount=1.0),
     ])
     assert _executer(base, "Affaires chaudes")[0][0] == 2
-    assert _executer(base, "Budget à forte confiance")[0][0] == 300000.0
-    assert _executer(base, "Montant pondéré associé")[0][0] == 272000.0
+    assert _executer(base, "Budget à forte confiance (DT)")[0][0] == 300000.0
+    assert _executer(base, "Montant pondéré associé (DT)")[0][0] == 272000.0
 
 
 def test_a_won_deal_counts_as_hot_for_the_kpis_too(base):
@@ -191,7 +191,7 @@ def test_each_bound_applies_only_if_it_exists():
     """
     doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
     sql = next(w for row in doc["rows"] for w in row["widgets"]
-                if w["name"] == "Budget actif")["sql"]
+                if w["name"] == "Budget actif (DT)")["sql"]
 
     assert "{% if filters.Date_de_debut %}" in sql
     assert "{% if filters.Date_de_fin %}" in sql
@@ -220,3 +220,47 @@ def test_every_other_widget_follows_the_two_dates():
                     or "filters.Date_de_fin" not in w["sql"])
                and not w["name"].startswith("Opportunités urgentes")]
     assert not oublis, oublis
+
+
+# ---------------------------------------------------------------------------
+# L'unité des montants
+# ---------------------------------------------------------------------------
+
+def test_amounts_carry_their_unit_and_never_a_currency_format():
+    """Les montants sont en dinars, et DAC ne sait pas l'écrire à côté du nombre.
+
+    Son schéma refuse `suffix`, `unit` et `prefix` sur une valeur, et son format
+    `currency` applique le préfixe `$` de son formateur d3 — soit des dollars
+    affichés là où il s'agit de dinars. L'unité vit donc sur les libellés, et le
+    format `currency` ne doit plus apparaître nulle part.
+    """
+    from backend.labels import DEVISE
+
+    contenu = ACCUEIL.read_text(encoding="utf-8")
+    doc = yaml.safe_load(contenu)
+    widgets = [w for row in doc["rows"] for w in row["widgets"]]
+
+    assert "number: currency" not in contenu
+
+    # Tout libellé qui parle d'argent porte l'unité — sauf s'il n'affiche pas un
+    # montant : « Écart offre / budget » est un pourcentage, mettre « DT » à côté
+    # serait faux. C'est donc le FORMAT qui décide, pas le seul intitulé.
+    argent = ("budget", "montant", "offre financière")
+
+    def montre_un_montant(widget):
+        format_ = str((widget.get("value") or {}).get("format", ""))
+        return not format_.endswith("%")
+
+    sans_unite = [
+        w["name"] for w in widgets
+        if montre_un_montant(w)
+        and any(mot in w["name"].lower() for mot in argent)
+        and DEVISE not in w["name"]
+    ]
+    assert not sans_unite, sans_unite
+
+    colonnes_sans_unite = [
+        c["label"] for w in widgets for c in w.get("columns", [])
+        if any(mot in c["label"].lower() for mot in argent) and DEVISE not in c["label"]
+    ]
+    assert not colonnes_sans_unite, colonnes_sans_unite

@@ -57,6 +57,9 @@ données à installer.
   « Date de fin », chacun ouvrant le calendrier du navigateur. Vider l'un lève cette
   borne et garde l'autre. Les valeurs passent dans l'URL, donc un dashboard filtré se
   partage par lien.
+- **Montants en dinars (DT)** : l'unité figure sur chaque libellé — nom de KPI,
+  titre d'axe, en-tête de colonne — et dans les réponses du chat. Le format
+  `currency` de DAC n'est plus utilisé : il applique un `$`.
 - **Palette revalidée** : huit teintes qui passent tous les contrôles du validateur
   daltonien sans avertissement, contraste compris — les trois teintes claires de la
   version précédente passaient sous 3:1. Un test empêche la régression et vérifie que

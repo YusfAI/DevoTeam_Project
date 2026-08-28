@@ -7,7 +7,9 @@ def test_format_metric_value_none_is_na_not_zero():
 
 
 def test_format_metric_value_units():
-    assert format_metric_value(1234, "budget") == "1 234 €"
+    # Les montants sont en dinars. L'unité vient de labels.DEVISE, partagée avec les
+    # libellés des dashboards : deux écritures finiraient par diverger.
+    assert format_metric_value(1234, "budget") == "1 234 DT"
     assert format_metric_value(7, "nb_opportunities") == "7"
 
 

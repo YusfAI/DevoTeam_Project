@@ -490,7 +490,7 @@ def build_rapport_professionnel():
              "(alertes deadlines, rafraîchissement des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (234 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
+            ["Tests", "pytest (235 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
              "(mocks), garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -509,7 +509,7 @@ def build_rapport_professionnel():
                      "explicite — il n'écrit jamais lui-même de requête.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "234 tests automatisés couvrent la compréhension du langage, le requêtage des "
+    add_bullet(doc, "235 tests automatisés couvrent la compréhension du langage, le requêtage des "
                      "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -1179,6 +1179,13 @@ def build_guide_technique():
         "YAML, et le markdown d'un widget text est rendu sans rehype-raw, donc sans "
         "HTML brut. Un rendu React hors de l'iframe a été essayé puis retiré : il "
         "donnait la molette mais sortait le tableau du dashboard.")
+    add_cue(doc,
+        "Les montants sont en dinars, et DAC ne sait pas l'ecrire a cote du nombre : "
+        "son schema refuse suffix, unit et prefix sur une valeur, et son format "
+        "currency applique le prefixe $ de son formateur d3 — soit des dollars "
+        "affiches la ou il s'agit de dinars. L'unite vit donc sur les LIBELLES (nom "
+        "de KPI, titre d'axe, en-tete de colonne), ou elle se lit tout aussi bien "
+        "sans empecher le nombre de rester triable et aligne a droite.")
     add_body(doc,
         "Le tableau passant par pandas et les KPI par du SQL, un test confronte les "
         "deux définitions sur les mêmes lignes. Il a révélé un piège de DuckDB : "
@@ -1572,7 +1579,7 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "15. Tests automatisés")
     add_body(doc,
-        "234 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
+        "235 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
         "et le client Google Sheets (gspread) sont simulés (monkeypatch), et les données "
         "sont un petit DataFrame construit dans le test. La suite tourne donc hors ligne, "
         "en quelques secondes.")
@@ -1887,7 +1894,7 @@ def build_presentation_script():
     add_h1(doc, "Les chiffres à retenir")
     add_bullet(doc, "1 question = 1 tableau de bord complet, généré automatiquement.")
     add_bullet(doc, "9 types de visualisations choisis automatiquement selon la question.")
-    add_bullet(doc, "234 tests automatisés, aucune dépendance à des données réelles.")
+    add_bullet(doc, "235 tests automatisés, aucune dépendance à des données réelles.")
     add_bullet(doc, "21 phases de développement livrées, de bout en bout, en autonomie.")
     add_bullet(doc, "0 base de données à administrer — le Google Sheet est la source de vérité.")
     add_bullet(doc, "0 hallucination tolérée : donnée non fiable = question posée en retour, jamais un chiffre inventé.")

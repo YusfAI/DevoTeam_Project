@@ -1,6 +1,6 @@
 """Build user-facing messages strictly from query results (no LLM hallucination)."""
 
-from .labels import METRIC_LABELS, DIMENSION_LABELS, FILTER_LABELS
+from .labels import DEVISE, METRIC_LABELS, DIMENSION_LABELS, FILTER_LABELS
 from .business_rules import FUNNEL_STAGE_ORDER, cap_heatmap_rows
 
 
@@ -24,7 +24,7 @@ def format_metric_value(value, metric: str) -> str:
         return f"{float(value) * 100:.1f} %"
     if metric == "nb_opportunities":
         return f"{int(value):,}".replace(",", " ")
-    return f"{float(value):,.0f} €".replace(",", " ")
+    return f"{float(value):,.0f} {DEVISE}".replace(",", " ")
 
 
 def extract_metric_value(row: dict, metric: str):
