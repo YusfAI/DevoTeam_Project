@@ -407,7 +407,11 @@ def _kpi_row(intent: dict, metric: str) -> list:
         # (« Budget moyen (DT) ») pour le même chiffre, côte à côte.
         widgets.append(_average_widget(intent, metric, col=3))
 
-    if metric != "weighted_amount":
+    # Le montant pondéré n'accompagne que les questions d'ARGENT. Sur « combien
+    # d'offres gagnées ? », il n'éclairait rien : la question porte sur un nombre,
+    # et le lecteur se retrouvait devant un montant qu'il n'avait pas demandé — dont
+    # la moitié du portefeuille manque de surcroît.
+    if metric in _CURRENCY_METRICS and metric != "weighted_amount":
         widget = _widget_from_intent(
             _kpi_intent(intent, "weighted_amount"), "Montant pondéré (%s)" % DEVISE, col=3)
         widget["description"] = _MENTION_COUVERTURE
@@ -574,18 +578,37 @@ def _conversion_widget(intent: dict, col: int) -> dict:
 
 
 def _compose_breakdown(intent: dict) -> list:
-    """« budget par pays » : la répartition, plus un second axe de lecture."""
+    """« budget par pays » : la répartition, et ce qui aide VRAIMENT à la lire.
+
+    La composition ajoutait systématiquement un second axe, une vue en parts et la
+    liste des opportunités — huit widgets pour une question qui en appelle trois, et
+    sept pour « combien d'offres gagnées ? », dont un montant pondéré et un détail
+    ligne à ligne que personne n'avait demandés. Le tableau de bord devenait un mur
+    où l'on ne trouvait plus la réponse.
+
+    Ce qui reste tient à une règle simple : un widget doit répondre à la question,
+    ou aider à interpréter la réponse. Le reste part.
+    """
     metric = intent.get("metric") or "budget"
+    dimension = intent.get("dimension") or ""
     widgets = _kpi_row(intent, metric)
-    # Moitiés égales plutôt que 7/5 : quand le complément est un camembert, DAC
-    # affiche « nom NN% » à côté de chaque part et ces étiquettes sont tronquées
-    # dans une colonne étroite.
-    widgets.append(_primary(intent, col=6))
-    complement = _complement_widget(intent, metric, col=6)
+
+    # Sans axe, il n'y a rien à répartir : la réponse EST le chiffre de la rangée
+    # ci-dessus. Lui ajouter des graphiques d'un autre angle, c'est répondre à côté.
+    if not dimension:
+        return widgets
+
+    widgets.append(_primary(intent, col=12))
+
+    # UN seul angle complémentaire, et seulement s'il apporte un axe que la question
+    # n'a pas déjà. La vue en parts montrait la même répartition que le graphique
+    # principal, sous une autre forme : deux fois la même information.
+    complement = _complement_widget(intent, metric, col=12)
     if complement:
         widgets.append(complement)
-    widgets.append(_share_of_total_widget(intent, metric, col=6))
-    widgets.append(_detail_widget(intent, col=6))
+
+    # Le détail ligne à ligne n'apparaît que si la question le demande — c'est le
+    # rôle de `_compose_detail`. Ici, il noyait la réponse sous 300 lignes.
     return widgets
 
 
@@ -595,10 +618,11 @@ def _compose_temporal(intent: dict) -> list:
     metric = intent.get("metric") or "budget"
     widgets = _kpi_row(intent, metric)
     widgets.append(_primary(intent, col=12))
-    complement = _complement_widget(intent, metric, col=6)
+    # Un seul angle complémentaire, et pas de liste brute : une question d'ÉVOLUTION
+    # porte sur une tendance, que 300 lignes d'opportunités n'éclairent en rien.
+    complement = _complement_widget(intent, metric, col=12)
     if complement:
         widgets.append(complement)
-    widgets.append(_detail_widget(intent, col=6 if complement else 12))
     return widgets
 
 
@@ -626,16 +650,12 @@ def _compose_detail(intent: dict) -> list:
     widgets = _kpi_row(intent, metric)
     widgets.append(_primary(intent, col=12))
 
-    first = _complement_widget(intent, metric, col=6)
-    if first:
-        widgets.append(first)
-        # Second axe explicitement différent du premier : sans cette exclusion, les
-        # deux widgets retombaient tous deux sur « practice » et disaient la même chose.
-        second = _complement_widget(intent, metric, col=6, exclude={first["_dimension"]})
-        if second:
-            widgets.append(second)
-        else:
-            widgets[-1]["col"] = 12
+    # UN angle, pas deux. La liste est déjà l'essentiel de la page ; deux graphiques
+    # de plus la repoussaient sous la ligne de flottaison, et le second n'ajoutait
+    # qu'un axe de lecture dont la question ne parlait pas.
+    complement = _complement_widget(intent, metric, col=12)
+    if complement:
+        widgets.append(complement)
     return widgets
 
 
@@ -818,11 +838,21 @@ def _analysis_title(query: str, intent: dict) -> str:
 def _dashboard_name(query: str) -> str:
     """Nom affiché, dérivé de l'intitulé. C'est aussi la route DAC (/d/<nom>), donc
     on retire les caractères qui casseraient une URL ou un nom de dashboard."""
-    cleaned = re.sub(r"[^\w\s'À-ÿ-]", " ", query).strip()
+    # L'apostrophe COURBE (U+2019) est ramenée sur la droite avant tout filtrage :
+    # c'est celle que produisent Word, macOS, les claviers mobiles — et l'application
+    # elle-même dans ses propres libellés. Hors de la classe autorisée, elle devenait
+    # une espace : « Combien d’affaires chaudes ? » donnait « Combien d affaires ».
+    normalise = (query or "").replace("’", "'").replace("ʼ", "'")
+    cleaned = re.sub(r"[^\w\s'À-ÿ-]", " ", normalise).strip()
     cleaned = re.sub(r"\s+", " ", cleaned)
     if len(cleaned) > 70:
         cleaned = cleaned[:70].rsplit(" ", 1)[0] + "…"
-    return cleaned.capitalize() or "Analyse"
+    if not cleaned:
+        return "Analyse"
+    # Seule la PREMIÈRE lettre est forcée. `.capitalize()` mettait tout le reste en
+    # minuscules, noms propres compris : « Côte d'Ivoire » devenait « côte d'ivoire »,
+    # et « Risk Advisory » perdait ses capitales dans le titre du tableau de bord.
+    return cleaned[0].upper() + cleaned[1:]
 
 
 def _write_dashboard(filename: str, name: str, description: str, widgets: list) -> None:

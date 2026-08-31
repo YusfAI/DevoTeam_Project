@@ -27,6 +27,8 @@ from .dac_composer import (
     append_to_main_dashboard, compose_widgets, write_generated_dashboard,
     write_main_dashboard,
 )
+# pyrefly: ignore [missing-import]
+from .overview_match import OVERVIEW_NAME, overview_answers
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +117,25 @@ async def generate_dashboard(request: ChatRequest):
         # Renvoie None s'il n'y a rien à compléter — on retombe alors sur une
         # composition normale, ce qui est le comportement attendu quand la question
         # est la première de la session.
+        # La vue d'ensemble répond-elle DÉJÀ à cette question ? Si oui, on la montre
+        # filtrée comme demandé plutôt que d'écrire un tableau de bord de plus. Les
+        # chiffres viennent alors de widgets relus en revue, l'utilisateur reste sur
+        # une page qu'il connaît, et rien n'est écrit sur le disque.
+        #
+        # La reconnaissance est étroite à dessein (voir overview_match) : au moindre
+        # doute on compose, parce qu'afficher la vue d'ensemble pour une question
+        # qu'elle ne traite pas serait une réponse à côté.
+        filtres_accueil = overview_answers(intent)
+        if filtres_accueil is not None and not intent.get("append"):
+            return {
+                "ai_message": ai_message,
+                "goal": goal,
+                "intent": intent,
+                "dac_dashboard": OVERVIEW_NAME,
+                "dac_filters": filtres_accueil,
+                "reused_overview": True,
+            }
+
         ajout = False
         deja_present = False
         # Composés UNE fois : le tableau de bord de travail et l'instantané portent
@@ -291,16 +312,21 @@ async def health():
     dac_ok = dac_repond and not echec_requetes
 
     if not dac_repond:
-        aide = ("Le serveur de dashboards ne répond pas. Lancez-le depuis le dossier "
-                "dac/ : dac serve --dir . --port 8321 (le dossier ~/.local/bin doit "
-                "être dans le PATH).")
+        # Écrit pour la personne qui utilise l'application, pas pour celle qui l'a
+        # écrite. Un commercial devant « dac serve --dir . --port 8321 (le dossier
+        # ~/.local/bin doit être dans le PATH) » ne sait pas quoi en faire ; il sait
+        # en revanche relancer le raccourci qu'il a sur son Bureau. Le détail
+        # technique reste dans les journaux, pour qui a besoin de le lire.
+        aide = ("Les graphiques ne peuvent pas s'afficher : le service qui les "
+                "produit n'est pas démarré. Fermez l'application et relancez-la "
+                "depuis le raccourci « DevoTeam Dashboard » de votre Bureau.")
     elif echec_requetes and "bruin" in echec_requetes.lower():
-        aide = ("Le serveur de dashboards tourne mais ne trouve pas « bruin », à qui "
-                "il délègue l'exécution du SQL — tous les visuels restent donc en "
-                "erreur. Relancez-le avec ~/.local/bin dans le PATH : le script "
-                "scripts/start_dev.bat le fait pour vous.")
+        aide = ("Les graphiques ne peuvent pas se calculer : il manque un composant "
+                "au service qui les produit. Fermez l'application et relancez-la "
+                "depuis le raccourci de votre Bureau — il met en place ce qu'il faut.")
     elif echec_requetes:
-        aide = "Le serveur de dashboards n'exécute pas ses requêtes : %s" % echec_requetes[:200]
+        aide = ("Les graphiques ne peuvent pas se calculer. Détail technique, pour "
+                "un diagnostic : %s" % echec_requetes[:180])
     else:
         aide = None
 

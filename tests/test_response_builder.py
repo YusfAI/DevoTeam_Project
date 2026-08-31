@@ -1,9 +1,13 @@
 from backend.response_builder import format_metric_value, build_data_response, _describe_filters
 
 
-def test_format_metric_value_none_is_na_not_zero():
-    assert format_metric_value(None, "win_probability") == "N/A"
-    assert format_metric_value(None, "weighted_amount") == "N/A"
+def test_une_valeur_absente_se_dit_en_francais_pas_zero():
+    # « N/A » est un sigle anglais dans une application francophone, et le même
+    # utilisateur croisait par ailleurs « Non renseigné » — la valeur réellement
+    # stockée quand une cellule du Sheet est vide. Une seule formulation, quelle que
+    # soit la métrique. Et jamais zéro : une absence n'est pas une valeur nulle.
+    for metrique in ("budget", "win_probability", "weighted_amount", "nb_opportunities"):
+        assert format_metric_value(None, metrique) == "Non renseigné", metrique
 
 
 def test_format_metric_value_units():
@@ -36,7 +40,7 @@ def test_un_kpi_sans_valeur_le_dit_en_toutes_lettres():
               "goal": "Montant pondéré", "filters": {}, "range_filters": {}}
     message = build_data_response(intent, [{"weighted_amount": None}])
     assert "N/A" not in message
-    assert "aucune valeur" in message.lower()
+    assert "non renseigné" in message.lower()
 
 
 def test_un_kpi_vide_a_cause_d_un_filtre_nomme_ce_filtre():

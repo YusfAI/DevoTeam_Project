@@ -27,7 +27,11 @@ def get_help_message() -> str:
 
 def format_metric_value(value, metric: str) -> str:
     if value is None:
-        return "N/A"
+        # « N/A » est un sigle anglais, et l'application est entièrement en français.
+        # Le même utilisateur croisait par ailleurs « Non renseigné » (la valeur
+        # réellement stockée) et « aucune valeur disponible » : trois formulations
+        # pour un seul fait.
+        return "Non renseigné"
     if metric == "win_probability":
         # Stocké en base comme fraction 0-1 (0.74 = 74%).
         # Virgule décimale : les milliers sont déjà séparés à la française plus
@@ -79,9 +83,11 @@ def _describe_filters(intent: dict) -> str:
     # ce qu'il recouvrait. Seules les exclusions DEMANDÉES sont annoncées — celle des
     # affaires perdues est le comportement par défaut de l'application, décrit une
     # fois pour toutes, et l'énoncer à chaque réponse n'apprendrait rien.
-    for statut in intent.get("exclude_statuses") or []:
-        if statut not in LOST_STATUSES:
-            parts.append(f"hors {FILTER_LABELS['status']} = {statut}")
+    # Les statuts exclus sont FACTORISÉS : « hors statut = Offre gagnée, Offre
+    # signée » plutôt que « hors statut = Offre gagnée, hors statut = Offre signée ».
+    demandes = [s for s in (intent.get("exclude_statuses") or []) if s not in LOST_STATUSES]
+    if demandes:
+        parts.append("hors %s = %s" % (FILTER_LABELS["status"], ", ".join(demandes)))
 
     # Les exclusions sur les autres colonnes, pour la même raison : « budget par pays
     # hors Tunisie » affichait 69 370 001 DT sans que rien dans la phrase ne dise que
@@ -315,8 +321,15 @@ def build_data_response(intent: dict, data: list) -> str:
         if val is None:
             return (f"Aucune donnée trouvée{filter_desc}. Essayez d'élargir vos critères."
                     if filter_desc else
-                    f"{label} : aucune valeur disponible dans les données.")
-        return f"{label} : {format_metric_value(val, metric)}."
+                    f"{label} : non renseigné dans les données.")
+        # Un intitulé qui se termine déjà par une ponctuation forte ne prend pas de
+        # deux-points : « Combien d'offres gagnées ? : 56. » enchaînait les deux.
+        liaison = " " if label.rstrip().endswith(("?", "!", ":", "…")) else " : "
+        # Le périmètre est annoncé ici comme partout ailleurs. Le chiffre unique
+        # était le seul à rester muet dessus : « Budget : 100 DT » ne disait pas
+        # que deux statuts en avaient été retirés, alors que la répartition juste
+        # à côté, elle, le disait.
+        return f"{label.rstrip()}{liaison}{format_metric_value(val, metric)}{filter_desc}."
 
     if dimension:
         dim_label = DIMENSION_LABELS.get(dimension, dimension)

@@ -26,6 +26,15 @@ export const OVERVIEW_DASHBOARD_NAME = "Vue d'ensemble commerciale"
 // couvre que la moitié du portefeuille.
 export const DATA_QUALITY_DASHBOARD_NAME = "Qualité des données"
 
-export function dacDashboardUrl(name) {
-  return `${DAC_BASE_URL}/d/${encodeURIComponent(name)}`
+export function dacDashboardUrl(name, filters) {
+  // Les filtres d'un tableau de bord DAC vivent dans la chaîne de requête : la page
+  // les y lit au chargement. C'est ce qui permet de RÉUTILISER la vue d'ensemble
+  // pour une question qu'elle traite déjà — « budget pour Risk Advisory » l'ouvre
+  // filtrée sur cette practice, sans qu'aucun tableau de bord soit écrit.
+  const base = `${DAC_BASE_URL}/d/${encodeURIComponent(name)}`
+  const entrees = Object.entries(filters || {}).filter(([, v]) => v != null && v !== '')
+  if (entrees.length === 0) return base
+  const params = new URLSearchParams()
+  for (const [cle, valeur] of entrees) params.set(cle, String(valeur))
+  return `${base}?${params.toString()}`
 }

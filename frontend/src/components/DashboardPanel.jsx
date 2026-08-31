@@ -33,7 +33,7 @@ export default function DashboardPanel({
   // bascule entre deux pages : le prompt modifie ce tableau de bord, il n'en ouvre
   // pas un second à côté.
   const currentName = dashboard?.dac_dashboard || OVERVIEW_DASHBOARD_NAME
-  const frameUrl = dacDashboardUrl(currentName)
+  const frameUrl = dacDashboardUrl(currentName, dashboard?.dac_filters)
 
   // État du serveur de dashboards. null = vérification en cours ; false = injoignable,
   // auquel cas on affiche une consigne au lieu d'une iframe vide et muette — une
@@ -74,7 +74,9 @@ export default function DashboardPanel({
   // Le jeton inclut dashboardKey : reposer la même question régénère le tableau de
   // bord sans changer son nom, l'URL seule ne suffirait donc pas à détecter qu'un
   // nouveau chargement commence.
-  const token = `${currentName}::${dashboardKey}`
+  // Les filtres entrent dans le jeton : deux questions peuvent viser la MÊME page
+  // avec deux practices différentes, et le cadre doit alors se recharger.
+  const token = `${frameUrl}::${dashboardKey}`
   const [frames, setFrames] = useState(() => [{ token, src: frameUrl }])
   const [ready, setReady] = useState({})
   const timers = useRef([])
@@ -119,9 +121,18 @@ export default function DashboardPanel({
 
   const isReplay = Boolean(dashboard?.replay)
   const surLaVueDEnsemble = currentName === OVERVIEW_DASHBOARD_NAME
-  const title = surLaVueDEnsemble ? 'Vue d’ensemble commerciale' : dashboard?.goal || 'Analyse'
+  // La vue d'ensemble sert à deux choses : le point de départ, et la RÉPONSE à une
+  // question qu'elle traite déjà. Dans le second cas elle est filtrée comme demandé,
+  // et lui laisser le sous-titre « posez une question » ferait croire qu'elle n'a
+  // rien fait de la question qu'on vient justement de poser.
+  const reutilisee = Boolean(dashboard?.reused_overview)
+  const title = surLaVueDEnsemble && !reutilisee
+    ? 'Vue d’ensemble commerciale'
+    : dashboard?.goal || 'Vue d’ensemble commerciale'
   let subtitle
-  if (surLaVueDEnsemble) {
+  if (reutilisee) {
+    subtitle = 'La vue d’ensemble répond déjà à cette question — filtrée comme demandé'
+  } else if (surLaVueDEnsemble) {
     subtitle = 'Point de départ — posez une question pour le transformer'
   } else if (isReplay) {
     subtitle = 'Analyse enregistrée — figée telle qu’elle était lors de cette question'

@@ -63,13 +63,21 @@ def test_un_dac_qui_ne_sait_pas_executer_n_est_pas_ok(monkeypatch):
     assert dac["ok"] is False, "« ok » annonçait le contraire de ce que voyait l'utilisateur"
 
 
-def test_l_aide_nomme_bruin_et_le_remede(monkeypatch):
+def test_l_aide_indique_un_geste_a_la_portee_de_qui_lit(monkeypatch):
+    """Le message s'adresse à un commercial, pas à qui a écrit l'application.
+
+    Il disait : « il ne trouve pas « bruin », à qui il délègue l'exécution du SQL […]
+    Relancez-le avec ~/.local/bin dans le PATH ». Rien là-dedans n'est actionnable
+    par la personne qui a le problème sous les yeux — elle sait en revanche relancer
+    le raccourci de son Bureau. Le détail technique reste dans les journaux.
+    """
     erreur = 'bruin query failed: exec: "bruin": executable file not found in %PATH%'
     aide = _sante(monkeypatch, repond=True, erreur_widget=erreur)["aide"]
 
-    assert aide and "bruin" in aide
-    assert "PATH" in aide, "sans la cause, le message n'aide personne"
-    assert "start_dev" in aide, "le script qui règle le problème doit être nommé"
+    assert aide
+    assert "raccourci" in aide.lower(), "le message doit dire QUOI FAIRE"
+    for jargon in ("bruin", "PATH", "SQL", "start_dev", ".bat"):
+        assert jargon not in aide, f"« {jargon} » n'a rien à faire dans un message d'interface"
 
 
 def test_un_dac_sain_reste_ok(monkeypatch):
@@ -80,4 +88,5 @@ def test_un_dac_sain_reste_ok(monkeypatch):
 def test_un_dac_eteint_garde_son_message_d_origine(monkeypatch):
     dac = _sante(monkeypatch, repond=False, erreur_widget=None)
     assert dac["ok"] is False and dac["repond"] is False
-    assert "ne répond pas" in dac["aide"]
+    assert "raccourci" in dac["aide"].lower()
+    assert "dac serve" not in dac["aide"], "une commande shell n'aide pas l'utilisateur"
