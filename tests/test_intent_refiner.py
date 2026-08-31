@@ -97,13 +97,17 @@ def test_refine_intent_does_not_set_exclude_statuses_without_a_days_remaining_fi
 
 
 def test_refine_intent_backfills_filters_without_overriding():
-    # LLM already resolved a status filter; the rule-based hint for "practice" should
-    # be merged in without touching what the LLM already provided.
+    # Le modèle a déjà résolu un filtre de statut ; l'indice déterministe sur la
+    # practice doit s'y AJOUTER sans toucher à ce qu'il a fourni.
+    #
+    # « perdues » plutôt que « gagnées » : ce dernier est un terme MÉTIER que le code
+    # élargit volontairement à WON_STATUSES (voir le test ci-dessous), ce qui ferait
+    # échouer ce test-ci pour une raison qui n'est pas la sienne.
     llm_intent = {
-        "goal": "Budget des offres gagnées pour Risk Advisory",
+        "goal": "Budget des offres perdues pour Risk Advisory",
         "metric": "budget",
         "dimension": "",
-        "filters": {"status": "Offre gagnée"},
+        "filters": {"status": "Offre perdue"},
         "range_filters": {},
         "chart_type": "kpi_card",
         "aggregation": "sum",
@@ -111,9 +115,33 @@ def test_refine_intent_backfills_filters_without_overriding():
         "is_conversation": False,
         "limit": 0,
     }
-    result = refine_intent("budget des offres gagnées pour Risk Advisory", llm_intent)
-    assert result["filters"]["status"] == "Offre gagnée"
+    result = refine_intent("budget des offres perdues pour Risk Advisory", llm_intent)
+    assert result["filters"]["status"] == "Offre perdue"
     assert result["filters"]["practice"] == "Risk Advisory"
+
+
+def test_une_offre_signee_compte_parmi_les_offres_gagnees():
+    """« Gagnée » est un terme métier, pas le seul statut du même nom.
+
+    Une offre signée a d'abord été remportée : la signature vient après la victoire.
+    C'est ce que dit la vue d'ensemble, dont le KPI « Gagnées » compte WON_STATUSES.
+    Le chat, lui, ne retenait que le statut littéral — « combien d'offres gagnées ? »
+    répondait 56 quand le tableau de bord juste à côté en affichait 88. Deux chiffres
+    pour la même question selon l'endroit où on la pose.
+    """
+    resultat = refine_intent("combien d'offres gagnées ?",
+                             _base_intent(metric="nb_opportunities",
+                                          filters={"status": "Offre gagnée"}))
+    assert sorted(resultat["filters"]["status"]) == sorted(WON_STATUSES)
+
+
+def test_la_negation_prime_sur_le_terme_metier():
+    # « offres NON gagnées » ne doit pas devenir un filtre positif élargi : la
+    # négation est traitée en exclusion, et elle passe d'abord.
+    resultat = refine_intent("budget des offres non gagnées",
+                             _base_intent(filters={"status": "Offre gagnée"}))
+    assert "status" not in resultat["filters"]
+    assert "Offre gagnée" in resultat["exclude_statuses"]
 
 
 def test_refine_intent_forces_pie_on_camembert_keyword():
@@ -562,3 +590,17 @@ def test_a_status_named_complement_is_not_mistaken_for_an_add_verb():
     # d'ajout. Les deux commencent pareil.
     intent = refine_intent("opportunités en complément d'information", _intent_vierge())
     assert not intent.get("append")
+
+
+def test_la_negation_du_terme_metier_ecarte_les_deux_statuts_gagnants():
+    """« Gagnées » et « non gagnées » doivent partitionner le portefeuille.
+
+    Le terme positif couvre les deux statuts d'issue favorable ; sa négation n'en
+    écartait qu'un, si bien que les offres signées comptaient dans les deux
+    réponses. Les deux questions posées l'une après l'autre se contredisaient.
+    """
+    intent = refine_intent("combien d'offres n'ont pas été gagnées ?",
+                           {"metric": "nb_opportunities", "filters": {}})
+
+    assert sorted(intent["exclude_statuses"]) == sorted(WON_STATUSES)
+    assert "status" not in intent.get("filters", {})

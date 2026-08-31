@@ -28,7 +28,7 @@ from .dac_composer import (
     write_main_dashboard,
 )
 # pyrefly: ignore [missing-import]
-from .overview_match import OVERVIEW_NAME, overview_answers
+from .overview_match import overview_answers
 
 logger = logging.getLogger(__name__)
 
@@ -125,14 +125,14 @@ async def generate_dashboard(request: ChatRequest):
         # La reconnaissance est étroite à dessein (voir overview_match) : au moindre
         # doute on compose, parce qu'afficher la vue d'ensemble pour une question
         # qu'elle ne traite pas serait une réponse à côté.
-        filtres_accueil = overview_answers(intent)
-        if filtres_accueil is not None and not intent.get("append"):
+        deja_repondu = overview_answers(intent)
+        if deja_repondu is not None and not intent.get("append"):
             return {
                 "ai_message": ai_message,
                 "goal": goal,
                 "intent": intent,
-                "dac_dashboard": OVERVIEW_NAME,
-                "dac_filters": filtres_accueil,
+                "dac_dashboard": deja_repondu["dashboard"],
+                "dac_filters": deja_repondu["filters"],
                 "reused_overview": True,
             }
 

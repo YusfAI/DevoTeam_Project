@@ -20,8 +20,14 @@ traite pas serait une réponse à côté — exactement le défaut que ce projet
 """
 from .business_rules import SUBMITTED_STATUSES
 
-# Le nom EXACT du champ `name:` de dac/dashboards/accueil.yml — DAC route par nom.
+# Les noms EXACTS des champs `name:` de dac/dashboards/ — DAC route par nom affiché.
+# Produits par scripts/generate_accueil.py ; un écart d'un caractère ouvrirait une
+# page vide sans qu'aucune requête n'échoue (tests/test_sections_accueil.py le garde).
 OVERVIEW_NAME = "Vue d'ensemble commerciale"
+SECTION_CHAUDES = "Affaires chaudes"
+SECTION_SANTE = "Santé du portefeuille"
+SECTION_PIPELINE = "Pipeline commercial"
+SECTION_URGENCES = "Échéances à venir"
 
 # Les filtres que la page sait porter. Toute autre restriction demandée par la
 # question la disqualifie : la vue d'ensemble ne saurait pas l'appliquer, et
@@ -36,16 +42,33 @@ _FILTRES_PORTES = {"practice", "deadline_year", "deadline_month", "status"}
 # chiffre unique ». Cette liste est tenue à la main plutôt que déduite du YAML :
 # un widget peut exister sans que la page réponde à la question pour autant, et se
 # tromper ici coûte une réponse fausse.
+# (métrique, axe) -> LA SECTION qui porte la réponse. L'axe vide signifie « un
+# chiffre unique ». Router vers la bonne section plutôt que vers la page d'accueil
+# évite à l'utilisateur d'avoir à chercher où la réponse se trouve.
+#
+# CHAQUE ENTRÉE EST PROUVÉE, jamais supposée : un widget de la section doit rendre
+# EXACTEMENT le nombre et les lignes que le chat vient d'annoncer. Ce n'est pas une
+# précaution théorique — la première version de cette table était écrite de mémoire,
+# et cinq de ses huit entrées désignaient une page qui répond à une AUTRE question :
+#
+#   « budget par pays »      -> Santé du portefeuille, qui n'a aucun widget par pays
+#   « budget par practice »  -> accueil, dont le budget vaut 75,4 M (offres remises)
+#   « combien d'offres »     -> accueil, qui en affiche 147 quand le chat en dit 229
+#   « offres par practice »  -> même écart de population
+#   « offres par statut »    -> l'entonnoir, cumulatif, 12 étapes contre 13 statuts
+#
+# Le piège est toujours le même : la métrique et l'axe coïncident, le PÉRIMÈTRE non.
+# « Offres remises » compte les statuts déposés dont l'échéance est passée ; le chat
+# compte le portefeuille actif. Les deux sont justes, ils ne répondent pas à la même
+# question — et la page contredisait alors la phrase qu'on venait de lire.
+#
+# tests/test_reutilisation_fidele.py exécute les deux moteurs et refuse toute entrée
+# dont les résultats diffèrent. Pour en ajouter une, ajoutez-la et lancez ce test :
+# s'il passe, la section répond vraiment.
 _REPONSES = {
-    # Q1 et Q3 : les offres remises et leur issue.
-    ("nb_opportunities", ""),
-    ("nb_opportunities", "practice"),
-    ("nb_opportunities", "status"),
-    ("budget", ""),
-    ("budget", "practice"),
-    ("budget", "country"),
-    ("weighted_amount", ""),
-    ("financial_offer", ""),
+    ("budget", ""): SECTION_SANTE,
+    ("weighted_amount", ""): SECTION_SANTE,
+    ("financial_offer", ""): SECTION_SANTE,
 }
 
 
@@ -54,10 +77,11 @@ def _sans_periode(filters: dict) -> dict:
 
 
 def overview_answers(intent: dict) -> dict | None:
-    """Les filtres à passer à la vue d'ensemble si elle répond, sinon None.
+    """La SECTION qui répond et les filtres à lui passer, ou None si aucune ne répond.
 
-    Le retour est un dictionnaire prêt pour la chaîne de requête de DAC : la page
-    lit ses filtres depuis l'URL, donc l'afficher filtrée ne demande aucune écriture.
+    Le retour est `{"dashboard": <nom>, "filters": {...}}`. Les filtres d'un tableau
+    de bord DAC vivent dans la chaîne de requête : l'afficher filtré ne demande donc
+    aucune écriture.
     """
     if not intent or intent.get("is_conversation") or not intent.get("metric"):
         return None
@@ -90,7 +114,8 @@ def overview_answers(intent: dict) -> dict | None:
     if statut is not None and sorted(statut if isinstance(statut, list) else [statut]) != sorted(SUBMITTED_STATUSES):
         return None
 
-    if (intent.get("metric"), intent.get("dimension") or "") not in _REPONSES:
+    section = _REPONSES.get((intent.get("metric"), intent.get("dimension") or ""))
+    if section is None:
         return None
 
     # Une valeur de practice multiple n'est pas exprimable : le filtre de la page est
@@ -99,4 +124,4 @@ def overview_answers(intent: dict) -> dict | None:
     if isinstance(practice, (list, tuple)):
         return None
 
-    return {"practice": practice} if practice else {}
+    return {"dashboard": section, "filters": {"practice": practice} if practice else {}}

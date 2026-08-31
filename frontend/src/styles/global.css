@@ -1001,3 +1001,65 @@ body::before {
   border-color: var(--brand-primary);
   color: var(--text-primary);
 }
+
+/* Retour au tableau de bord principal. Seule action de l'en-tête à porter la
+   couleur de marque : c'est le chemin de retour, il doit se voir du premier coup
+   d'œil. La teinte reste translucide et le texte garde --text-primary, ce qui tient
+   le contraste au-dessus de 4.5:1 dans les deux thèmes — un aplat de marque plein
+   avec du blanc dessus n'y arriverait pas en thème clair (3.7:1). */
+.back-to-overview {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--brand-primary);
+  border-radius: var(--radius-sm);
+  background: var(--brand-primary-soft);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.back-to-overview:hover {
+  /* La teinte se densifie, l'encre ne bouge pas : passer le texte en blanc sur
+     l'aplat de marque tomberait à 3.7:1 en thème clair. Le mélange reste
+     translucide, donc il fonce en clair et éclaircit en sombre sans réglage. */
+  background: color-mix(in srgb, var(--brand-primary) 24%, transparent);
+  border-color: var(--brand-primary-strong);
+}
+
+/* Onglets de section du tableau de bord. Une ligne discrète sous l'en-tête : ils
+   servent à se repérer, pas à attirer l'œil au détriment des chiffres. */
+.dashboard-sections {
+  display: flex;
+  gap: 4px;
+  padding: 0 22px 10px;
+  flex-wrap: wrap;
+}
+
+.section-tab {
+  padding: 6px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.section-tab:hover {
+  background: var(--surface-page);
+  color: var(--text-primary);
+}
+
+.section-tab.active {
+  background: var(--surface-card);
+  border-color: var(--brand-primary);
+  color: var(--text-primary);
+  font-weight: 600;
+}

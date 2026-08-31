@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { DATA_QUALITY_DASHBOARD_NAME, OVERVIEW_DASHBOARD_NAME, dacDashboardUrl } from '../dac'
+import {
+  DATA_QUALITY_DASHBOARD_NAME, OVERVIEW_DASHBOARD_NAME, SECTIONS,
+  dacDashboardUrl, estUneSection,
+} from '../dac'
 import { getHealth } from '../api'
 import DevoteamLogo from './DevoteamLogo'
 
@@ -26,7 +29,7 @@ function zoomInitial() {
 }
 
 export default function DashboardPanel({
-  dashboard, dashboardKey, historyOpen, onToggleHistory,
+  dashboard, dashboardKey, historyOpen, onToggleHistory, onOpenSection,
 }) {
   // UN SEUL tableau de bord affiché. Il montre la vue d'ensemble tant qu'aucune
   // question n'a été posée, puis ce que les questions en ont fait. Il n'y a plus de
@@ -126,12 +129,15 @@ export default function DashboardPanel({
   // et lui laisser le sous-titre « posez une question » ferait croire qu'elle n'a
   // rien fait de la question qu'on vient justement de poser.
   const reutilisee = Boolean(dashboard?.reused_overview)
+  // Le bouton de retour n'a de sens que si l'on en est parti. Sur la vue
+  // d'ensemble elle-même, il ne ferait que recharger la page affichée.
+  const peutRevenir = currentName !== OVERVIEW_DASHBOARD_NAME
   const title = surLaVueDEnsemble && !reutilisee
     ? 'Vue d’ensemble commerciale'
     : dashboard?.goal || 'Vue d’ensemble commerciale'
   let subtitle
   if (reutilisee) {
-    subtitle = 'La vue d’ensemble répond déjà à cette question — filtrée comme demandé'
+    subtitle = 'Cette section répond déjà à votre question — filtrée comme demandé'
   } else if (surLaVueDEnsemble) {
     subtitle = 'Point de départ — posez une question pour le transformer'
   } else if (isReplay) {
@@ -148,6 +154,21 @@ export default function DashboardPanel({
           <p>{subtitle}</p>
         </div>
         <div className="dashboard-header-actions">
+          {/* La sortie de secours de l'écran. Une question mène ailleurs — une autre
+              section, une analyse composée — et rien n'indiquait comment revenir au
+              point de départ : il fallait reposer une question pour y retourner.
+              Placé en tête des actions et seul à porter la couleur de marque, il se
+              distingue des commandes discrètes qui l'entourent. */}
+          {peutRevenir && (
+            <button
+              type="button"
+              className="back-to-overview"
+              onClick={() => onOpenSection(OVERVIEW_DASHBOARD_NAME)}
+              title="Revenir au tableau de bord principal"
+            >
+              ← Tableau de bord principal
+            </button>
+          )}
           {/* DAC ne permet pas d'agrandir la police de ses graphiques ; zoomer le
               cadre revient au même et laisse le réglage à qui lit l'écran. */}
           <div className="zoom-control" role="group" aria-label="Taille d’affichage">
@@ -201,6 +222,27 @@ export default function DashboardPanel({
           </button>
         </div>
       </div>
+
+      {/* Les onglets de section. La vue d'ensemble comptait douze rangées qu'il
+          fallait parcourir au défilement en sachant où regarder ; elle est
+          désormais découpée en cinq tableaux de bord, et une question peut ouvrir
+          directement celui qui la traite. Les onglets disparaissent dès qu'une
+          analyse composée est affichée : elle n'appartient à aucune section. */}
+      {estUneSection(currentName) && (
+        <nav className="dashboard-sections" aria-label="Sections du tableau de bord">
+          {SECTIONS.map((s) => (
+            <button
+              key={s.nom}
+              type="button"
+              className={`section-tab${s.nom === currentName ? ' active' : ''}`}
+              aria-current={s.nom === currentName ? 'page' : undefined}
+              onClick={() => onOpenSection(s.nom)}
+            >
+              {s.onglet}
+            </button>
+          ))}
+        </nav>
+      )}
 
       <div className="dashboard-body align-top">
         {/* Le tableau de bord reste lisible pendant qu'il se met à jour : un fil

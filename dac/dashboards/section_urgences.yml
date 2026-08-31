@@ -1,0 +1,104 @@
+schema: https://getbruin.com/schemas/dac/dashboard/v1
+name: Échéances à venir
+description: Quelles échéances tombent dans les sept jours ?
+connection: devoteam_duckdb
+
+# ATTENTION : fichier PRODUIT par scripts/generate_accueil.py, à ne pas éditer à la
+# main — toute modification directe serait perdue à la prochaine génération. Il reste
+# versionné et relu en revue (c'est un dashboard « as code »), mais son générateur
+# existe pour une raison précise : les 12 étapes du pipeline et la liste des statuts
+# perdus sont recopiées dans plusieurs widgets, et deux copies qui divergent
+# fausseraient les taux sans qu'aucun test ne le voie. Elles sont donc dérivées de
+# backend/business_rules.py, source unique.
+#
+#   python scripts/generate_accueil.py     (depuis la racine du projet)
+#
+# Les données viennent du fichier DuckDB réécrit à chaque rafraîchissement du Google
+# Sheet (backend/duckdb_export.py).
+#
+# CE QU'EST UNE « OFFRE REMISE ». Le statut décrit l'état COURANT : une offre partie
+# chez le client et gagnée depuis n'est plus au statut « Offre remise ». Compter ce
+# seul statut donnerait 4 offres au lieu de 57. Sont donc comptées comme remises les
+# opportunités dont le statut atteste le dépôt — Offre remise, En attente du plan de
+# charge, Offre gagnée, Offre signée, Offre perdue (définition arrêtée avec le métier,
+# voir business_rules.SUBMITTED_STATUSES).
+#
+# « À DATE ». Il n'existe pas de colonne « date de remise » : l'échéance en tient
+# lieu, car pour un appel d'offres la date limite de dépôt EST la date de remise. La
+# borne haute est aujourd'hui — une échéance à venir signifie que l'offre n'est pas
+# encore partie (20 opportunités sont dans ce cas et sortent donc du compte).
+#
+# EXCLUSION DES AFFAIRES PERDUES. La règle par défaut de l'application les écarte de
+# tous les chiffres (66,1 MDT d'affaires mortes dans un « budget total » ne servent
+# aucune décision). Elle est LEVÉE dans le bloc « offres remises », qui filtre
+# lui-même sur le statut : c'est exactement l'échappatoire prévue — sans elle, la
+# question « combien de perdues ? » ne pourrait pas recevoir de réponse. Le bloc
+# « portefeuille » plus bas, lui, applique l'exclusion.
+#
+# Les 12 étapes de l'entonnoir sont la transcription exacte de
+# business_rules.FUNNEL_STAGE_ORDER.
+#
+# COULEURS. Bruin DAC attribue les couleurs de série par rang dans le résultat, sans
+# permettre de fixer « Gagnée = vert ». Les issues sont donc énumérées en dur et
+# jointes en LEFT JOIN pour rester dans un ordre constant même à zéro, et ce sont les
+# étiquettes — pas la couleur — qui portent le sens.
+filters:
+  # Deux champs de date plutôt qu'un sélecteur de plage : les bornes sont nommées et
+  # se lisent d'un coup d'œil. Chacune ouvre le calendrier natif du navigateur.
+  #
+  # Le libellé affiché EST le nom du filtre, tirets bas convertis en espaces — le
+  # schéma n'a pas de champ `label`. D'où ces noms, choisis pour ce qu'ils affichent
+  # (« Date de debut », « Date de fin ») et sans accent, puisqu'ils servent aussi
+  # d'identifiants dans les gabarits Jinja.
+  #
+  # La borne de fin par défaut dépasse volontairement la dernière échéance des données
+  # (2026-12-29) : plusieurs widgets regardent vers l'AVENIR — budget actif, entonnoir,
+  # pipeline — et une borne fixée à aujourd'hui les amputerait de tout le portefeuille
+  # en cours. À étendre le jour où des échéances iront au-delà.
+  - name: Date_de_debut
+    type: date
+    default: "2025-11-01"
+
+  - name: Date_de_fin
+    type: date
+    default: "2026-12-31"
+
+  - name: practice
+    type: select
+    multiple: false
+    default: "Toutes"
+    options:
+      values: ["Toutes", "Digital Transformation", "Risk Advisory", "Data Management"]
+
+rows:
+  - widgets:
+      - name: Opportunités urgentes (échéance ≤ 7 jours)
+        type: table
+        col: 12
+        # Seul widget tourné vers l'avenir : la borne « à date » des offres remises ne
+        # s'y applique pas, sinon il serait toujours vide.
+        # Volontairement HORS des deux dates : sa fenêtre est « les 7 prochains
+        # jours », elle se définit toute seule. Une date de fin posée à aujourd'hui le
+        # viderait entièrement, ce qui est exactement le contraire de son propos.
+        # Le filtre de practice, lui, s'applique normalement.
+        description: Affaires encore ouvertes dont l'échéance tombe dans les 7 jours.
+        sql: |
+          SELECT buyer, country, practice, status, deadline, days_remaining, budget
+          FROM opportunities
+          WHERE days_remaining BETWEEN 0 AND 7
+            AND status NOT IN (
+              'Offre gagnée', 'Offre perdue', 'Offre signée', 'Infructueux',
+              'NO GO', 'Hors scope', 'Non shortlisté'
+            )
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          ORDER BY days_remaining ASC
+        columns:
+          - { name: buyer, label: Client }
+          - { name: country, label: Pays }
+          - { name: practice, label: Practice }
+          - { name: status, label: Statut }
+          - { name: deadline, label: Échéance }
+          - { name: days_remaining, label: Jours restants, number: number }
+          - { name: budget, label: Budget (DT), number: number }

@@ -26,6 +26,26 @@ export const OVERVIEW_DASHBOARD_NAME = "Vue d'ensemble commerciale"
 // couvre que la moitié du portefeuille.
 export const DATA_QUALITY_DASHBOARD_NAME = "Qualité des données"
 
+// Les sections de la vue d'ensemble. DAC ne connaît pas la notion de page — son
+// schéma refuse `pages` — donc chaque section est un tableau de bord à part entière,
+// et c'est ici qu'on rétablit la navigation entre elles.
+//
+// Les noms doivent correspondre EXACTEMENT au champ `name:` de chaque fichier de
+// dac/dashboards/ : DAC route par nom affiché. Ils sont produits par
+// scripts/generate_accueil.py, et tests/test_sections_accueil.py vérifie que les
+// deux listes ne divergent pas.
+export const SECTIONS = [
+  { nom: "Vue d'ensemble commerciale", onglet: 'Offres remises' },
+  { nom: 'Affaires chaudes', onglet: 'Affaires chaudes' },
+  { nom: 'Santé du portefeuille', onglet: 'Portefeuille' },
+  { nom: 'Pipeline commercial', onglet: 'Pipeline' },
+  { nom: 'Échéances à venir', onglet: 'Échéances' },
+]
+
+export function estUneSection(nom) {
+  return SECTIONS.some((s) => s.nom === nom)
+}
+
 export function dacDashboardUrl(name, filters) {
   // Les filtres d'un tableau de bord DAC vivent dans la chaîne de requête : la page
   // les y lit au chargement. C'est ce qui permet de RÉUTILISER la vue d'ensemble

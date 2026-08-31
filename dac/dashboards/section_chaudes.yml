@@ -1,0 +1,332 @@
+schema: https://getbruin.com/schemas/dac/dashboard/v1
+name: Affaires chaudes
+description: Que reste-t-il à aller chercher ? Les offres remises et celles données entre 80 % et 99 % de chances — probablement gagnées, pas encore gagnées.
+connection: devoteam_duckdb
+
+# ATTENTION : fichier PRODUIT par scripts/generate_accueil.py, à ne pas éditer à la
+# main — toute modification directe serait perdue à la prochaine génération. Il reste
+# versionné et relu en revue (c'est un dashboard « as code »), mais son générateur
+# existe pour une raison précise : les 12 étapes du pipeline et la liste des statuts
+# perdus sont recopiées dans plusieurs widgets, et deux copies qui divergent
+# fausseraient les taux sans qu'aucun test ne le voie. Elles sont donc dérivées de
+# backend/business_rules.py, source unique.
+#
+#   python scripts/generate_accueil.py     (depuis la racine du projet)
+#
+# Les données viennent du fichier DuckDB réécrit à chaque rafraîchissement du Google
+# Sheet (backend/duckdb_export.py).
+#
+# CE QU'EST UNE « OFFRE REMISE ». Le statut décrit l'état COURANT : une offre partie
+# chez le client et gagnée depuis n'est plus au statut « Offre remise ». Compter ce
+# seul statut donnerait 4 offres au lieu de 57. Sont donc comptées comme remises les
+# opportunités dont le statut atteste le dépôt — Offre remise, En attente du plan de
+# charge, Offre gagnée, Offre signée, Offre perdue (définition arrêtée avec le métier,
+# voir business_rules.SUBMITTED_STATUSES).
+#
+# « À DATE ». Il n'existe pas de colonne « date de remise » : l'échéance en tient
+# lieu, car pour un appel d'offres la date limite de dépôt EST la date de remise. La
+# borne haute est aujourd'hui — une échéance à venir signifie que l'offre n'est pas
+# encore partie (20 opportunités sont dans ce cas et sortent donc du compte).
+#
+# EXCLUSION DES AFFAIRES PERDUES. La règle par défaut de l'application les écarte de
+# tous les chiffres (66,1 MDT d'affaires mortes dans un « budget total » ne servent
+# aucune décision). Elle est LEVÉE dans le bloc « offres remises », qui filtre
+# lui-même sur le statut : c'est exactement l'échappatoire prévue — sans elle, la
+# question « combien de perdues ? » ne pourrait pas recevoir de réponse. Le bloc
+# « portefeuille » plus bas, lui, applique l'exclusion.
+#
+# Les 12 étapes de l'entonnoir sont la transcription exacte de
+# business_rules.FUNNEL_STAGE_ORDER.
+#
+# COULEURS. Bruin DAC attribue les couleurs de série par rang dans le résultat, sans
+# permettre de fixer « Gagnée = vert ». Les issues sont donc énumérées en dur et
+# jointes en LEFT JOIN pour rester dans un ordre constant même à zéro, et ce sont les
+# étiquettes — pas la couleur — qui portent le sens.
+filters:
+  # Deux champs de date plutôt qu'un sélecteur de plage : les bornes sont nommées et
+  # se lisent d'un coup d'œil. Chacune ouvre le calendrier natif du navigateur.
+  #
+  # Le libellé affiché EST le nom du filtre, tirets bas convertis en espaces — le
+  # schéma n'a pas de champ `label`. D'où ces noms, choisis pour ce qu'ils affichent
+  # (« Date de debut », « Date de fin ») et sans accent, puisqu'ils servent aussi
+  # d'identifiants dans les gabarits Jinja.
+  #
+  # La borne de fin par défaut dépasse volontairement la dernière échéance des données
+  # (2026-12-29) : plusieurs widgets regardent vers l'AVENIR — budget actif, entonnoir,
+  # pipeline — et une borne fixée à aujourd'hui les amputerait de tout le portefeuille
+  # en cours. À étendre le jour où des échéances iront au-delà.
+  - name: Date_de_debut
+    type: date
+    default: "2025-11-01"
+
+  - name: Date_de_fin
+    type: date
+    default: "2026-12-31"
+
+  - name: practice
+    type: select
+    multiple: false
+    default: "Toutes"
+    options:
+      values: ["Toutes", "Digital Transformation", "Risk Advisory", "Data Management"]
+
+rows:
+  - widgets:
+      - name: Affaires chaudes
+        type: metric
+        col: 3
+        description: >-
+          Probablement gagnées, pas encore gagnées : remises, ou de 80 à 99 % de
+          probabilité.
+        sql: |
+          WITH chaudes AS (
+            SELECT * FROM opportunities
+            WHERE (status IN ('Offre remise') OR (win_probability >= 0.8 AND win_probability < 1.0))
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT COUNT(*) AS value FROM chaudes
+        value: { field: value, type: number, format: ",.0f" }
+
+      - name: Part des opportunités
+        type: metric
+        col: 3
+        description: >-
+          Ce que les affaires chaudes pèsent dans le portefeuille actif, en nombre.
+        sql: |
+          SELECT (SELECT COUNT(*) * 1.0 FROM opportunities
+                  WHERE (status IN ('Offre remise') OR (win_probability >= 0.8 AND win_probability < 1.0))
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %})
+                 / NULLIF((SELECT COUNT(*) * 1.0 FROM opportunities
+                           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}), 0) AS value
+        value: { field: value, type: number, format: ".1%" }
+
+      - name: Budget à forte confiance (DT)
+        type: metric
+        col: 3
+        description: >-
+          Budget cumulé des affaires chaudes.
+        sql: |
+          WITH chaudes AS (
+            SELECT * FROM opportunities
+            WHERE (status IN ('Offre remise') OR (win_probability >= 0.8 AND win_probability < 1.0))
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT SUM(budget) AS value FROM chaudes
+        value: { field: value, type: number, format: ",.0f" }
+
+      - name: Part du budget
+        type: metric
+        col: 3
+        description: >-
+          La même chose en montant : la part du budget actif qui est chaude.
+        sql: |
+          SELECT (SELECT SUM(budget) FROM opportunities
+                  WHERE (status IN ('Offre remise') OR (win_probability >= 0.8 AND win_probability < 1.0))
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %})
+                 / NULLIF((SELECT SUM(budget) FROM opportunities
+                           WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}), 0) AS value
+        value: { field: value, type: number, format: ".1%" }
+
+  - widgets:
+      - name: Montant pondéré associé (DT)
+        type: metric
+        col: 6
+        description: >-
+          Offre financière × probabilité, sur ce même périmètre.
+        sql: |
+          WITH chaudes AS (
+            SELECT * FROM opportunities
+            WHERE (status IN ('Offre remise') OR (win_probability >= 0.8 AND win_probability < 1.0))
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT SUM(weighted_amount) AS value FROM chaudes
+        value: { field: value, type: number, format: ",.0f" }
+
+      - name: Probabilité renseignée
+        type: metric
+        col: 6
+        description: >-
+          Sur cette part seulement, une affaire peut être dite chaude ou non.
+        sql: |
+          SELECT COUNT(win_probability) * 1.0 / NULLIF(COUNT(*), 0) AS value
+          FROM opportunities
+          WHERE 1 = 1
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+        value: { field: value, type: number, format: ".0%" }
+
+  - widgets:
+      - name: Affaires chaudes par practice
+        type: chart
+        chart: bar
+        col: 6
+        description: Combien chaque practice en compte, en valeur absolue.
+        sql: |
+          WITH chaudes AS (
+            SELECT * FROM opportunities
+            WHERE (status IN ('Offre remise') OR (win_probability >= 0.8 AND win_probability < 1.0))
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT practice, COUNT(*) AS nb
+          FROM chaudes
+          GROUP BY practice
+          ORDER BY nb DESC
+        x: { field: practice, type: category, title: Practice }
+        y: { field: nb, type: number, title: Affaires chaudes, format: ",.0f" }
+        color: { field: practice }
+
+      # Le camembert PORTE les pourcentages : DAC écrit « nom NN % » sur chaque part,
+      # sans qu'il faille les calculer. Les barres à côté donnent les valeurs
+      # absolues ; les deux répondent à des questions différentes — « combien » et
+      # « quelle proportion » — et trois practices restent sous le plafond de six
+      # parts au-delà duquel deux angles voisins ne se comparent plus à l'œil.
+      - name: Poids de chaque practice
+        type: chart
+        chart: pie
+        col: 6
+        description: La même répartition en pourcentages du total des affaires chaudes.
+        sql: |
+          WITH chaudes AS (
+            SELECT * FROM opportunities
+            WHERE (status IN ('Offre remise') OR (win_probability >= 0.8 AND win_probability < 1.0))
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT practice, COUNT(*) AS nb
+          FROM chaudes
+          GROUP BY practice
+          ORDER BY nb DESC
+        label: practice
+        value: { field: nb }
+
+
+  # Le détail des affaires chaudes, réparti sur TROIS colonnes côte à côte.
+  #
+  # Le tableau de Bruin DAC ne défile pas verticalement : son élément externe porte
+  # `overflow-x-auto`, sans hauteur ni `overflow-y`, dans un cadre `overflow-hidden`.
+  # Borner la hauteur de la ligne clipperait donc les affaires suivantes. Le nombre de
+  # lignes étant ce qui fait la hauteur, la répartir en trois la divise par trois —
+  # sans en retirer une seule, ce qui était la contrainte.
+  #
+  # NTILE(3) plutôt qu'un découpage à rang fixe : le nombre d'affaires change avec le
+  # filtre de période (105 sur tout l'historique, 55 par défaut), et un seuil en dur
+  # laisserait une colonne vide dès que le total baisse.
+  #
+  # La lecture va de gauche à droite : la colonne 1 porte les plus fortes espérances
+  # de gain, d'où le rang affiché — sans lui, trois listes triées côte à côte ne
+  # diraient pas laquelle vient en premier.
+  - widgets:
+      - name: Détail des affaires chaudes
+        type: table
+        col: 12
+        description: >-
+          Toutes les affaires encore à gagner, par espérance de gain
+          décroissante.
+        sql: |
+          WITH chaudes AS (
+            SELECT * FROM opportunities
+            WHERE (status IN ('Offre remise') OR (win_probability >= 0.8 AND win_probability < 1.0))
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          )
+          SELECT ROW_NUMBER() OVER (ORDER BY weighted_amount DESC) AS rang,
+                 description, buyer, practice, status, budget, win_probability,
+                 weighted_amount
+          FROM chaudes
+          ORDER BY weighted_amount DESC
+        columns:
+          - { name: rang, label: "N°", number: number }
+          - { name: description, label: Opportunité }
+          - { name: buyer, label: Client }
+          - { name: practice, label: Practice }
+          - { name: status, label: Statut }
+          - { name: budget, label: Budget (DT), number: number }
+          - { name: win_probability, label: Probabilité, number: percent }
+          - { name: weighted_amount, label: Montant pondéré (DT), number: number }

@@ -1,0 +1,200 @@
+schema: https://getbruin.com/schemas/dac/dashboard/v1
+name: Pipeline commercial
+description: Où en sont les affaires ouvertes, et où perd-on le plus de monde d'une étape à l'autre ?
+connection: devoteam_duckdb
+
+# ATTENTION : fichier PRODUIT par scripts/generate_accueil.py, à ne pas éditer à la
+# main — toute modification directe serait perdue à la prochaine génération. Il reste
+# versionné et relu en revue (c'est un dashboard « as code »), mais son générateur
+# existe pour une raison précise : les 12 étapes du pipeline et la liste des statuts
+# perdus sont recopiées dans plusieurs widgets, et deux copies qui divergent
+# fausseraient les taux sans qu'aucun test ne le voie. Elles sont donc dérivées de
+# backend/business_rules.py, source unique.
+#
+#   python scripts/generate_accueil.py     (depuis la racine du projet)
+#
+# Les données viennent du fichier DuckDB réécrit à chaque rafraîchissement du Google
+# Sheet (backend/duckdb_export.py).
+#
+# CE QU'EST UNE « OFFRE REMISE ». Le statut décrit l'état COURANT : une offre partie
+# chez le client et gagnée depuis n'est plus au statut « Offre remise ». Compter ce
+# seul statut donnerait 4 offres au lieu de 57. Sont donc comptées comme remises les
+# opportunités dont le statut atteste le dépôt — Offre remise, En attente du plan de
+# charge, Offre gagnée, Offre signée, Offre perdue (définition arrêtée avec le métier,
+# voir business_rules.SUBMITTED_STATUSES).
+#
+# « À DATE ». Il n'existe pas de colonne « date de remise » : l'échéance en tient
+# lieu, car pour un appel d'offres la date limite de dépôt EST la date de remise. La
+# borne haute est aujourd'hui — une échéance à venir signifie que l'offre n'est pas
+# encore partie (20 opportunités sont dans ce cas et sortent donc du compte).
+#
+# EXCLUSION DES AFFAIRES PERDUES. La règle par défaut de l'application les écarte de
+# tous les chiffres (66,1 MDT d'affaires mortes dans un « budget total » ne servent
+# aucune décision). Elle est LEVÉE dans le bloc « offres remises », qui filtre
+# lui-même sur le statut : c'est exactement l'échappatoire prévue — sans elle, la
+# question « combien de perdues ? » ne pourrait pas recevoir de réponse. Le bloc
+# « portefeuille » plus bas, lui, applique l'exclusion.
+#
+# Les 12 étapes de l'entonnoir sont la transcription exacte de
+# business_rules.FUNNEL_STAGE_ORDER.
+#
+# COULEURS. Bruin DAC attribue les couleurs de série par rang dans le résultat, sans
+# permettre de fixer « Gagnée = vert ». Les issues sont donc énumérées en dur et
+# jointes en LEFT JOIN pour rester dans un ordre constant même à zéro, et ce sont les
+# étiquettes — pas la couleur — qui portent le sens.
+filters:
+  # Deux champs de date plutôt qu'un sélecteur de plage : les bornes sont nommées et
+  # se lisent d'un coup d'œil. Chacune ouvre le calendrier natif du navigateur.
+  #
+  # Le libellé affiché EST le nom du filtre, tirets bas convertis en espaces — le
+  # schéma n'a pas de champ `label`. D'où ces noms, choisis pour ce qu'ils affichent
+  # (« Date de debut », « Date de fin ») et sans accent, puisqu'ils servent aussi
+  # d'identifiants dans les gabarits Jinja.
+  #
+  # La borne de fin par défaut dépasse volontairement la dernière échéance des données
+  # (2026-12-29) : plusieurs widgets regardent vers l'AVENIR — budget actif, entonnoir,
+  # pipeline — et une borne fixée à aujourd'hui les amputerait de tout le portefeuille
+  # en cours. À étendre le jour où des échéances iront au-delà.
+  - name: Date_de_debut
+    type: date
+    default: "2025-11-01"
+
+  - name: Date_de_fin
+    type: date
+    default: "2026-12-31"
+
+  - name: practice
+    type: select
+    multiple: false
+    default: "Toutes"
+    options:
+      values: ["Toutes", "Digital Transformation", "Risk Advisory", "Data Management"]
+
+rows:
+  - widgets:
+      - name: Entonnoir de vente
+        type: chart
+        chart: funnel
+        col: 6
+        description: Opportunités ayant atteint au moins chaque étape.
+        # Cumul depuis la fin : une opportunité signée a nécessairement franchi les
+        # étapes précédentes. Compter les statuts bruts ne décroîtrait pas et ne
+        # formerait donc pas un entonnoir (voir backend/sql_builder.funnel_sql).
+        sql: |
+          WITH etapes AS (
+            SELECT status, COUNT(*) AS nb,
+              CASE status
+                WHEN 'Lead' THEN 1
+                WHEN 'Opportunité détectée' THEN 2
+                WHEN 'En cours de qualification' THEN 3
+                WHEN 'Complément d''information' THEN 4
+                WHEN 'En cours de préparation' THEN 5
+                WHEN 'Propal shortlistée' THEN 6
+                WHEN 'Manif shortlistée' THEN 7
+                WHEN 'Manifestation remise' THEN 8
+                WHEN 'Offre remise' THEN 9
+                WHEN 'En attente du plan de charge' THEN 10
+                WHEN 'Offre gagnée' THEN 11
+                WHEN 'Offre signée' THEN 12
+              END AS rang
+            FROM opportunities
+            WHERE status IN (
+              'Lead', 'Opportunité détectée', 'En cours de qualification',
+              'Complément d''information', 'En cours de préparation', 'Propal shortlistée',
+              'Manif shortlistée', 'Manifestation remise', 'Offre remise',
+              'En attente du plan de charge', 'Offre gagnée', 'Offre signée'
+            )
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+            GROUP BY status
+          )
+          SELECT status, SUM(nb) OVER (ORDER BY rang DESC ROWS UNBOUNDED PRECEDING) AS atteint
+          FROM etapes
+          ORDER BY rang
+        label: status
+        value: { field: atteint }
+
+      - name: Taux de passage entre étapes
+        type: chart
+        chart: bar
+        col: 6
+        description: Part qui franchit l'étape suivante.
+        sql: |
+          WITH etapes AS (
+            SELECT status, COUNT(*) AS nb,
+              CASE status
+                WHEN 'Lead' THEN 1
+                WHEN 'Opportunité détectée' THEN 2
+                WHEN 'En cours de qualification' THEN 3
+                WHEN 'Complément d''information' THEN 4
+                WHEN 'En cours de préparation' THEN 5
+                WHEN 'Propal shortlistée' THEN 6
+                WHEN 'Manif shortlistée' THEN 7
+                WHEN 'Manifestation remise' THEN 8
+                WHEN 'Offre remise' THEN 9
+                WHEN 'En attente du plan de charge' THEN 10
+                WHEN 'Offre gagnée' THEN 11
+                WHEN 'Offre signée' THEN 12
+              END AS rang
+            FROM opportunities
+            WHERE status IN (
+              'Lead', 'Opportunité détectée', 'En cours de qualification',
+              'Complément d''information', 'En cours de préparation', 'Propal shortlistée',
+              'Manif shortlistée', 'Manifestation remise', 'Offre remise',
+              'En attente du plan de charge', 'Offre gagnée', 'Offre signée'
+            )
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+            GROUP BY status
+          ),
+          cumul AS (
+            SELECT status, rang,
+              SUM(nb) OVER (ORDER BY rang DESC ROWS UNBOUNDED PRECEDING) AS atteint
+            FROM etapes
+          )
+          SELECT status,
+            atteint * 1.0 / NULLIF(LAG(atteint) OVER (ORDER BY rang), 0) AS taux
+          FROM cumul
+          ORDER BY rang
+        x: { field: status, type: category, title: Étape }
+        y: { field: taux, type: number, title: Taux de passage, format: ".0%" }
+        color: { field: status }
+
+  - widgets:
+      - name: Budget actif par pays (DT)
+        type: chart
+        chart: bar
+        col: 12
+        description: Les 10 pays au budget actif le plus élevé.
+        sql: |
+          SELECT country, SUM(budget) AS budget FROM opportunities
+          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+          GROUP BY 1
+          ORDER BY 2 DESC
+          LIMIT 10
+        x: { field: country, type: category, title: Pays }
+        y: { field: budget, type: number, title: Budget (DT), format: ",.0f" }
+        color: { field: country }

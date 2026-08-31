@@ -20,11 +20,19 @@ données à installer.
 - Chat en français libre, avec contexte multi-tour, dates relatives et requêtes de
   comparaison ("compare la France et le Maroc") ; l'historique de conversation persiste
   entre les rechargements de page (localStorage).
-- **Un seul tableau de bord, jamais deux pages** : il s'ouvre sur la vue d'ensemble
-  et chaque question le transforme (5 à 7 widgets — totaux du périmètre, graphique
-  principal, angle complémentaire, pipeline, détail, tous filtrés à l'identique). Au
+- **Un seul cadre, cinq sections** : le tableau de bord principal est découpé en
+  cinq pages — offres remises, affaires chaudes, santé du portefeuille, pipeline,
+  échéances — qu'une barre d'onglets fait défiler. Chaque question transforme ce
+  même cadre (5 à 7 widgets — totaux du périmètre, graphique principal, angle
+  complémentaire, pipeline, détail, tous filtrés à l'identique), et un bouton
+  « ← Tableau de bord principal » ramène au point de départ depuis n'importe où. Au
   rechargement de la page, retour à la vue d'ensemble. Voir
   `Documentation/WORKFLOW.md` pour le traçage complet.
+- **Une question déjà traitée n'écrit rien** : si une section porte exactement la
+  réponse, elle s'ouvre filtrée comme demandé au lieu qu'un tableau de bord soit
+  composé. La table de correspondance est *prouvée*, jamais supposée : un test
+  exécute les deux moteurs et rejette toute entrée dont le chiffre ou le nombre de
+  lignes diffère de ce que le chat vient d'annoncer (`tests/test_reutilisation_fidele.py`).
 - **Transitions en fondu** : deux cadres se superposent le temps d'un changement, le
   nouveau ne devenant visible qu'une fois chargé. L'écran n'est jamais vidé ; un fil
   d'attente en tête indique le travail en cours.
@@ -47,12 +55,18 @@ données à installer.
 - **Type de graphique arbitré sur les données**, pas sur les mots : un camembert
   demandé sur 19 pays devient des barres, et l'explication s'affiche sous le
   graphique. Une moyenne ne forme jamais des parts d'un tout.
-- **Vue d'ensemble versionnée** : la page d'accueil est un dashboard YAML relu en
-  revue (`dac/dashboards/accueil.yml`), avec filtres interactifs de période et de
-  practice. Elle répond d'abord aux trois questions du métier — combien d'offres
-  remises sur la période, comment elles se répartissent par practice, et ce qu'elles
-  sont devenues (gagnées / perdues / en attente) — puis donne l'état du portefeuille,
-  le pipeline et les échéances urgentes. 28 widgets sur 12 lignes.
+- **Sections versionnées** : le tableau de bord principal est un jeu de dashboards
+  YAML relus en revue (`dac/dashboards/accueil.yml` et `section_*.yml`), avec filtres
+  interactifs de période et de practice. Chacune porte en sous-titre la question à
+  laquelle elle répond. 28 widgets au total, répartis ainsi :
+
+  | Section | Widgets | Question |
+  |---|--:|---|
+  | Vue d'ensemble commerciale | 11 | Combien d'offres remises, par practice, et que sont-elles devenues ? |
+  | Affaires chaudes | 9 | Que reste-t-il à aller chercher ? |
+  | Santé du portefeuille | 4 | Que pèse ce qui est encore en jeu ? |
+  | Pipeline commercial | 3 | Où en sont les affaires ouvertes, et où perd-on du monde ? |
+  | Échéances à venir | 1 | Quelles échéances tombent dans les sept jours ? |
 - **Période choisie à la main** : deux champs de date nommés, « Date de debut » et
   « Date de fin », chacun ouvrant le calendrier du navigateur. Vider l'un lève cette
   borne et garde l'autre. Les valeurs passent dans l'URL, donc un dashboard filtré se
@@ -68,7 +82,7 @@ données à installer.
   réglage de zoom (90 % à 140 %) sur le cadre produit le même effet et se souvient du
   choix.
 - **Chaque visuel s'explique** : une phrase courte sous le titre de chacun des 28
-  widgets de la vue d'ensemble, vérifiée par un test (moins de 100 caractères). Le
+  widgets des sections, vérifiée par un test (moins de 100 caractères). Le
   raisonnement long vit en commentaire YAML, pour la revue.
 - **Affaires chaudes** : une affaire qu'on va *probablement* gagner et qui n'est
   *pas encore* gagnée — statut « Offre remise », **ou** probabilité de gain dans
@@ -177,8 +191,9 @@ cd frontend && npm install
 
 ## Dashboards « as code » (Bruin DAC)
 
-La vue d'ensemble affichée à l'ouverture n'est pas codée en dur dans le frontend :
-c'est un dashboard **versionné en YAML** (`dac/dashboards/accueil.yml`), rendu par
+Le tableau de bord affiché à l'ouverture n'est pas codé en dur dans le frontend :
+ce sont cinq dashboards **versionnés en YAML** (`dac/dashboards/accueil.yml` et
+`section_*.yml`, tous produits par `scripts/generate_accueil.py`), rendus par
 [Bruin DAC](https://getbruin.com/docs/dac/) — 21 types de graphiques, filtres
 interactifs, grille 12 colonnes. L'UI React l'affiche en iframe (port 8321).
 
@@ -335,6 +350,8 @@ backend/
   sql_builder.py         intention validée -> SQL DuckDB (jamais écrit par le LLM)
   dac_composer.py        composition du dashboard multi-widgets -> YAML
   duckdb_export.py       projection du DataFrame vers DuckDB (pour DAC)
+  overview_match.py      décide si une section répond déjà à la question posée, et
+                         laquelle — table de correspondance prouvée par les tests
   alerts.py              alertes deadlines (email + endpoint)
   response_builder.py    messages texte déterministes
   business_rules.py      règles métier indépendantes de l'affichage : ordre du pipeline,
@@ -343,22 +360,27 @@ backend/
 dac/
   .bruin.yml             connexion DuckDB (aucun secret, versionnée volontairement)
   themes/devoteam.yml    thème aux couleurs de l'application (palette CVD comprise)
-  dashboards/accueil.yml vue d'ensemble versionnée, PRODUITE par
+  dashboards/accueil.yml  section « Vue d'ensemble commerciale », PRODUITE par
                          scripts/generate_accueil.py (étapes du pipeline et statuts
                          dérivés de business_rules.py) — ne pas éditer à la main
+  dashboards/section_chaudes.yml   « Affaires chaudes »          dashboards/section_sante.yml     « Santé du portefeuille »    | mêmes règles,
+  dashboards/section_pipeline.yml  « Pipeline commercial »      | même générateur
+  dashboards/section_urgences.yml  « Échéances à venir »       /
   dashboards/qualite.yml  dashboard de qualité des données, versionné
   dashboards/_principal.yml tableau de bord de travail, réécrit à chaque question (gitignoré)
   dashboards/_analyse_*.yml instantanés par question, pour les rouvrir (gitignorés)
   data/devoteam.db       projection DuckDB (gitignorée, régénérée)
 frontend/              Vite + React (build servi par FastAPI en local)
 credentials/           clé de compte de service Google (gitignoré, absent par défaut)
-data/                  scheduler_state.json (état local, gitignoré) ; dump SQL
-                       historique de l'ancienne base MySQL, conservé pour référence
-tests/                 suite pytest (mock Gemini/Sheets), 337 tests
+data/                  scheduler_state.json — anti-doublon du digest quotidien
+                       (état local, gitignoré, régénéré au besoin)
+tests/                 suite pytest (mock Gemini/Sheets), 418 tests
 Documentation/
   WORKFLOW.md            traçage concret d'une question, du prompt au dashboard affiché
-  reports/              rapport professionnel + guide technique (.docx) et leur générateur
-  planning/             brief initial et données sources du projet
+  reports/              rapport professionnel + guide technique (.docx), leur
+                        générateur et les ressources qu'il utilise (assets/)
+  planning/             brief initial, données sources et dump SQL de l'ancienne
+                        base MySQL, conservé pour référence
 ```
 
 Voir `PROGRESS.md` pour le détail des phases livrées et les limites connues.

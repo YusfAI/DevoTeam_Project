@@ -44,6 +44,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 37 — Deux champs de date nommés (« début » / « fin ») à la place du sélecteur de plage
 - [x] Phase 38 — Unité DT sur tous les montants, et jetons d'élévation pour l'interface
 - [x] Phase 39 — Synchro Sheets 2,5× plus rapide (seules les cellules modifiées repartent), composition faite une fois
+- [x] Phase 40 — Tableau de bord principal découpé en cinq sections navigables, aiguillage des questions déjà traitées, et le terme « offres gagnées » tranché par le code
 
 ## 📝 Journaux
 
@@ -344,6 +345,20 @@ Suite `pytest` : 235 tests. `dac check` : 15 dashboards, 122 widgets, tous verts
 *Trois tests tiennent le nouveau comportement*, dont celui qui compte le plus : une valeur réellement modifiée DOIT toujours partir. Sauter une écriture nécessaire laisserait une donnée périmée dans le Sheet de l'utilisateur — bien pire que la lenteur qu'on cherchait à corriger.
 
 Suite `pytest` : 238 tests (était 235).
+
+**Phase 40** : Terminée. Le tableau de bord principal devient cinq pages, et le raccourci qui évite d'en écrire un nouveau est mis à l'épreuve.
+
+*Cinq sections au lieu d'une page à parcourir.* La vue d'ensemble comptait douze rangées qu'il fallait faire défiler en sachant où regarder. Les intertitres qui les séparaient déjà deviennent cinq tableaux de bord — offres remises, affaires chaudes, santé du portefeuille, pipeline, échéances — chacun portant en sous-titre la question à laquelle il répond. Une barre d'onglets passe de l'un à l'autre, et un bouton « ← Tableau de bord principal » ramène au point de départ depuis n'importe quel écran, y compris une analyse composée. DAC refuse les dashboards multi-pages (vérifié : la clé `pages` est rejetée par son schéma), d'où cinq fichiers plutôt qu'un seul à onglets ; `scripts/generate_accueil.py` les découpe à partir du même document assemblé, donc les règles métier restent en un seul endroit.
+
+*« Combien d'offres gagnées ? » donnait deux réponses.* Selon la formulation, le modèle proposait le statut littéral « Offre gagnée » (56) ou l'ensemble des issues favorables (88, avec « Offre signée ») — d'où un résultat tantôt juste, tantôt faux. Le terme est désormais tranché par le code et non par le modèle : « offres gagnées » vaut toujours les deux statuts. En le corrigeant, la même asymétrie est apparue sur la négation — « non gagnées » n'en écartait qu'un —, si bien que les deux questions inverses ne partitionnaient pas le portefeuille. Corrigé aussi : 88 + 141 = 229.
+
+*Le défaut le plus instructif : une table de routage écrite de mémoire.* Pour éviter de composer un dashboard quand une section porte déjà la réponse, une table associait (métrique, axe) à une page. Elle a été écrite en supposant qu'une même métrique sur un même axe désignait la même question. C'est faux : le PÉRIMÈTRE diffère. Vérification faite widget par widget, **cinq des huit entrées désignaient une page répondant à autre chose** — « budget par pays » menait à une section sans aucun widget par pays, « combien d'offres » à un KPI valant 147 quand le chat annonce 229 (offres remises échues contre portefeuille actif). Les deux chiffres sont justes ; la page contredisait la phrase qu'on venait de lire.
+
+*La correction porte moins sur la table que sur la méthode.* Elle ne garde que les trois entrées **prouvées**, et la preuve est devenue un test : `tests/test_reutilisation_fidele.py` exécute les deux moteurs sur les mêmes lignes et refuse toute entrée dont le total ou le nombre de lignes diffère. Un contrôle négatif vérifie que le test sait dire non, sur le cas qui avait échappé. Ajouter une entrée fausse fait maintenant tomber la suite au lieu d'atteindre l'utilisateur.
+
+*Vérification finale sur données réelles* : douze questions fréquentes confrontées à une vérité calculée séparément sous pandas — budget total, par practice, par pays, filtré par practice, offres gagnées, portefeuille, affaires chaudes, montant pondéré, offre financière, top 5, urgences. Les douze concordent.
+
+Suite `pytest` : 418 tests. `dac validate` : 22 dashboards.
 
 ## 📊 Bilan du Produit
 

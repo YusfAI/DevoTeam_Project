@@ -11,6 +11,7 @@ business_rules.py plutôt que recopiées : une divergence entre deux widgets
 fausserait les taux sans qu'aucun test ne le voie.
 """
 import pathlib
+import re
 import sys
 
 sys.path.insert(0, ".")
@@ -671,7 +672,79 @@ doc = (doc
           .replace("__PRACTICE_SEULE__", PRACTICE)
           .replace("__FILTRES__", FILTRES))
 
-pathlib.Path("dac/dashboards/accueil.yml").write_text(doc, encoding="utf-8")
+# ---------------------------------------------------------------------------
+# Découpage en SECTIONS, une par tableau de bord
+#
+# DAC ne connaît pas la notion de page : son schéma refuse `pages` (vérifié). Une
+# vue d'ensemble de douze rangées se parcourait donc au défilement, et l'utilisateur
+# devait savoir où regarder. Les intertitres l'ont rendue lisible ; les séparer en
+# tableaux de bord distincts la rend NAVIGABLE — le frontend affiche un onglet par
+# section, et une question peut ouvrir directement celle qui la traite.
+#
+# Le découpage se fait ici, après l'assemblage, plutôt qu'en écrivant cinq
+# générateurs : les filtres, les CTE et les règles métier restent définis une seule
+# fois, et une section ne peut pas dériver des autres.
+#
+# Le premier garde le nom historique « Vue d'ensemble commerciale » : c'est la page
+# d'accueil, celle que le frontend ouvre au démarrage et que les tests connaissent.
+SECTIONS = [
+    ("Les offres remises", "accueil.yml", "Vue d'ensemble commerciale"),
+    ("Les affaires chaudes", "section_chaudes.yml", "Affaires chaudes"),
+    ("La santé du portefeuille", "section_sante.yml", "Santé du portefeuille"),
+    ("Le pipeline", "section_pipeline.yml", "Pipeline commercial"),
+    ("Ce qu'il faut traiter maintenant", "section_urgences.yml", "Échéances à venir"),
+]
+
+entete, _, corps = doc.partition("\nrows:\n")
+assert corps, "structure du document inattendue : « rows: » introuvable"
+
+# Les rangées, découpées sur les intertitres. Chaque intertitre ouvre une section et
+# porte la question à laquelle elle répond — qui devient la description du tableau
+# de bord, là où DAC l'affiche sous le titre.
+blocs = []
+for titre, fichier, nom_dashboard in SECTIONS:
+    marqueur = "      - name: %s\n" % titre
+    assert marqueur in corps, "intertitre introuvable : %s" % titre
+    blocs.append((corps.index(marqueur), titre, fichier, nom_dashboard))
+
+fichiers_ecrits = []
+for i, (debut_bloc, titre, fichier, nom_dashboard) in enumerate(blocs):
+    fin_bloc = blocs[i + 1][0] if i + 1 < len(blocs) else len(corps)
+    tranche = corps[debut_bloc:fin_bloc]
+
+    # L'intertitre lui-même sort : le titre du tableau de bord le remplace, et le
+    # garder afficherait deux fois la même phrase. Sa question devient la description.
+    question = ""
+    for ligne in tranche.splitlines():
+        nu = ligne.strip()
+        if nu.startswith("## "):
+            continue
+        if nu and not nu.startswith(("- name:", "type:", "col:", "content:")):
+            question = nu
+            break
+
+    _, _, apres = tranche.partition("  - widgets:\n")
+    sans_intertitre = "  - widgets:\n" + apres if apres else tranche
+
+    # La tranche s'arrête au NOM du premier widget de la section suivante : elle
+    # emporte donc le « - widgets: » qui ouvre cette rangée-là, et parfois le
+    # commentaire qui la précède. Laissée telle quelle, elle produisait une rangée
+    # sans aucun widget — YAML valide, mais que DAC refuse.
+    lignes_utiles = sans_intertitre.rstrip().splitlines()
+    while lignes_utiles and (lignes_utiles[-1].strip().startswith("#")
+                             or lignes_utiles[-1].strip() in ("", "- widgets:")):
+        lignes_utiles.pop()
+    sans_intertitre = "\n".join(lignes_utiles)
+
+    tete = entete.replace("name: Vue d'ensemble commerciale",
+                          "name: %s" % nom_dashboard, 1)
+    if question:
+        tete = re.sub(r"^description: .*$", "description: %s" % question, tete,
+                       count=1, flags=re.MULTILINE)
+
+    chemin = pathlib.Path("dac/dashboards") / fichier
+    chemin.write_text(tete + "\nrows:\n" + sans_intertitre.rstrip() + "\n", encoding="utf-8")
+    fichiers_ecrits.append((fichier, nom_dashboard))
 
 import yaml
 parsed = yaml.safe_load(doc)

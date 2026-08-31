@@ -1,0 +1,149 @@
+schema: https://getbruin.com/schemas/dac/dashboard/v1
+name: Santé du portefeuille
+description: Que pèse ce qui est encore en jeu, une fois les affaires perdues écartées ?
+connection: devoteam_duckdb
+
+# ATTENTION : fichier PRODUIT par scripts/generate_accueil.py, à ne pas éditer à la
+# main — toute modification directe serait perdue à la prochaine génération. Il reste
+# versionné et relu en revue (c'est un dashboard « as code »), mais son générateur
+# existe pour une raison précise : les 12 étapes du pipeline et la liste des statuts
+# perdus sont recopiées dans plusieurs widgets, et deux copies qui divergent
+# fausseraient les taux sans qu'aucun test ne le voie. Elles sont donc dérivées de
+# backend/business_rules.py, source unique.
+#
+#   python scripts/generate_accueil.py     (depuis la racine du projet)
+#
+# Les données viennent du fichier DuckDB réécrit à chaque rafraîchissement du Google
+# Sheet (backend/duckdb_export.py).
+#
+# CE QU'EST UNE « OFFRE REMISE ». Le statut décrit l'état COURANT : une offre partie
+# chez le client et gagnée depuis n'est plus au statut « Offre remise ». Compter ce
+# seul statut donnerait 4 offres au lieu de 57. Sont donc comptées comme remises les
+# opportunités dont le statut atteste le dépôt — Offre remise, En attente du plan de
+# charge, Offre gagnée, Offre signée, Offre perdue (définition arrêtée avec le métier,
+# voir business_rules.SUBMITTED_STATUSES).
+#
+# « À DATE ». Il n'existe pas de colonne « date de remise » : l'échéance en tient
+# lieu, car pour un appel d'offres la date limite de dépôt EST la date de remise. La
+# borne haute est aujourd'hui — une échéance à venir signifie que l'offre n'est pas
+# encore partie (20 opportunités sont dans ce cas et sortent donc du compte).
+#
+# EXCLUSION DES AFFAIRES PERDUES. La règle par défaut de l'application les écarte de
+# tous les chiffres (66,1 MDT d'affaires mortes dans un « budget total » ne servent
+# aucune décision). Elle est LEVÉE dans le bloc « offres remises », qui filtre
+# lui-même sur le statut : c'est exactement l'échappatoire prévue — sans elle, la
+# question « combien de perdues ? » ne pourrait pas recevoir de réponse. Le bloc
+# « portefeuille » plus bas, lui, applique l'exclusion.
+#
+# Les 12 étapes de l'entonnoir sont la transcription exacte de
+# business_rules.FUNNEL_STAGE_ORDER.
+#
+# COULEURS. Bruin DAC attribue les couleurs de série par rang dans le résultat, sans
+# permettre de fixer « Gagnée = vert ». Les issues sont donc énumérées en dur et
+# jointes en LEFT JOIN pour rester dans un ordre constant même à zéro, et ce sont les
+# étiquettes — pas la couleur — qui portent le sens.
+filters:
+  # Deux champs de date plutôt qu'un sélecteur de plage : les bornes sont nommées et
+  # se lisent d'un coup d'œil. Chacune ouvre le calendrier natif du navigateur.
+  #
+  # Le libellé affiché EST le nom du filtre, tirets bas convertis en espaces — le
+  # schéma n'a pas de champ `label`. D'où ces noms, choisis pour ce qu'ils affichent
+  # (« Date de debut », « Date de fin ») et sans accent, puisqu'ils servent aussi
+  # d'identifiants dans les gabarits Jinja.
+  #
+  # La borne de fin par défaut dépasse volontairement la dernière échéance des données
+  # (2026-12-29) : plusieurs widgets regardent vers l'AVENIR — budget actif, entonnoir,
+  # pipeline — et une borne fixée à aujourd'hui les amputerait de tout le portefeuille
+  # en cours. À étendre le jour où des échéances iront au-delà.
+  - name: Date_de_debut
+    type: date
+    default: "2025-11-01"
+
+  - name: Date_de_fin
+    type: date
+    default: "2026-12-31"
+
+  - name: practice
+    type: select
+    multiple: false
+    default: "Toutes"
+    options:
+      values: ["Toutes", "Digital Transformation", "Risk Advisory", "Data Management"]
+
+rows:
+  - widgets:
+      - name: Budget actif (DT)
+        type: metric
+        col: 3
+        description: >-
+          Budget annoncé par le client, hors affaires perdues.
+        sql: |
+          SELECT SUM(budget) AS value FROM opportunities
+          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+        value: { field: value, type: number, format: ",.0f" }
+
+      - name: Offre financière (DT)
+        type: metric
+        col: 3
+        description: >-
+          Montant proposé par DevoTeam, sur le même périmètre.
+        sql: |
+          SELECT SUM(financial_offer) AS value FROM opportunities
+          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+        value: { field: value, type: number, format: ",.0f" }
+
+      - name: Écart offre / budget
+        type: metric
+        col: 3
+        description: >-
+          Négatif = nous chiffrons sous le budget du client.
+        sql: |
+          SELECT (SUM(financial_offer) - SUM(budget)) / NULLIF(SUM(budget), 0) AS value FROM opportunities
+          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+        value: { field: value, type: number, format: "+.1%" }
+
+      - name: Montant pondéré (DT)
+        type: metric
+        col: 3
+        description: >-
+          Offre × probabilité, sur les seules lignes où la probabilité est renseignée.
+        sql: |
+          SELECT SUM(weighted_amount) AS value FROM opportunities
+          WHERE status NOT IN ('Offre perdue', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.Date_de_debut %}
+            AND deadline >= DATE '{{ filters.Date_de_debut }}'
+          {% endif %}
+          {% if filters.Date_de_fin %}
+            AND deadline <= DATE '{{ filters.Date_de_fin }}'
+          {% endif %}
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+        value: { field: value, type: number, format: ",.0f" }

@@ -12,7 +12,20 @@ import duckdb
 import pytest
 import yaml
 
-ACCUEIL = Path(__file__).resolve().parent.parent / "dac" / "dashboards" / "accueil.yml"
+DASHBOARDS = Path(__file__).resolve().parent.parent / "dac" / "dashboards"
+ACCUEIL = DASHBOARDS / "accueil.yml"
+
+# La vue d'ensemble est découpée en cinq tableaux de bord : douze rangées à faire
+# défiler en sachant où regarder valaient moins que cinq pages qu'on choisit. Le
+# nom est celui que DAC route et que le frontend demande ; un écart d'un caractère
+# ouvrirait une page vide sans qu'aucune requête n'échoue.
+SECTIONS = {
+    "accueil.yml": "Vue d'ensemble commerciale",
+    "section_chaudes.yml": "Affaires chaudes",
+    "section_sante.yml": "Santé du portefeuille",
+    "section_pipeline.yml": "Pipeline commercial",
+    "section_urgences.yml": "Échéances à venir",
+}
 
 COLONNES = [
     ("id", "INTEGER"), ("country", "VARCHAR"), ("buyer", "VARCHAR"),
@@ -24,12 +37,25 @@ COLONNES = [
 
 
 def _widget(nom: str) -> dict:
-    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
-    for row in doc["rows"]:
-        for widget in row["widgets"]:
-            if widget["name"] == nom:
-                return widget
-    raise AssertionError("widget introuvable dans accueil.yml : %r" % nom)
+    """Le widget, cherché dans TOUTES les sections — elles forment une seule vue."""
+    for fichier in SECTIONS:
+        doc = yaml.safe_load((DASHBOARDS / fichier).read_text(encoding="utf-8"))
+        for row in doc["rows"]:
+            for widget in row["widgets"]:
+                if widget["name"] == nom:
+                    return widget
+    raise AssertionError("widget introuvable dans les sections : %r" % nom)
+
+
+def _widget_commencant_par(prefixe: str) -> dict:
+    """Le titre du tableau porte le nombre de jours ; le préfixe suffit à le viser."""
+    for fichier in SECTIONS:
+        doc = yaml.safe_load((DASHBOARDS / fichier).read_text(encoding="utf-8"))
+        for row in doc["rows"]:
+            for widget in row["widgets"]:
+                if widget["name"].startswith(prefixe):
+                    return widget
+    raise AssertionError("widget introuvable dans les sections : %r…" % prefixe)
 
 
 def _sans_jinja(sql: str) -> str:
@@ -213,9 +239,7 @@ def test_each_bound_applies_only_if_it_exists():
     Un BETWEEN sur les deux ne le permettrait pas : effacer une date ne rendrait
     plus une seule ligne au lieu d'ouvrir ce côté de la période.
     """
-    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
-    sql = next(w for row in doc["rows"] for w in row["widgets"]
-                if w["name"] == "Budget actif (DT)")["sql"]
+    sql = _widget("Budget actif (DT)")["sql"]
 
     assert "{% if filters.Date_de_debut %}" in sql
     assert "{% if filters.Date_de_fin %}" in sql
@@ -226,9 +250,7 @@ def test_the_urgent_table_ignores_the_period():
     # Sa fenêtre est « les 7 prochains jours » : une plage se terminant aujourd'hui
     # la viderait entièrement, ce qui est le contraire de son propos. Le filtre de
     # practice, lui, doit continuer de s'appliquer.
-    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
-    sql = next(w for row in doc["rows"] for w in row["widgets"]
-                if w["name"].startswith("Opportunités urgentes"))["sql"]
+    sql = _widget_commencant_par("Opportunités urgentes")["sql"]
 
     assert "filters.Date_de_debut" not in sql
     assert "filters.Date_de_fin" not in sql
@@ -302,25 +324,35 @@ def test_chaque_section_annonce_la_question_a_laquelle_elle_repond():
 
     Rien n'y disait où finissait un sujet ni à QUELLE question chaque groupe
     répond — or c'est la question que le lecteur a en tête, pas le nom des
-    indicateurs. Chaque intertitre porte donc un titre ET une question.
+    indicateurs. Chaque section porte donc un titre ET, en description, la
+    question à laquelle elle répond ; DAC l'affiche sous le titre.
     """
-    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
-    intertitres = [w for row in doc["rows"] for w in row["widgets"] if w["type"] == "text"]
-
-    assert len(intertitres) == 5, [w["name"] for w in intertitres]
-    for w in intertitres:
-        lignes = [l.strip() for l in w["content"].splitlines() if l.strip()]
-        assert lignes[0].startswith("## "), w["name"]
-        assert len(lignes) >= 2, f"« {w['name']} » n'énonce aucune question"
-        assert "?" in lignes[1], f"« {w['name']} » : la seconde ligne doit poser la question"
+    for fichier, nom in SECTIONS.items():
+        doc = yaml.safe_load((DASHBOARDS / fichier).read_text(encoding="utf-8"))
+        assert doc["name"] == nom, fichier
+        assert "?" in doc.get("description", ""), (
+            "« %s » n'énonce pas la question à laquelle elle répond" % nom)
 
 
-def test_un_intertitre_occupe_sa_ligne_en_pleine_largeur():
-    # Seul sur sa ligne : posé à côté d'un graphique, il serait lu comme le titre de
-    # ce seul graphique et non du groupe qu'il ouvre.
-    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
-    for row in doc["rows"]:
-        textes = [w for w in row["widgets"] if w["type"] == "text"]
-        if textes:
-            assert len(row["widgets"]) == 1, [w["name"] for w in row["widgets"]]
-            assert textes[0]["col"] == 12
+def test_aucune_section_ne_reste_vide():
+    """Le découpage tranche le document assemblé : une tranche mal bornée donnerait
+    une page sans widget, ou traînerait l'intertitre du groupe suivant."""
+    for fichier, nom in SECTIONS.items():
+        doc = yaml.safe_load((DASHBOARDS / fichier).read_text(encoding="utf-8"))
+        widgets = [w for row in doc["rows"] for w in row["widgets"]]
+        assert widgets, "section vide : %s" % nom
+        # Le titre du tableau de bord remplace l'intertitre ; le garder afficherait
+        # deux fois la même phrase.
+        assert not [w for w in widgets if w["type"] == "text"], nom
+
+
+def test_les_onglets_du_frontend_designent_des_sections_existantes():
+    """Les onglets demandent une page PAR SON NOM. Renommer une section sans
+    toucher au frontend n'échoue nulle part : l'onglet ouvre une page vide."""
+    js = (Path(__file__).resolve().parent.parent
+          / "frontend" / "src" / "dac.js").read_text(encoding="utf-8")
+    debut = js.index("export const SECTIONS")
+    bloc = js[debut:js.index("]", debut)]
+    demandes = re.findall(r"""nom: ["'](.+?)["'],""", bloc)
+
+    assert demandes == list(SECTIONS.values()), demandes

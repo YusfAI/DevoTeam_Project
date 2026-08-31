@@ -19,7 +19,7 @@ from docx.shared import Cm, Inches, Pt, RGBColor
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))  # Documentation/reports/
 ROOT = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 DOC_DIR = SCRIPT_DIR
-LOGO = os.path.join(ROOT, "Dev_logo_rgb.png")
+LOGO = os.path.join(SCRIPT_DIR, "assets", "Dev_logo_rgb.png")
 EMAIL_PROOF = os.path.join(SCRIPT_DIR, "assets", "email_proof.png")
 
 CORAL = RGBColor(0xF2, 0x40, 0x5A)
@@ -398,6 +398,16 @@ def build_rapport_professionnel():
     add_bullet(doc, "Deux commandes de contrôle : l'une vérifie la structure, l'autre exécute "
                      "réellement chaque requête pour confirmer qu'aucun widget n'est cassé.")
 
+    add_bullet(doc, "Le tableau de bord principal est découpé en cinq sections — offres remises, "
+                     "affaires chaudes, santé du portefeuille, pipeline, échéances — accessibles "
+                     "par une barre d'onglets. Chacune affiche en sous-titre la question à "
+                     "laquelle elle répond, et un bouton ramène au point de départ depuis "
+                     "n'importe quel écran.")
+    add_bullet(doc, "Quand une section porte déjà la réponse à la question posée, elle s'ouvre "
+                     "filtrée comme demandé au lieu qu'un tableau de bord soit créé : "
+                     "l'utilisateur reste sur une page qu'il connaît, et le chiffre affiché "
+                     "provient d'un widget relu en revue.")
+
     add_h2(doc, "4.4 Alertes deadlines")
     add_bullet(doc, "Email quotidien automatique récapitulant les opportunités actives à "
                      "échéance ≤ 7 jours, envoyé chaque matin à 8h.")
@@ -490,7 +500,7 @@ def build_rapport_professionnel():
              "(alertes deadlines, rafraîchissement des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (337 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
+            ["Tests", "pytest (418 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
              "(mocks), garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -509,7 +519,7 @@ def build_rapport_professionnel():
                      "explicite — il n'écrit jamais lui-même de requête.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "337 tests automatisés couvrent la compréhension du langage, le requêtage des "
+    add_bullet(doc, "418 tests automatisés couvrent la compréhension du langage, le requêtage des "
                      "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -760,11 +770,13 @@ def build_guide_technique():
             ["backend/business_rules.py", "Règles métier indépendantes de l'affichage (ordre du pipeline)."],
             ["backend/data_quality.py", "Rapport des lignes rejetées et des valeurs manquantes."],
             ["dac/.bruin.yml", "Connexion DuckDB de DAC (aucun identifiant, versionnée volontairement)."],
-            ["dac/dashboards/accueil.yml", "Vue d'ensemble (28 widgets), produite par scripts/generate_accueil.py, versionnée et relue en revue."],
+            ["dac/dashboards/accueil.yml", "Section « Vue d'ensemble commerciale » (11 widgets), produite par scripts/generate_accueil.py, versionnée et relue en revue."],
+            ["dac/dashboards/section_*.yml", "Les quatre autres sections du tableau de bord principal (affaires chaudes, santé du portefeuille, pipeline, échéances) — 17 widgets, même générateur."],
+            ["backend/overview_match.py", "Décide si une section répond déjà à la question posée, et laquelle ; sa table est prouvée par les tests."],
             ["dac/dashboards/_principal.yml", "Tableau de bord de travail, réécrit par chaque question (éphémère, hors suivi git)."],
             ["dac/dashboards/_analyse_*.yml", "Instantané figé par question, pour les rouvrir (éphémère, hors suivi git)."],
             ["frontend/src/", "Application Vite + React (chat, iframe DAC, hooks, styles)."],
-            ["tests/", "Suite pytest — 152 tests, aucune dépendance réseau ni données réelles."],
+            ["tests/", "Suite pytest — 418 tests, aucune dépendance réseau ni données réelles."],
             ["Documentation/WORKFLOW.md", "Traçage d'une question, du prompt au tableau de bord affiché."],
             ["Documentation/reports/", "Ce guide, le rapport et leur générateur (generate_docs.py)."],
             ["Documentation/planning/", "Brief initial du projet et données sources (hors suivi git du dépôt)."],
@@ -1267,7 +1279,7 @@ def build_guide_technique():
         "Au-delà de trois différences, rien n'est annoncé : le mot « modifié » "
         "deviendrait trompeur, ce n'est plus une retouche mais une autre analyse.")
 
-    add_h2(doc, "9.9 Un seul tableau de bord, modifié sur place")
+    add_h2(doc, "9.9 Un seul cadre, cinq sections, modifié sur place")
     add_body(doc,
         "Chaque question réécrit _principal.yml, dont le nom de dashboard ne change "
         "jamais — donc l'URL de l'iframe non plus. L'utilisateur voit son tableau de "
@@ -1280,6 +1292,54 @@ def build_guide_technique():
         "nommer un tableau de bord « En camembert » ne dirait rien de ce qu'il montre, "
         "et deux formulations aboutissant à la même analyse partagent ainsi un seul "
         "fichier au lieu d'en accumuler deux identiques.")
+    add_body(doc,
+        "Le tableau de bord principal, lui, est découpé en cinq dashboards (accueil.yml "
+        "et section_*.yml) que la barre d'onglets fait défiler. Le découpage n'est pas "
+        "un choix d'esthétique : DAC ne gère pas les dashboards multi-pages — la clé "
+        "« pages » est rejetée par son schéma — et douze rangées à faire défiler en "
+        "sachant où regarder valaient moins que cinq pages qu'on choisit. Les cinq "
+        "fichiers sont découpés par scripts/generate_accueil.py à partir du même "
+        "document assemblé, aux mêmes intertitres qui séparaient déjà les groupes : les "
+        "règles métier restent donc écrites en un seul endroit.")
+
+    add_h2(doc, "9.10 « Offres gagnées » est un terme métier, comme « offre remise »")
+    add_body(doc,
+        "La question « combien d'offres gagnées ? » donnait tantôt 56, tantôt 88 selon "
+        "la formulation : le modèle proposait parfois le statut littéral « Offre "
+        "gagnée », parfois l'ensemble des issues favorables — qui comprend aussi « Offre "
+        "signée ». Le terme est désormais tranché par le code, comme « offre remise » "
+        "l'était déjà : il vaut toujours les deux statuts, quelle que soit la phrase.")
+    add_body(doc,
+        "La correction a mis au jour la même asymétrie sur la négation : « offres non "
+        "gagnées » n'écartait qu'un des deux statuts, si bien que les offres signées "
+        "comptaient dans les DEUX réponses et que les deux questions inverses ne "
+        "partitionnaient pas le portefeuille. Les deux formes sont désormais traitées "
+        "ensemble — 88 gagnées et 141 non gagnées redonnent bien les 229 opportunités "
+        "actives.")
+
+    add_h2(doc, "9.11 Réutiliser une section : une table prouvée, jamais supposée")
+    add_body(doc,
+        "Composer un tableau de bord pour une question à laquelle une section répond "
+        "déjà fait perdre deux choses : l'utilisateur quitte une page qu'il connaît, et "
+        "le chiffre affiché provient d'une composition faite à la volée plutôt que d'un "
+        "widget relu. backend/overview_match.py décide donc, avant toute écriture, si "
+        "une section porte la réponse — et laquelle.")
+    add_body(doc,
+        "La première version de cette table associait (métrique, axe) à une page en "
+        "supposant qu'une même métrique sur un même axe désignait la même question. "
+        "C'est faux : le périmètre diffère. Vérification faite widget par widget, cinq "
+        "des huit entrées désignaient une page répondant à autre chose — « budget par "
+        "pays » menait à une section sans aucun widget par pays, et « combien d'offres » "
+        "à un indicateur valant 147 quand le chat en annonce 229 (les offres remises "
+        "dont l'échéance est passée, contre le portefeuille actif). Les deux chiffres "
+        "sont justes ; la page contredisait la phrase qu'on venait de lire.")
+    add_body(doc,
+        "La leçon porte moins sur la table que sur la méthode. Elle ne conserve que les "
+        "entrées prouvées, et la preuve est devenue un test : tests/test_reutilisation_"
+        "fidele.py exécute les deux moteurs sur les mêmes lignes et refuse toute entrée "
+        "dont le total ou le nombre de lignes diffère, avec un contrôle négatif qui "
+        "vérifie que le test sait dire non. Ajouter une entrée fausse fait désormais "
+        "tomber la suite au lieu d'atteindre l'utilisateur.")
 
     add_h1(doc, "10. Réponses textuelles déterministes")
     add_body(doc,

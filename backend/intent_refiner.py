@@ -7,7 +7,7 @@ from datetime import date
 from typing import Optional
 
 from .business_rules import (
-    HOT_DEAL_MIN_PROBABILITY, SUBMITTED_STATUSES, choose_chart_type,
+    HOT_DEAL_MIN_PROBABILITY, SUBMITTED_STATUSES, WON_STATUSES, choose_chart_type,
 )
 from .schema_and_whitelist import VALID_METRICS, VALID_DIMENSIONS, KNOWN_VALUES
 from .alerts import ALERT_WINDOW_DAYS, EXCLUDED_STATUSES
@@ -68,6 +68,25 @@ _APPEND_PATTERN = re.compile(r"\b(?:ajoute\w*|rajoute\w*|joins?|complete\w*)\b")
 # passerait à côté de la règle.
 _SUBMITTED_OFFER_PATTERN = re.compile(
     r"\b(?:offres?|opportunit\w*|dossiers?)\s+(?:[\w'-]+\s+){0,3}(?:remis\w*|depose\w*|soumis\w*)"
+)
+
+
+# « GAGNÉE » est un terme métier, exactement comme « remise ». Une offre signée a
+# d'abord été gagnée : la signature vient après la victoire, elle ne l'annule pas.
+# C'est déjà ce que dit la vue d'ensemble, dont le KPI « Gagnées » compte
+# WON_STATUSES — « Offre gagnée » ET « Offre signée », soit 88 opportunités.
+#
+# Le chat, lui, ne retenait que le statut littéral : « combien d'offres gagnées ? »
+# répondait 56 là où le tableau de bord juste à côté en affiche 88. Deux chiffres
+# pour une même question selon l'endroit où on la pose — précisément ce que ce
+# projet s'interdit, et ce qui faisait paraître la réponse « bonne parfois, mauvaise
+# d'autres fois » selon qu'on la comparait ou non à la page d'accueil.
+#
+# Même construction que `_SUBMITTED_OFFER_PATTERN` : jusqu'à trois mots peuvent
+# s'intercaler, pour couvrir « combien d'offres A-T-ON gagnées ».
+_WON_OFFER_PATTERN = re.compile(
+    r"\b(?:offres?|opportunit\w*|affaires?|dossiers?)\s+(?:[\w'-]+\s+){0,3}"
+    r"(?:gagne\w*|remporte\w*)"
 )
 
 
@@ -1029,11 +1048,32 @@ def refine_intent(query: str, intent: dict, today: Optional[date] = None) -> dic
         intent.setdefault("filters", {})
         intent["filters"]["status"] = list(SUBMITTED_STATUSES)
 
+    # « offres gagnées » = toutes celles effectivement remportées, signature comprise.
+    # Placé APRÈS les deux règles ci-dessus, plus spécifiques : « offres pondérées »
+    # et « offres remises » visent d'autres périmètres et priment.
+    #
+    # La condition sur la négation évite de retourner « offres NON gagnées » en un
+    # filtre positif : cette question-là est traitée quelques lignes plus bas, en
+    # exclusion.
+    elif _WON_OFFER_PATTERN.search(q) and not _statuts_de_la_question(q)[1]:
+        intent.setdefault("filters", {})
+        intent["filters"]["status"] = list(WON_STATUSES)
+
     # Une NÉGATION dans la question fait autorité sur ce que le modèle a proposé.
     # « budget des offres non gagnées » lui faisait poser filters.status = « Offre
     # gagnée » : la réponse exacte à la question inverse, 30 080 000 DT annoncés là
     # où le chiffre demandé est tout autre. Le code tranche, comme partout ici.
     _, statuts_nies = _statuts_de_la_question(q)
+
+    # Le terme métier vaut aussi bien nié. « Offres gagnées » désigne les DEUX
+    # statuts d'issue favorable ; n'écarter que « Offre gagnée » laissait les offres
+    # signées dans le compte. Les deux questions inverses se contredisaient alors :
+    # gagnées + non gagnées ne redonnait pas le portefeuille.
+    if statuts_nies and _WON_OFFER_PATTERN.search(q) and any(
+            s in WON_STATUSES for s in statuts_nies):
+        statuts_nies = list(statuts_nies) + [
+            s for s in WON_STATUSES if s not in statuts_nies]
+
     if statuts_nies:
         filtres = intent.get("filters") or {}
         pose = filtres.get("status")

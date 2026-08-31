@@ -50,8 +50,27 @@ de bord se transformer au lieu d'en voir apparaître un de plus. `_analyse_<hash
 fige le résultat de cette question précise, ce qui permet à la liste déroulante du chat
 de rouvrir une analyse passée telle qu'elle était — sans repasser par le modèle.
 
-Les deux sont des artefacts d'exécution, hors suivi git (voir `.gitignore`). Seuls
-`accueil.yml` et `qualite.yml`, écrits à la main, sont versionnés.
+Les deux sont des artefacts d'exécution, hors suivi git (voir `.gitignore`). Sont
+versionnés en revanche les dashboards du tableau de bord principal — `accueil.yml`,
+`section_chaudes.yml`, `section_sante.yml`, `section_pipeline.yml`,
+`section_urgences.yml` — tous produits par `scripts/generate_accueil.py`, ainsi que
+`qualite.yml`.
+
+## Le raccourci : quand aucun fichier n'est écrit
+
+Avant de composer quoi que ce soit, `backend/overview_match.py` regarde si une
+section porte DÉJÀ la réponse. Si oui, le backend renvoie simplement son nom et les
+filtres à lui appliquer : la page s'ouvre filtrée, rien n'est écrit sur le disque, et
+les chiffres viennent de widgets relus en revue plutôt que d'une composition faite à
+la volée.
+
+La table de correspondance ne se fie pas à l'apparence. Une page peut porter la même
+métrique sur le même axe et répondre à une AUTRE question, parce que son périmètre
+diffère : le KPI « Offres remises » compte les statuts déposés dont l'échéance est
+passée (147), là où le chat compte le portefeuille actif (229). Les deux chiffres
+sont justes ; y renvoyer afficherait un nombre différent de celui qu'on vient
+d'annoncer. `tests/test_reutilisation_fidele.py` exécute donc les deux moteurs sur
+les mêmes lignes et refuse toute entrée dont le total ou le nombre de lignes diffère.
 
 ## Étape par étape, avec l'exemple
 
@@ -163,8 +182,10 @@ demande comprise ne doit jamais rester sans réponse visible.
 ```
 
 **10. L'affichage.** Le frontend pointe son iframe sur
-`http://localhost:8321/d/<nom encodé>`. DAC lit le YAML, exécute le SQL de chaque
-widget sur le fichier DuckDB, et rend le dashboard. `intent` devient le
+`http://localhost:8321/d/<nom encodé>`, en reportant les filtres dans la chaîne de
+requête. DAC lit le YAML, exécute le SQL de chaque widget sur le fichier DuckDB, et
+rend le dashboard. Si le nom est celui d'une section, la barre d'onglets s'affiche
+au-dessus ; sinon, seul le bouton de retour au tableau de bord principal subsiste. `intent` devient le
 `previous_intent` du tour suivant (contexte multi-tour), et tout est sauvegardé dans
 `localStorage` pour survivre à un rechargement de page.
 
@@ -180,8 +201,9 @@ qu'un résultat inventé.
 **Une seule source de vérité.** Le DataFrame pandas alimente le chat et les alertes ;
 le fichier DuckDB qu'interroge DAC n'en est qu'une projection réécrite à chaque
 rafraîchissement. Les deux moteurs affichent donc toujours les mêmes chiffres — c'est
-vérifiable : le nombre d'opportunités urgentes est identique dans le chat, dans le
-dashboard généré et dans la vue d'ensemble.
+vérifiable, et c'est vérifié : le nombre d'opportunités urgentes est identique dans
+le chat, dans le dashboard généré et dans la section qui l'affiche, et le raccourci
+décrit plus haut n'accepte une section que si elle redonne le chiffre exact.
 
 *(Pour le détail complet module par module, voir
 `Documentation/reports/Guide_Technique_DevoTeam_Dashboard.docx`.)*

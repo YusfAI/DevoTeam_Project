@@ -32,11 +32,12 @@ data/scheduler_state.json
 dac/data/*.db
 
 # Dashboard généré à chaque question du chat (backend/dac_composer.py) : artefact
-# éphémère réécrit en permanence, sans intérêt en revue — contrairement aux
-# dashboards écrits à la main (dac/dashboards/accueil.yml), eux versionnés.
+# éphémère réécrit en permanence, sans intérêt en revue — contrairement aux cinq
+# sections du tableau de bord principal (accueil.yml, section_*.yml) et à
+# qualite.yml, qui sont des sources versionnées et relues.
 dac/dashboards/_analyse_*.yml
 # Le tableau de bord de travail, reecrit par CHAQUE question : meme raison, c'est un
-# artefact d'execution et non une source. Seul accueil.yml est versionne.
+# artefact d'execution et non une source.
 dac/dashboards/_principal.yml
 
 logs/queries

@@ -1,6 +1,6 @@
 """Le critère des affaires chaudes, sur les deux chemins qui l'appliquent.
 
-Le dashboard le traduit en SQL (widgets de accueil.yml), le chat en opération pandas
+Le dashboard le traduit en SQL (widgets de section_chaudes.yml), le chat en opération pandas
 (intention → db_layer). Deux écritures d'un même critère finissent par diverger — ce
 projet en a déjà fait l'expérience — d'où le test qui les confronte sur les mêmes
 lignes.
@@ -14,7 +14,9 @@ import yaml
 from backend import db_layer
 from backend.business_rules import HOT_DEAL_MIN_PROBABILITY
 from backend.intent_refiner import refine_intent
-from tests.test_accueil_dashboard import ACCUEIL, COLONNES, _sans_jinja
+from tests.test_accueil_dashboard import (
+    DASHBOARDS, SECTIONS, COLONNES, _sans_jinja, _widget,
+)
 
 
 def _opportunite(**champs):
@@ -50,9 +52,14 @@ def _duckdb_avec(df):
     return con
 
 
-def _widget(nom):
-    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
-    return next(w for row in doc["rows"] for w in row["widgets"] if w["name"] == nom)
+def _ligne_du_widget(nom):
+    """La rangée qui porte ce widget, cherchée dans toutes les sections."""
+    for fichier in SECTIONS:
+        doc = yaml.safe_load((DASHBOARDS / fichier).read_text(encoding="utf-8"))
+        for row in doc["rows"]:
+            if any(w["name"] == nom for w in row["widgets"]):
+                return row
+    raise AssertionError("widget introuvable dans les sections : %r" % nom)
 
 
 def _kpi_affaires_chaudes(df):
@@ -162,9 +169,7 @@ def test_le_detail_occupe_sa_ligne_en_pleine_largeur():
     # Seul sur sa ligne : un widget voisin s'étirerait à la hauteur de la liste. Et
     # en pleine largeur, sans quoi les huit colonnes partiraient en défilement
     # horizontal — le tableau de DAC réclame 400 px au minimum.
-    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
-    ligne = next(r for r in doc["rows"]
-                  if any(w["name"] == "Détail des affaires chaudes" for w in r["widgets"]))
+    ligne = _ligne_du_widget("Détail des affaires chaudes")
 
     assert [w["name"] for w in ligne["widgets"]] == ["Détail des affaires chaudes"]
     assert ligne["widgets"][0]["col"] == 12

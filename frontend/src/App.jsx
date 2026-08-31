@@ -82,6 +82,14 @@ export default function App() {
     }
   }
 
+  // Passer d'une section à l'autre : c'est une NAVIGATION, pas une analyse. Le
+  // contexte de la conversation reste intact — l'utilisateur regarde ailleurs, il ne
+  // pose pas une nouvelle question.
+  function handleOpenSection(name) {
+    setDashboard({ dac_dashboard: name })
+    setDashboardKey((k) => k + 1)
+  }
+
   function handleOpenDashboard(name, question) {
     // « replay » distingue une analyse ROUVERTE du tableau de bord de travail : les
     // deux s'affichent dans le même cadre, mais l'une est figée et l'autre suit les
@@ -141,6 +149,7 @@ export default function App() {
         <DashboardPanel
           dashboard={dashboard}
           dashboardKey={dashboardKey}
+          onOpenSection={handleOpenSection}
           historyOpen={historyOpen}
           onToggleHistory={() => setHistoryOpen((open) => !open)}
         />
