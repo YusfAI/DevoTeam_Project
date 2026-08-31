@@ -16,8 +16,10 @@ def test_format_metric_value_units():
 def test_win_probability_is_stored_as_fraction_and_displayed_as_percent():
     # win_probability is stored in DB as a 0-1 fraction (0.74 = 74%), never as
     # a ready-made percentage — must be scaled ×100, not printed raw.
-    assert format_metric_value(0.738, "win_probability") == "73.8 %"
-    assert format_metric_value(1.0, "win_probability") == "100.0 %"
+    # Virgule décimale : les milliers sont séparés à la française (« 103 900 001 DT »),
+    # afficher « 73.8 % » dans la même phrase mélangeait deux conventions.
+    assert format_metric_value(0.738, "win_probability") == "73,8 %"
+    assert format_metric_value(1.0, "win_probability") == "100,0 %"
 
 
 def test_no_data_message():

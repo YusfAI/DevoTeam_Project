@@ -1,3 +1,5 @@
+import { useEffect } from 'react'
+
 // Historique des analyses, dans l'esprit du volet de conversations de Claude : une
 // liste plein écran, groupée par jour, où chaque entrée est la demande telle qu'elle
 // a été écrite et rouvre le tableau de bord qu'elle avait produit.
@@ -27,6 +29,17 @@ function heure(timestamp) {
 }
 
 export default function HistoryPanel({ history, currentName, onOpen, onClose }) {
+  // Échap ferme le volet. Il occupe tout le panneau et ne se refermait qu'à la souris,
+  // sur le ✕ : au clavier, on s'y retrouvait enfermé. C'était d'ailleurs le seul
+  // gestionnaire de touche de toute l'application — il n'y en avait aucun.
+  useEffect(() => {
+    function surTouche(evenement) {
+      if (evenement.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', surTouche)
+    return () => window.removeEventListener('keydown', surTouche)
+  }, [onClose])
+
   // Les entrées arrivent de la plus récente à la plus ancienne ; les groupes suivent
   // donc le même ordre sans avoir à trier quoi que ce soit.
   const groupes = []
@@ -38,7 +51,7 @@ export default function HistoryPanel({ history, currentName, onOpen, onClose }) 
   }
 
   return (
-    <div className="history-panel" role="dialog" aria-label="Historique des analyses">
+    <div className="history-panel" role="dialog" aria-modal="true" aria-label="Historique des analyses">
       <div className="history-header">
         <h2>Historique</h2>
         <button type="button" className="history-close" onClick={onClose} aria-label="Fermer l’historique">

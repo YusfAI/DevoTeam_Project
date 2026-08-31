@@ -114,6 +114,28 @@ def _bloc(texte, indent="          "):
 _RUPTURE_DE_LIGNE = "\n\n  - widgets:\n"
 
 
+def section(titre, question):
+    """Un intertitre au-dessus d'un groupe de widgets.
+
+    La page enchaînait douze lignes de visuels sans respiration : rien n'y disait où
+    finissait un sujet et où commençait le suivant, ni à QUELLE question chaque
+    groupe répond. Le sous-titre porte la question en toutes lettres — c'est elle que
+    le lecteur a en tête, pas le nom des indicateurs.
+
+    `type: text` avec `content` : le seul champ que le schéma de DAC accepte pour du
+    texte libre (vérifié — `text`, `markdown` et `body` sont refusés). Le rendu est du
+    markdown, mais sans `rehype-raw` : aucun HTML brut n'y passerait.
+    """
+    return ("\n".join([
+        "      - name: %s" % titre,
+        "        type: text",
+        "        col: 12",
+        "        content: |",
+        "          ## %s" % titre,
+        "          %s" % question,
+    ]))
+
+
 def kpi(name, col, corps, fmt, desc=None):
     d = "\n        description: %s" % _bloc(desc) if desc else ""
     return ("      - name: %s\n"
@@ -285,6 +307,9 @@ filters:
 rows:
   # === Q1 et Q3 : combien d'offres remises, et ce qu'elles sont devenues ===
   - widgets:
+__SECTION_REMISES__
+
+  - widgets:
 """
 
 ligne1 = "\n\n".join([
@@ -388,7 +413,10 @@ __ISSUES__,
         y: { field: nb, type: number, title: Offres remises, format: ",.0f" }
         color: { field: issue }
 
-  # === Affaires chaudes : les opportunités à 80 % de probabilité ou plus ===
+  # === Affaires chaudes ===
+  - widgets:
+__SECTION_CHAUDES__
+
   - widgets:
 __CHAUDES_KPI__
 
@@ -448,6 +476,9 @@ __CHAUDES_COLONNES__
 
   # === Santé du portefeuille — affaires perdues exclues ===
   - widgets:
+__SECTION_SANTE__
+
+  - widgets:
 """
 
 ligne3 = "\n\n".join([
@@ -465,6 +496,9 @@ ligne3 = "\n\n".join([
 FOOTER = """
 
   # === Pipeline : où en sont les affaires encore ouvertes ===
+  - widgets:
+__SECTION_PIPELINE__
+
   - widgets:
       - name: Entonnoir de vente
         type: chart
@@ -520,6 +554,9 @@ __FILTRES__
         color: { field: country }
 
   # === Ce qu'il faut traiter maintenant ===
+  - widgets:
+__SECTION_URGENCES__
+
   - widgets:
       - name: Opportunités urgentes (échéance ≤ 7 jours)
         type: table
@@ -603,7 +640,28 @@ chaudes_kpi = "\n\n".join([
 doc = HEADER + ligne1 + NOUVELLE_LIGNE + ligne2 + BODY + ligne3 + FOOTER
 chaudes_colonnes = table_chaudes()
 
-doc = (doc.replace("__CHAUDES_COLONNES__", chaudes_colonnes)
+doc = (doc
+          .replace("__SECTION_REMISES__", section(
+              "Les offres remises",
+              "Combien en a-t-on déposées sur la période, comment se "
+              "répartissent-elles par practice, et que sont-elles devenues ?"))
+          .replace("__SECTION_CHAUDES__", section(
+              "Les affaires chaudes",
+              "Que reste-t-il à aller chercher ? Les offres remises et celles "
+              "données entre 80 % et 99 % de chances — probablement gagnées, "
+              "pas encore gagnées."))
+          .replace("__SECTION_SANTE__", section(
+              "La santé du portefeuille",
+              "Que pèse ce qui est encore en jeu, une fois les affaires perdues "
+              "écartées ?"))
+          .replace("__SECTION_PIPELINE__", section(
+              "Le pipeline",
+              "Où en sont les affaires ouvertes, et où perd-on le plus de monde "
+              "d'une étape à l'autre ?"))
+          .replace("__SECTION_URGENCES__", section(
+              "Ce qu'il faut traiter maintenant",
+              "Quelles échéances tombent dans les sept jours ?"))
+          .replace("__CHAUDES_COLONNES__", chaudes_colonnes)
           .replace("__CHAUDES_KPI__", chaudes_kpi)
           .replace("__CHAUDES__", CHAUDES_CTE)
           .replace("__REMISES__", REMISES_CTE)

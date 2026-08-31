@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { OVERVIEW_DASHBOARD_NAME, dacDashboardUrl } from '../dac'
+import { DATA_QUALITY_DASHBOARD_NAME, OVERVIEW_DASHBOARD_NAME, dacDashboardUrl } from '../dac'
 import { getHealth } from '../api'
 import DevoteamLogo from './DevoteamLogo'
 
@@ -167,6 +167,18 @@ export default function DashboardPanel({
               +
             </button>
           </div>
+          {/* Ouvre le tableau de bord de qualité dans un onglet : il répond à une
+              question ponctuelle (« sur quoi ce chiffre repose-t-il ? ») et n'a pas
+              à remplacer l'analyse en cours dans le cadre. */}
+          <a
+            className="quality-link"
+            href={dacDashboardUrl(DATA_QUALITY_DASHBOARD_NAME)}
+            target="_blank"
+            rel="noreferrer"
+            title="Ce que les données contiennent, et ce qui leur manque"
+          >
+            ⓘ Qualité des données
+          </a>
           <button
             type="button"
             className={`history-button${historyOpen ? ' active' : ''}`}

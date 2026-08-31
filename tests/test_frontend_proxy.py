@@ -18,9 +18,15 @@ MAIN_PY = RACINE / "backend" / "main.py"
 
 
 def _chemins_appeles() -> set:
-    """Les chemins passés à fetch() dans la couche API du frontend."""
+    """Les chemins que la couche API du frontend appelle.
+
+    `fetch` comme `fetchAvecDelai` — l'enrobage qui abandonne une requête restée
+    sans réponse. Chercher le seul `fetch(` littéral ne trouvait plus rien le jour
+    où les appels sont passés par lui, et le test devenait vide : il ne comparait
+    plus que deux ensembles vides, donc il passait quoi qu'il arrive.
+    """
     source = API_JS.read_text(encoding="utf-8")
-    return set(re.findall(r"fetch\(\s*['\"](/[^'\"]*)['\"]", source))
+    return set(re.findall(r"\bfetch\w*\(\s*['\"](/[^'\"]*)['\"]", source))
 
 
 def _prefixes_proxy() -> set:
@@ -70,3 +76,15 @@ def test_the_static_mount_stays_last():
     assert derniere_route < montage, (
         "une route d'API est déclarée après le montage statique : elle sera masquée."
     )
+
+
+def test_le_test_lui_meme_trouve_bien_des_appels():
+    """Un test qui ne trouve rien compare deux ensembles vides — et passe toujours.
+
+    C'est arrivé : la couche API est passée d'un `fetch` direct à un enrobage
+    (`fetchAvecDelai`), le motif ne reconnaissait plus les appels, et la garde sur
+    le proxy se serait tue sans rien signaler.
+    """
+    chemins = _chemins_appeles()
+    assert chemins, "aucun appel détecté : le motif ne reconnaît plus la couche API"
+    assert len(chemins) >= 3, chemins

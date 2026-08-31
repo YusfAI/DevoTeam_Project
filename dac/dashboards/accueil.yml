@@ -73,6 +73,14 @@ filters:
 rows:
   # === Q1 et Q3 : combien d'offres remises, et ce qu'elles sont devenues ===
   - widgets:
+      - name: Les offres remises
+        type: text
+        col: 12
+        content: |
+          ## Les offres remises
+          Combien en a-t-on déposées sur la période, comment se répartissent-elles par practice, et que sont-elles devenues ?
+
+  - widgets:
       - name: Offres remises
         type: metric
         col: 3
@@ -437,7 +445,15 @@ rows:
         y: { field: nb, type: number, title: Offres remises, format: ",.0f" }
         color: { field: issue }
 
-  # === Affaires chaudes : les opportunités à 80 % de probabilité ou plus ===
+  # === Affaires chaudes ===
+  - widgets:
+      - name: Les affaires chaudes
+        type: text
+        col: 12
+        content: |
+          ## Les affaires chaudes
+          Que reste-t-il à aller chercher ? Les offres remises et celles données entre 80 % et 99 % de chances — probablement gagnées, pas encore gagnées.
+
   - widgets:
       - name: Affaires chaudes
         type: metric
@@ -700,6 +716,14 @@ rows:
 
   # === Santé du portefeuille — affaires perdues exclues ===
   - widgets:
+      - name: La santé du portefeuille
+        type: text
+        col: 12
+        content: |
+          ## La santé du portefeuille
+          Que pèse ce qui est encore en jeu, une fois les affaires perdues écartées ?
+
+  - widgets:
       - name: Budget actif (DT)
         type: metric
         col: 3
@@ -777,6 +801,14 @@ rows:
         value: { field: value, type: number, format: ",.0f" }
 
   # === Pipeline : où en sont les affaires encore ouvertes ===
+  - widgets:
+      - name: Le pipeline
+        type: text
+        col: 12
+        content: |
+          ## Le pipeline
+          Où en sont les affaires ouvertes, et où perd-on le plus de monde d'une étape à l'autre ?
+
   - widgets:
       - name: Entonnoir de vente
         type: chart
@@ -906,6 +938,14 @@ rows:
         color: { field: country }
 
   # === Ce qu'il faut traiter maintenant ===
+  - widgets:
+      - name: Ce qu'il faut traiter maintenant
+        type: text
+        col: 12
+        content: |
+          ## Ce qu'il faut traiter maintenant
+          Quelles échéances tombent dans les sept jours ?
+
   - widgets:
       - name: Opportunités urgentes (échéance ≤ 7 jours)
         type: table

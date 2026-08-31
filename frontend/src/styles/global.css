@@ -305,7 +305,10 @@ body::before {
 }
 
 .message.user {
-  background: linear-gradient(135deg, var(--brand-primary), var(--brand-primary-strong));
+  /* Le dégradé part de la teinte FORTE : blanc sur #f2405a ne donnait que 3,71:1,
+     et les propres messages de l'utilisateur étaient le deuxième texte le moins
+     lisible de l'application. Depuis #d42a45, on est à 4,98:1. */
+  background: linear-gradient(135deg, var(--brand-primary-strong), #b81730);
   color: white;
   align-self: flex-end;
   border-bottom-right-radius: 2px;
@@ -322,14 +325,16 @@ body::before {
 
 .message.error {
   background: color-mix(in srgb, var(--status-critical) 12%, var(--surface-card));
-  color: var(--status-critical);
+  /* Variante de TEXTE : la teinte de marque ne passait pas le seuil de lisibilité
+     sur son propre fond teinté (3,95:1 en clair, 3,29:1 en sombre). */
+  color: var(--status-critical-text);
   align-self: flex-start;
   border: 1px solid color-mix(in srgb, var(--status-critical) 35%, transparent);
 }
 
 .message.sync {
   background: color-mix(in srgb, var(--status-good) 12%, var(--surface-card));
-  color: var(--status-good);
+  color: var(--status-good-text);
   align-self: flex-start;
   border: 1px solid color-mix(in srgb, var(--status-good) 35%, transparent);
 }
@@ -958,4 +963,41 @@ body::before {
 .history-item.active .history-item-meta {
   color: var(--brand-primary);
   font-weight: 600;
+}
+
+/* Visible des seuls lecteurs d'écran. `display: none` les priverait aussi de
+   l'information ; ce découpage à un pixel la garde dans l'arbre d'accessibilité
+   tout en la retirant de l'écran. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Lien vers le tableau de bord de qualité des données. Même gabarit que le bouton
+   d'historique voisin, en plus discret : c'est un recours ponctuel, pas une action
+   de premier plan. */
+.quality-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  text-decoration: none;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.quality-link:hover {
+  border-color: var(--brand-primary);
+  color: var(--text-primary);
 }

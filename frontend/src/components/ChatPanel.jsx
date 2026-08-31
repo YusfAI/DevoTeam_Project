@@ -77,7 +77,12 @@ export default function ChatPanel({
         <ChatInput inputRef={inputRef} loading={loading} onSubmit={onSubmit} />
       </div>
 
-      <div className="chat-messages">
+      {/* `aria-live` ici, et pas seulement sur le pourcentage de zoom : un lecteur
+          d'écran n'annonçait jamais la réponse de l'assistant, alors qu'il annonçait
+          « 110 % » à chaque clic de zoom. La priorité était exactement inversée.
+          `polite` plutôt que `assertive` : la réponse ne doit pas couper l'utilisateur
+          en train de taper. */}
+      <div className="chat-messages" role="log" aria-live="polite" aria-relevant="additions">
         {messages.map((m) => (
           <ChatMessage
             key={m.id}

@@ -9,7 +9,7 @@
   --surface-card: #fcfcfb;
   --text-primary: #0b0b0b;
   --text-secondary: #52514e;
-  --text-muted: #898781;
+  --text-muted: #66645e;   /* 5,61:1 — était #898781, à 3,41:1 */
   /* Rayons et élévations, en jetons plutôt qu'en valeurs recopiées : une ombre
      écrite huit fois à la main finit par diverger huit fois. Les ombres sont à
      DEUX couches — un contact net très proche, puis une diffusion large et douce.
@@ -39,6 +39,18 @@
   --status-warning: #fab219;
   --status-serious: #ec835a;
   --status-critical: #d03b3b;
+  /* Teintes de TEXTE des statuts, distinctes de la teinte de la marque.
+     Mesuré : « #d03b3b sur le fond teinté à 12 % » donne 3,95:1 en clair et 3,29:1
+     en sombre, « #0ca30c » descend à 2,84:1 — soit les textes les MOINS lisibles de
+     l'application, précisément ceux qu'on doit lire quand quelque chose casse. La
+     couleur de la marque reste inchangée pour les bordures et les pastilles, où le
+     seuil de 3:1 suffit ; seul le texte prend une variante assombrie (ou éclaircie
+     en sombre, où l'on peint sur du noir).
+     Contrastes obtenus sur le fond réellement peint : 6,00:1 et 5,71:1 en clair,
+     6,96:1 et 7,94:1 en sombre. */
+  --status-critical-text: #a81f1f;
+  --status-good-text: #076b07;
+
 
   /* Marque Devoteam — corail du logo, utilisée pour le chrome de l'app
      (header, bulles, boutons, focus, logo) — distincte de --series-1
@@ -67,7 +79,9 @@
     --surface-card: #1a1a19;
     --text-primary: #ffffff;
     --text-secondary: #c3c2b7;
-    --text-muted: #898781;
+    --text-muted: #9b9992;   /* 6,82:1 sur le fond sombre */
+    --status-critical-text: #ff8a8a;
+    --status-good-text: #5fd35f;
   /* En mode sombre, une ombre noire ne se voit pas : l'élévation passe par une
      ombre plus dense ET un liseré clair en haut, qui simule la lumière rasante. */
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -104,7 +118,9 @@
   --surface-card: #1a1a19;
   --text-primary: #ffffff;
   --text-secondary: #c3c2b7;
-  --text-muted: #898781;
+  --text-muted: #9b9992;
+  --status-critical-text: #ff8a8a;
+  --status-good-text: #5fd35f;
   --gridline: #2c2c2a;
   --baseline: #383835;
   --border: rgba(255, 255, 255, 0.10);

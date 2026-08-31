@@ -146,6 +146,17 @@ def _fuzzy_match(value: str, known: list[str], aliases: Optional[dict] = None) -
     return None
 
 
+def _libelle(colonne: str) -> str:
+    """Le nom FRANÇAIS d'une colonne, pour les messages destinés à l'utilisateur.
+
+    « Valeur « Atlantide » non reconnue pour le filtre « country » » mêlait une
+    phrase française et une clé technique anglaise. Les libellés existaient déjà
+    (labels.FILTER_LABELS) ; ils n'étaient simplement pas appliqués ici.
+    """
+    from .labels import DIMENSION_LABELS, FILTER_LABELS
+    return FILTER_LABELS.get(colonne) or DIMENSION_LABELS.get(colonne) or colonne
+
+
 def _resolve_metric(raw: str) -> str:
     if raw in VALID_METRICS:
         return raw
@@ -233,13 +244,15 @@ def _resolve_filter_value(key: str, value, db_ctx: dict):
                 resolved.append(match)
         if unresolved:
             raise IntentUnclear(
-                f"Valeur(s) « {', '.join(unresolved)} » non reconnue(s) pour le filtre « {key} »."
+                "Valeur(s) « %s » non reconnue(s) pour « %s »."
+                % (", ".join(unresolved), _libelle(key))
             )
         return resolved
 
     match = _resolve_one_filter_value(key, value, known, aliases)
     if match is None:
-        raise IntentUnclear(f"Valeur « {value} » non reconnue pour le filtre « {key} ».")
+        raise IntentUnclear(
+            "Valeur « %s » non reconnue pour « %s »." % (value, _libelle(key)))
     return match
 
 
@@ -667,8 +680,8 @@ goal, metric, dimension, filters, range_filters, chart_type, aggregation, use_ra
             # le portefeuille en prétendant être filtrée.
             if k not in VALID_FILTERS:
                 raise IntentUnclear(
-                    f"Je ne peux pas filtrer sur « {k} ». Filtres disponibles : "
-                    f"{AXES_DISPONIBLES}."
+                    "Je ne peux pas filtrer sur « %s ». Filtres disponibles : %s."
+                    % (_libelle(k), AXES_DISPONIBLES)
                 )
             resolved_filters[k] = _resolve_filter_value(k, v, db_ctx)
         intent.filters = resolved_filters

@@ -30,7 +30,9 @@ def format_metric_value(value, metric: str) -> str:
         return "N/A"
     if metric == "win_probability":
         # Stocké en base comme fraction 0-1 (0.74 = 74%).
-        return f"{float(value) * 100:.1f} %"
+        # Virgule décimale : les milliers sont déjà séparés à la française plus
+        # bas, « de 40.0 % à 100.0 % » mélangeait les deux conventions.
+        return f"{float(value) * 100:.1f} %".replace(".", ",")
     if metric == "nb_opportunities":
         return f"{int(value):,}".replace(",", " ")
     return f"{float(value):,.0f} {DEVISE}".replace(",", " ")
@@ -95,6 +97,22 @@ def _describe_filters(intent: dict) -> str:
     return " — filtres : " + ", ".join(parts)
 
 
+def _pluriel(mot: str, nombre: int) -> str:
+    """« pays » reste « pays », « client » devient « clients ».
+
+    La forme mécanique « pays(s) », « practice(s) », « mois d'échéance(s) » revenait
+    dans chaque réponse — et le « (s) » atterrissait parfois sur le mauvais mot
+    (« mois d'échéance(s) » au lieu de « mois d'échéance »). Le pluriel s'applique
+    au dernier mot, et les mots déjà terminés par s, x ou z sont invariables.
+    """
+    if nombre <= 1:
+        return mot
+    tete, _, dernier = mot.rpartition(" ")
+    if dernier[-1:].lower() in ("s", "x", "z"):
+        return mot
+    return ("%s %s" % (tete, dernier + "s")).strip()
+
+
 def _norm_titre(texte: str) -> str:
     """Forme comparable d'un intitulé : sans casse, sans accents, sans ponctuation.
 
@@ -107,13 +125,23 @@ def _norm_titre(texte: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", sans_accents).strip()
 
 
-def _top_entries(rows_with_values: list, metric: str, n: int = 3) -> str:
+def _top_entries(rows_with_values: list, metric: str, n: int = 3,
+                 additif: bool = True) -> str:
+    """Le classement de tête. La PART n'accompagne la valeur que si elle a un sens.
+
+    Sur des moyennes, « Arabie Saoudite (100,0 %, 8 %) » accolait deux pourcentages
+    dont le second — une part d'une somme de moyennes — ne veut rien dire. Le reste
+    du module l'avait compris pour la note de concentration ; le classement, non.
+    """
     sorted_rows = sorted(rows_with_values, key=lambda x: x[1], reverse=True)[:n]
     total = sum(v for _, v in rows_with_values)
     parts = []
     for dim, val in sorted_rows:
-        pct = (val / total * 100) if total else 0
-        parts.append(f"{dim} ({format_metric_value(val, metric)}, {pct:.0f} %)")
+        valeur = format_metric_value(val, metric)
+        if additif and total:
+            parts.append(f"{dim} ({valeur}, {val / total * 100:.0f} %)")
+        else:
+            parts.append(f"{dim} ({valeur})")
     return " | ".join(parts)
 
 
@@ -156,10 +184,14 @@ def _synthese(rows_with_values: list, metric: str, dim_label: str, moyenne: bool
     valeurs = [v for _, v in rows_with_values]
     if not moyenne:
         total = sum(valeurs)
-        return f"Total : {format_metric_value(total, metric)} sur {len(valeurs)} {dim_label}(s). "
-    return (f"{len(valeurs)} {dim_label}(s) comparé(s), de "
-            f"{format_metric_value(min(valeurs), metric)} à "
-            f"{format_metric_value(max(valeurs), metric)}. ")
+        return ("Total : %s sur %d %s. "
+                % (format_metric_value(total, metric), len(valeurs),
+                   _pluriel(dim_label, len(valeurs))))
+    accord = "s" if len(valeurs) > 1 else ""
+    return ("%d %s comparé%s, de %s à %s. "
+            % (len(valeurs), _pluriel(dim_label, len(valeurs)), accord,
+               format_metric_value(min(valeurs), metric),
+               format_metric_value(max(valeurs), metric)))
 
 
 def build_data_response(intent: dict, data: list) -> str:
@@ -302,13 +334,20 @@ def build_data_response(intent: dict, data: list) -> str:
         # que « Total : 134 » s'affichait là où le portefeuille compte 84 clients.
         moyenne = intent.get("aggregation") == "avg" or bool(intent.get("count_distinct"))
         total = sum(v for _, v in rows_with_values)
-        top_line = _top_entries(rows_with_values, metric, 3)
+        top_line = _top_entries(rows_with_values, metric, 3, additif=not moyenne)
         # L'intitulé ne précède la phrase que s'il APPORTE quelque chose. Quand il
         # décrit déjà la même analyse — ce qui est le cas dès que le titre est
         # reconstruit depuis l'intention — la réponse se lisait « Budget par pays —
         # Budget par pays. Total : … », le même énoncé deux fois de suite.
         entete = f"{metric_label.capitalize()} par {dim_label}"
-        prefix = f"{goal} — " if goal and _norm_titre(goal) != _norm_titre(entete) else ""
+        # Le préfixe saute aussi quand il DIT LE CONTRAIRE de l'en-tête. « Budget par
+        # partenaire — Budget moyen par partenaire » affichait les deux versions côte
+        # à côte : l'intitulé venait de la question, l'en-tête du calcul réellement
+        # fait, et c'est l'en-tête qui a raison. Les garder tous deux laissait le
+        # lecteur choisir entre un total et une moyenne — 34 M DT ou 536 105 DT.
+        contradictoire = (_norm_titre(goal).replace(" moyen", "").replace(" moyenne", "")
+                          == _norm_titre(entete).replace(" moyen", "").replace(" moyenne", ""))
+        prefix = "" if (not goal or contradictoire) else f"{goal} — "
         limit_note = f" (top {limit})" if limit > 0 else ""
         # La note de concentration exprime une part du total : elle n'a de sens que
         # sur des sommes. Sur des moyennes, « les 3 premiers pèsent 60 % » ne veut

@@ -174,8 +174,12 @@ def test_every_widget_explains_itself_briefly():
     # Une phrase sous le titre, assez courte pour être lue d'un coup d'œil. Le
     # raisonnement long vit en commentaire YAML, où il sert la revue sans encombrer
     # l'écran.
+    #
+    # Les intertitres de section (`type: text`) en sont dispensés : ils ne montrent
+    # aucun chiffre, ils énoncent la question à laquelle le groupe répond. Leur
+    # contenu EST l'explication — leur en demander une seconde n'aurait pas de sens.
     doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
-    widgets = [w for row in doc["rows"] for w in row["widgets"]]
+    widgets = [w for row in doc["rows"] for w in row["widgets"] if w["type"] != "text"]
 
     sans_description = [w["name"] for w in widgets if not (w.get("description") or "").strip()]
     bavardes = [w["name"] for w in widgets if len((w.get("description") or "").strip()) > 100]
@@ -235,8 +239,11 @@ def test_every_other_widget_follows_the_two_dates():
     # Un widget oublié afficherait un chiffre d'un autre périmètre que ses voisins,
     # sans qu'aucune requête n'échoue.
     doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
+    # Les intertitres de section sont écartés : ils n'ont pas de requête, donc rien
+    # à filtrer. Le test lirait `w["sql"]` sur une clé absente.
     oublis = [w["name"] for row in doc["rows"] for w in row["widgets"]
-               if ("filters.Date_de_debut" not in w["sql"]
+               if w["type"] != "text"
+               and ("filters.Date_de_debut" not in w["sql"]
                     or "filters.Date_de_fin" not in w["sql"])
                and not w["name"].startswith("Opportunités urgentes")]
     assert not oublis, oublis
@@ -284,3 +291,36 @@ def test_amounts_carry_their_unit_and_never_a_currency_format():
         if any(mot in c["label"].lower() for mot in argent) and DEVISE not in c["label"]
     ]
     assert not colonnes_sans_unite, colonnes_sans_unite
+
+
+# ---------------------------------------------------------------------------
+# Les intertitres de section
+# ---------------------------------------------------------------------------
+
+def test_chaque_section_annonce_la_question_a_laquelle_elle_repond():
+    """La page enchaînait ses visuels sans respiration ni repère.
+
+    Rien n'y disait où finissait un sujet ni à QUELLE question chaque groupe
+    répond — or c'est la question que le lecteur a en tête, pas le nom des
+    indicateurs. Chaque intertitre porte donc un titre ET une question.
+    """
+    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
+    intertitres = [w for row in doc["rows"] for w in row["widgets"] if w["type"] == "text"]
+
+    assert len(intertitres) == 5, [w["name"] for w in intertitres]
+    for w in intertitres:
+        lignes = [l.strip() for l in w["content"].splitlines() if l.strip()]
+        assert lignes[0].startswith("## "), w["name"]
+        assert len(lignes) >= 2, f"« {w['name']} » n'énonce aucune question"
+        assert "?" in lignes[1], f"« {w['name']} » : la seconde ligne doit poser la question"
+
+
+def test_un_intertitre_occupe_sa_ligne_en_pleine_largeur():
+    # Seul sur sa ligne : posé à côté d'un graphique, il serait lu comme le titre de
+    # ce seul graphique et non du groupe qu'il ouvre.
+    doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
+    for row in doc["rows"]:
+        textes = [w for w in row["widgets"] if w["type"] == "text"]
+        if textes:
+            assert len(row["widgets"]) == 1, [w["name"] for w in row["widgets"]]
+            assert textes[0]["col"] == 12

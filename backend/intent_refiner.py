@@ -431,6 +431,28 @@ _COMPTAGE_DISTINCT = re.compile(
     r"(?:\s+(?:differents?|distincts?|uniques?))?\b"
 )
 
+# « top 5 pays par budget » : l'axe suit immédiatement le nombre, sans « des ». La
+# table de phrases ne connaissait que « des pays » et « par pays » ; cette
+# formulation-ci ne posait donc AUCUN axe et la réponse était le total du
+# portefeuille — 103 900 001 DT présentés comme un top 5.
+#
+# Le plus grave : c'est la formulation que l'application donne elle-même en exemple
+# dans son message d'aide. Elle enseignait la question à laquelle elle répond faux.
+_TOP_AXE = re.compile(
+    r"\b(?:top|palmares)\s*\d+\s+(?:de[s]?\s+|les\s+|l')?([a-z][a-z ']{1,24}?)"
+    r"(?=\s+par\b|\s+selon\b|\s*$|\s*[,.?])"
+)
+
+
+def _axe_du_classement(q: str) -> str | None:
+    """L'axe d'un « top N … », qu'il soit introduit par « des » ou non."""
+    for trouve in _TOP_AXE.finditer(q):
+        nom = trouve.group(1).strip()
+        for candidat in (nom, nom.rsplit(" ", 1)[0], nom.split(" ")[0]):
+            if candidat in _NOMS_VERS_AXE:
+                return _NOMS_VERS_AXE[candidat]
+    return None
+
 
 def _axe_a_denombrer(q: str) -> str | None:
     """L'axe dont la question demande le nombre de valeurs distinctes, s'il y en a un."""
@@ -1175,7 +1197,7 @@ def refine_intent(query: str, intent: dict, today: Optional[date] = None) -> dic
     # et donc avec le total du portefeuille. La table de phrases fait autorité sur le
     # modèle, comme partout ailleurs dans ce fichier.
     if not intent.get("is_conversation") and intent.get("metric") and not intent.get("dimension"):
-        detectee = _detect_dimension(q)
+        detectee = _detect_dimension(q) or _axe_du_classement(q)
         if detectee:
             intent["dimension"] = detectee
 

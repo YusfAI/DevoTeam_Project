@@ -19,6 +19,13 @@ export const DAC_BASE_URL =
 // DAC route ses dashboards par leur nom affiché, pas par leur nom de fichier.
 export const OVERVIEW_DASHBOARD_NAME = "Vue d'ensemble commerciale"
 
+// Le tableau de bord qui dit ce que les données NE contiennent pas : lignes chargées,
+// cellules réparées, colonnes incomplètes et conséquence de chaque manque. Il existait,
+// il était complet et honnête — et aucun chemin de l'interface n'y menait. Un
+// utilisateur pouvait décider sur un montant pondéré sans jamais apprendre qu'il ne
+// couvre que la moitié du portefeuille.
+export const DATA_QUALITY_DASHBOARD_NAME = "Qualité des données"
+
 export function dacDashboardUrl(name) {
   return `${DAC_BASE_URL}/d/${encodeURIComponent(name)}`
 }

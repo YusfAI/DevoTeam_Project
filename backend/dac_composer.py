@@ -144,6 +144,19 @@ def _complementary_dimension(intent: dict, exclude: set | None = None) -> str:
 
 _CURRENCY_METRICS = {"budget", "financial_offer", "weighted_amount"}
 
+# Le montant pondéré est vide pour près d'une opportunité sur deux : la probabilité
+# de gain n'y est pas renseignée, donc le produit non plus. Sans cette mention, le
+# chiffre se lit comme un total du portefeuille alors qu'il n'en couvre que la
+# moitié — et c'est sur lui qu'un commercial arbitre.
+#
+# Une seule formulation, posée partout où ce montant s'affiche : la vue d'ensemble
+# chiffre la couverture exacte (KPI « Probabilité renseignée »), un tableau de bord
+# généré n'en a pas la place et dit donc l'ordre de grandeur.
+_MENTION_COUVERTURE = (
+    "Somme des seules opportunités dont la probabilité de gain est renseignée "
+    "— environ la moitié du portefeuille."
+)
+
 
 def _fmt(metric: str) -> str:
     if metric == "win_probability":
@@ -310,16 +323,38 @@ def compose_widgets(intent: dict) -> list:
     chiffres qui ne se comparent pas."""
     archetype = _question_archetype(intent)
     if archetype == "comparison":
-        return _compose_comparison(intent)
-    if archetype == "temporal":
-        return _compose_temporal(intent)
-    if archetype == "pipeline":
-        return _compose_pipeline(intent)
-    if archetype == "detail":
-        return _compose_detail(intent)
-    if archetype == "correlation":
-        return _compose_correlation(intent)
-    return _compose_breakdown(intent)
+        widgets = _compose_comparison(intent)
+    elif archetype == "temporal":
+        widgets = _compose_temporal(intent)
+    elif archetype == "pipeline":
+        widgets = _compose_pipeline(intent)
+    elif archetype == "detail":
+        widgets = _compose_detail(intent)
+    elif archetype == "correlation":
+        widgets = _compose_correlation(intent)
+    else:
+        widgets = _compose_breakdown(intent)
+
+    return _avertir_sur_la_couverture(widgets)
+
+
+def _avertir_sur_la_couverture(widgets: list) -> list:
+    """Pose la mention de couverture sur TOUT widget qui montre un montant pondéré.
+
+    Elle n'était accrochée qu'au KPI d'appoint, donc elle sautait précisément quand
+    le montant pondéré était la question posée : « montant pondéré par pays »
+    affichait 58,8 MDT sans dire nulle part que le chiffre ne couvre que la moitié du
+    portefeuille. Sur une page entièrement faite de montants pondérés, pas un seul
+    avertissement.
+
+    La passe est faite ici, après la composition, plutôt que dans chacun des six
+    archétypes : une mention oubliée dans un seul d'entre eux serait invisible, et
+    c'est exactement ainsi que le défaut est né.
+    """
+    for w in widgets:
+        if "weighted_amount" in (w.get("sql") or "") and not (w.get("description") or "").strip():
+            w["description"] = _MENTION_COUVERTURE
+    return widgets
 
 
 def _compared_values(intent: dict):
@@ -375,13 +410,7 @@ def _kpi_row(intent: dict, metric: str) -> list:
     if metric != "weighted_amount":
         widget = _widget_from_intent(
             _kpi_intent(intent, "weighted_amount"), "Montant pondéré (%s)" % DEVISE, col=3)
-        # Mention explicite : weighted_amount est vide pour ~49 % des opportunités
-        # (probabilité de gain non renseignée). Sans cette précision, le chiffre se
-        # lit comme un total du portefeuille alors qu'il n'en couvre que la moitié.
-        widget["description"] = (
-            "Somme des seules opportunités dont la probabilité de gain est renseignée "
-            "— environ la moitié du portefeuille."
-        )
+        widget["description"] = _MENTION_COUVERTURE
         widgets.append(widget)
 
     # Les KPI occupent la ligne entière, répartis à parts égales. Avec une largeur
