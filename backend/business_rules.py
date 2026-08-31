@@ -1,10 +1,11 @@
 """Règles métier indépendantes de tout moteur d'affichage.
 
-Ces définitions vivaient dans vega_generator.py tant que Vega-Lite produisait les
+Ces définitions vivaient dans le générateur de graphiques tant que Vega-Lite produisait les
 graphiques. Elles n'ont pourtant rien de spécifique à une bibliothèque : l'ordre du
 pipeline commercial et le plafond de lisibilité d'un croisement restent vrais quel
 que soit l'outil qui dessine. Les isoler ici a permis de supprimer entièrement le
-module Vega sans emporter la logique métier avec lui.
+module de rendu sans emporter la logique métier avec lui (ce qui est arrivé :
+Vega-Lite puis Vega ont disparu, ces règles non).
 """
 
 # Ordre du pipeline commercial, du premier contact à la signature. Seules les étapes
@@ -33,7 +34,7 @@ FUNNEL_STAGE_ORDER = [
 ]
 
 # Opportunités définitivement perdues. Elles sont exclues PAR DÉFAUT de toutes les
-# métriques et de tous les graphiques : additionner 66 M€ d'affaires mortes dans un
+# métriques et de tous les graphiques : additionner 66 MDT d'affaires mortes dans un
 # « budget total » donnait un chiffre que personne ne peut utiliser pour décider.
 #
 # Les gagnées et signées restent comptabilisées : ce sont des succès, pas des pertes.
@@ -81,20 +82,30 @@ PENDING_SUBMISSION = ["Offre remise", "En attente du plan de charge"]
 # ---------------------------------------------------------------------------
 # Affaires chaudes
 #
-# Toute opportunité dont la probabilité de gain atteint 80 %. UN SEUL critère : le
-# statut ne joue aucun rôle (décision métier explicite).
+# Une affaire qu'on va PROBABLEMENT gagner, et qui n'est PAS ENCORE gagnée :
+# déjà remise, OU probabilité dans [80 %, 100 %[. Une réunion, pas une
+# intersection — l'un des deux critères suffit.
 #
-# Conséquence à connaître, car elle change le sens de l'indicateur : dans ces
-# données, 100 % n'est pas une prévision mais un constat — les 88 opportunités à
-# 1,0 sont exactement les 88 déjà gagnées ou signées. Les affaires chaudes
-# comptent donc l'acquis avec l'à-venir : 105 opportunités et 51,3 M€, dont 88
-# affaires déjà remportées. Ce n'est pas un pipeline à pousser mais un
-# portefeuille à forte confiance, et c'est ce qui a été demandé.
+# Les deux bornes comptent autant l'une que l'autre. La borne basse dit « probable » ;
+# la borne haute, exclue, dit « pas encore gagnée ». Sans elle, les 88 opportunités à
+# 100 % entraient — or aucune n'est une prévision : ce sont exactement les affaires
+# déjà gagnées ou signées.
 #
-# Le seuil est un MINIMUM : une prévision à 90 % y entrerait aussi. Aucune n'existe
-# aujourd'hui (les offres encore ouvertes ne portent que 40 % ou 80 %), ce qui rend
-# le point invérifiable sur les vraies données — d'où les tests sur lignes
-# fabriquées de tests/test_accueil_dashboard.py.
+# La définition a beaucoup évolué, et les écarts sont considérables : « remise ET
+# ≥ 80 % » donnait 7 ; la seule probabilité ≥ 80 %, 97 ; la réunion sans borne haute,
+# 97 aussi ; la réunion avec borne haute — la règle actuelle — 9. Chaque version
+# répondait à une question différente ; celle-ci répond à « que reste-t-il à aller
+# chercher ? ».
+#
+# La réunion NE PEUT PAS s'exprimer avec les filtres de l'intention, qui sont tous
+# combinés par ET. D'où le drapeau `hot_deals` porté par l'intention, et les deux
+# traductions ci-dessous — une par moteur — dérivées des mêmes constantes pour
+# qu'elles ne puissent pas diverger.
+#
+# Le seuil bas est un MINIMUM : une prévision à 90 % y entre aussi. Une seule ligne
+# en porte une aujourd'hui, ce qui rend le point difficile à vérifier sur les vraies
+# données — d'où les tests sur lignes fabriquées de tests/test_hot_deals.py, qui
+# tiennent séparés le seuil bas, la borne haute et la réunion.
 #
 # Cette définition est aussi celle du terme « offre pondérée » employé dans le chat :
 # c'est le même concept sous deux noms, et deux définitions divergentes pour une
@@ -103,9 +114,63 @@ PENDING_SUBMISSION = ["Offre remise", "En attente du plan de charge"]
 
 HOT_DEAL_MIN_PROBABILITY = 0.8
 
+# Borne HAUTE, EXCLUE. Une affaire chaude est une affaire qu'on va probablement
+# gagner — donc pas encore gagnée. Or 100 % n'est pas une prévision dans ces
+# données, c'est un constat : les 88 lignes à 1,0 sont toutes « Offre gagnée » (56)
+# ou « Offre signée » (32), sans une seule exception. Les compter revenait à mêler
+# l'acquis à l'à-venir et à présenter un portefeuille déjà remporté comme un
+# pipeline à pousser.
+#
+# L'écart est considérable : 97 opportunités avec la borne ouverte, 9 sans elle.
+HOT_DEAL_MAX_PROBABILITY = 1.0
+
+# Les statuts qui suffisent à eux seuls, sans condition de probabilité. Une offre
+# remise est par nature partie chez le client sans réponse : elle relève bien du
+# « probablement gagné, pas encore gagné ».
+HOT_DEAL_STATUSES = ("Offre remise",)
+
+
+def hot_deal_sql(colonne_statut: str = "status",
+                 colonne_proba: str = "win_probability") -> str:
+    """La condition SQL des affaires chaudes, parenthésée.
+
+    Parenthésée parce qu'elle contient un OR : insérée telle quelle dans une clause
+    WHERE faite de AND, elle en absorberait le reste et le périmètre de la question
+    (practice, période…) partirait en silence.
+    """
+    statuts = ", ".join("'" + s.replace("'", "''") + "'" for s in HOT_DEAL_STATUSES)
+    return "(%s IN (%s) OR (%s >= %s AND %s < %s))" % (
+        colonne_statut, statuts,
+        colonne_proba, HOT_DEAL_MIN_PROBABILITY,
+        colonne_proba, HOT_DEAL_MAX_PROBABILITY)
+
+
+def hot_deal_mask(df):
+    """Le même critère, côté pandas : masque booléen sur `df`.
+
+    Une comparaison avec une probabilité absente rend False, et un statut absent ne
+    figure pas dans la liste : les lignes sans donnée sortent donc d'elles-mêmes,
+    des deux côtés de la réunion.
+    """
+    proba = df["win_probability"]
+    return df["status"].isin(HOT_DEAL_STATUSES) | (
+        (proba >= HOT_DEAL_MIN_PROBABILITY) & (proba < HOT_DEAL_MAX_PROBABILITY))
+
 # Au-delà, un croisement dimension × practice devient illisible. On garde les N
 # valeurs les plus fortes plutôt que de tronquer arbitrairement ou de tout afficher.
 MAX_HEATMAP_ROWS = 15
+
+
+def heatmap_secondary_dimension(dimension: str) -> str:
+    """L'axe que la carte de chaleur croise avec `dimension`.
+
+    Cette règle vivait recopiée à l'identique dans db_layer, sql_builder et
+    dac_composer — et manquait dans response_builder, qui écrivait « × practice »
+    en dur. D'où un message annonçant « practice × practice » quand l'axe demandé
+    était justement la practice : le graphique croisait bien avec les pays, le texte
+    disait autre chose.
+    """
+    return "country" if dimension == "practice" else "practice"
 
 
 def cap_heatmap_rows(data: list, dimension: str, metric: str,
@@ -207,6 +272,18 @@ def choose_chart_type(intent: dict) -> tuple[str, str]:
 
     if chart in EXPLICIT_CHART_TYPES or intent.get("use_raw_table"):
         return chart, ""
+
+    # Un comptage de valeurs distinctes ne produit qu'UN nombre, quand bien même il
+    # porte sur un axe. Sans cette exception, la règle « un axe posé appelle des
+    # barres » (plus bas) reprenait la main : « combien de clients différents »
+    # basculait en répartition par client, et le message annonçait une ventilation
+    # là où la réponse tient en un chiffre — 84.
+    if intent.get("count_distinct"):
+        # Sans axe de regroupement, c'est UN nombre : « combien de clients
+        # différents » (84). Avec un axe, c'est une répartition de ce nombre —
+        # « combien de clients distincts par practice » (23 / 59 / 52) — et des
+        # barres la montrent, là où un chiffre unique l'écraserait.
+        return ("bar" if dimension else "kpi_card"), ""
 
     # Sans dimension il n'y a qu'un seul chiffre : aucune forme graphique ne peut le
     # tracer, et un « graphique » à une barre est plus pauvre que le nombre lui-même.

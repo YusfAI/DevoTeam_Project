@@ -3,6 +3,11 @@ import { useEffect, useRef, useState } from 'react'
 const STORAGE_KEY = 'devoteam-chat-history'
 // Borne la taille conservée — une conversation ne doit pas faire grossir indéfiniment
 // le localStorage (limite ~5 Mo par origine dans la plupart des navigateurs).
+//
+// COUPLÉ à MAX_GENERATED_DASHBOARDS dans backend/dac_composer.py : une question
+// occupe deux messages (la demande et la réponse), donc 100 messages = 50 analyses
+// consultables. Le backend doit conserver au moins autant d'instantanés, sinon les
+// entrées les plus anciennes de l'historique ouvrent un tableau de bord effacé.
 const MAX_MESSAGES = 100
 
 function loadPersisted() {

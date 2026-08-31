@@ -490,7 +490,7 @@ def build_rapport_professionnel():
              "(alertes deadlines, rafraîchissement des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (238 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
+            ["Tests", "pytest (337 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
              "(mocks), garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -509,7 +509,7 @@ def build_rapport_professionnel():
                      "explicite — il n'écrit jamais lui-même de requête.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "238 tests automatisés couvrent la compréhension du langage, le requêtage des "
+    add_bullet(doc, "337 tests automatisés couvrent la compréhension du langage, le requêtage des "
                      "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -594,6 +594,7 @@ def build_guide_technique():
         "Sécurité",
         "Tests automatisés",
         "Questions d'entretien probables",
+        "Les deux modes d'exécution",
         "Limites connues",
     ])
 
@@ -759,7 +760,7 @@ def build_guide_technique():
             ["backend/business_rules.py", "Règles métier indépendantes de l'affichage (ordre du pipeline)."],
             ["backend/data_quality.py", "Rapport des lignes rejetées et des valeurs manquantes."],
             ["dac/.bruin.yml", "Connexion DuckDB de DAC (aucun identifiant, versionnée volontairement)."],
-            ["dac/dashboards/accueil.yml", "Vue d'ensemble (24 widgets), produite par scripts/generate_accueil.py, versionnée et relue en revue."],
+            ["dac/dashboards/accueil.yml", "Vue d'ensemble (28 widgets), produite par scripts/generate_accueil.py, versionnée et relue en revue."],
             ["dac/dashboards/_principal.yml", "Tableau de bord de travail, réécrit par chaque question (éphémère, hors suivi git)."],
             ["dac/dashboards/_analyse_*.yml", "Instantané figé par question, pour les rouvrir (éphémère, hors suivi git)."],
             ["frontend/src/", "Application Vite + React (chat, iframe DAC, hooks, styles)."],
@@ -1024,7 +1025,7 @@ def build_guide_technique():
 
     add_h2(doc, "9.1 Les affaires perdues sortent des chiffres par défaut")
     add_body(doc,
-        "Un « budget total » de 164,4 M€ additionnait 66,1 M€ d'affaires définitivement "
+        "Un « budget total » de 170,0 M DT additionnait 66,1 M DT d'affaires définitivement "
         "mortes — Offre perdue, Infructueux, NO GO, Hors scope, Non shortlisté. Le "
         "chiffre était exact et inutilisable : personne ne décide sur un portefeuille "
         "qui compte ses échecs comme du potentiel. La liste LOST_STATUSES est donc "
@@ -1055,7 +1056,7 @@ def build_guide_technique():
     add_cue(doc,
         "Deux statuts ont été ajoutés après vérification auprès du métier : « Offre "
         "signée », qui n'était dans aucune étape alors que c'est l'étape finale (32 "
-        "opportunités, 13,1 M€, invisibles), et « En attente du plan de charge », "
+        "opportunités, 13,1 M DT, invisibles), et « En attente du plan de charge », "
         "présent dans les données mais absent de la liste blanche — donc rejeté à "
         "chaque chargement. Ce genre de question ne se devine pas : elle se pose.")
 
@@ -1142,12 +1143,15 @@ def build_guide_technique():
 
     add_h2(doc, "9.6 Affaires chaudes, et le piège du range_filter")
     add_body(doc,
-        "Une « affaire chaude » est toute opportunité dont la probabilité de gain "
-        "atteint 80 %. UN SEUL critère : le statut n'entre pas en compte. Le "
-        "portefeuille compte ainsi 105 opportunités et 51,3 M€ sur l'ensemble de "
-        "l'historique. Les offres perdues en sortent d'elles-mêmes sans qu'aucun "
-        "filtre soit nécessaire — leur pondération est vide dans le Sheet, et une "
-        "comparaison avec une valeur absente est toujours fausse.")
+        "Une « affaire chaude » est une affaire qu'on va PROBABLEMENT gagner et qui "
+        "n'est PAS ENCORE gagnée : statut « Offre remise », OU probabilité de gain "
+        "dans [80 %, 100 %[. Une réunion, pas une intersection — l'un des deux "
+        "critères suffit. La borne haute est exclue parce que 100 % n'est pas une "
+        "prévision dans ces données mais un constat : les 88 lignes à 1,0 sont toutes "
+        "« Offre gagnée » ou « Offre signée ». Le portefeuille chaud compte ainsi 9 "
+        "opportunités — celles qu'il reste à aller chercher. Les offres perdues en "
+        "sortent d'elles-mêmes sans qu'aucun filtre soit nécessaire : ni leur statut "
+        "ni leur pondération, vide dans le Sheet, ne les retiennent.")
     add_cue(doc,
         "Ce périmètre a d'abord été restreint aux offres encore en jeu (14 affaires), "
         "puis élargi sur décision métier. La question qui l'a déclenché — « pourquoi "
@@ -1190,7 +1194,8 @@ def build_guide_technique():
         "Le tableau passant par pandas et les KPI par du SQL, un test confronte les "
         "deux définitions sur les mêmes lignes. Il a révélé un piège de DuckDB : "
         "« NaN >= 0.8 » y vaut VRAI. Le vrai export écrit des NULL, donc rien n'est "
-        "faux en production, mais s'il écrivait des NaN le KPI passerait de 105 à 275 "
+        "faux en production, mais s'il écrivait des NaN le KPI des affaires chaudes "
+        "compterait les 170 lignes sans pondération "
         "sans qu'aucune requête n'échoue. Un test l'interdit désormais.")
     add_body(doc,
         "L'application connaissait déjà le terme « offre pondérée » avec la même "
@@ -1579,7 +1584,7 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "15. Tests automatisés")
     add_body(doc,
-        "238 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
+        "337 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
         "et le client Google Sheets (gspread) sont simulés (monkeypatch), et les données "
         "sont un petit DataFrame construit dans le test. La suite tourne donc hors ligne, "
         "en quelques secondes.")
@@ -1739,7 +1744,39 @@ def build_guide_technique():
         add_body(doc, answer)
 
     # --- Limites ---
-    add_h1(doc, "17. Limites connues")
+    add_h1(doc, "17. Les deux modes d'exécution")
+    add_body(doc,
+        "L'application se lance de deux façons, et se tromper est silencieux. Un "
+        "raccourci de Bureau existe pour chacune (scripts/create_shortcut.ps1 les "
+        "crée toutes les deux).")
+    add_table(doc,
+        ["", "Développement", "Production"],
+        [
+            ["Lanceur", "scripts/start_dev.bat", "scripts/start_prod.bat"],
+            ["Processus", "3 (API, DAC, Vite)", "2 (API + interface, DAC)"],
+            ["Frontend", "servi par Vite, port 5173", "compilé, servi par le backend"],
+            ["Adresse", "http://localhost:5173", "http://127.0.0.1:8000"],
+            ["Rechargement à chaud", "oui (--reload)", "non"],
+            ["Workers uvicorn", "1", "1 (imposé)"],
+        ])
+    add_body(doc,
+        "Trois différences méritent leur justification. Le rechargement à chaud "
+        "surveille l'arborescence — que l'application modifie elle-même, puisque "
+        "chaque question réécrit dac/dashboards/_principal.yml : en production, le "
+        "serveur se redémarrerait à chaque réponse qu'il vient de produire. Le "
+        "frontend doit être compilé AVANT le démarrage, car le backend sert "
+        "frontend/dist tel qu'il le trouve : partir sur une compilation périmée "
+        "afficherait l'ancienne interface sans le moindre signe, et le script s'arrête "
+        "donc si npm run build échoue. Enfin un seul worker, parce que le jeu de "
+        "données vit en mémoire dans le processus et qu'un planificateur y tourne : "
+        "plusieurs workers garderaient chacun leur copie des données ET relanceraient "
+        "le planificateur — emails d'alerte en double, écritures concurrentes dans le "
+        "Google Sheet.")
+    add_cue(doc,
+        "tests/test_lanceurs.py confronte les deux scripts : ils ne peuvent pas "
+        "dériver l'un vers l'autre sans faire échouer les tests.")
+
+    add_h1(doc, "18. Limites connues")
     add_bullet(doc, "Google Gemini (fournisseur actuel depuis la migration forcée, section 2.2) "
                      "supporte en fait les sorties structurées strictes (vérifié empiriquement), "
                      "mais l'app garde volontairement l'architecture JSON libre héritée de Groq "

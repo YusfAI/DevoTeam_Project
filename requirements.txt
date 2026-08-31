@@ -1,10 +1,24 @@
-fastapi
-uvicorn
-python-dotenv
-pydantic
-google-genai
-aiofiles
-apscheduler
-gspread
-pandas
-duckdb
+# Versions ÉPINGLÉES, et pas seulement listées.
+#
+# Sans elles, une réinstallation quelconque — machine neuve, environnement recréé,
+# collègue qui clone le dépôt — tire les dernières versions publiées et peut casser
+# l'application sans qu'une seule ligne de code ait changé. Le risque n'est pas
+# théorique : pandas 3, pydantic 2 et fastapi ont chacun introduit des ruptures
+# majeures pendant la vie de ce projet.
+#
+# Ces versions sont celles sur lesquelles les 379 tests passent. Pour les faire
+# évoluer : monter UNE dépendance à la fois, relancer `pytest tests/ -q`, et ne
+# valider que si tout est vert.
+#
+# Les dépendances de développement (pytest…) vivent dans requirements-dev.txt.
+
+fastapi==0.128.0
+uvicorn==0.40.0
+python-dotenv==1.2.1
+pydantic==2.12.5
+google-genai==2.18.1
+aiofiles==25.1.0
+APScheduler==3.11.3
+gspread==6.2.1
+pandas==3.0.2
+duckdb==1.5.5

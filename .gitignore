@@ -45,3 +45,13 @@ logs/queries
 # fichier tiers, regenerable, sans interet en revue.
 dac/.claude/
 dac/.codex/
+
+# Fichiers provisoires de l'ecriture atomique des dashboards (backend/dac_composer.py)
+.dac_tmp/
+
+# État d'exécution du planificateur (anti-doublon du digest quotidien) : propre à
+# une machine et réécrit à chaque envoi, il n'a rien à faire dans le dépôt.
+data/scheduler_state.json
+
+# Journaux des requêtes, écrits à l'exécution.
+logs/

@@ -13,10 +13,19 @@ correspondent directement aux dimensions/métriques listées ci-dessous.
 # ---- Dimensions et métriques valides pour le JSON intermédiaire ----
 # Ce sont les seules valeurs que le LLM peut mettre dans "metric" / "dimension" / "filters"
 VALID_METRICS = ["budget", "financial_offer", "weighted_amount", "nb_opportunities", "win_probability"]
-VALID_DIMENSIONS = ["country", "practice", "status", "deadline_month", "deadline_year", "funding_source", "opp_type"]
+# `buyer` (le client) et `partner` sont des colonnes du Sheet au même titre que les
+# autres : les omettre ici ne les empêchait pas d'être interrogées, ça rendait la
+# question INRÉPONDABLE — « budget par client » repartait sans dimension et affichait
+# le total du portefeuille comme si c'était la réponse. Leur cardinalité est élevée
+# (96 clients, 13 partenaires), ce que le regroupement « Autres » de sql_builder
+# absorbe déjà pour tous les axes (MAX_CATEGORIES).
+VALID_DIMENSIONS = [
+    "country", "practice", "status", "deadline_month", "deadline_year",
+    "funding_source", "opp_type", "buyer", "partner",
+]
 VALID_FILTERS = [
     "country", "practice", "status", "funding_source", "opp_type", "partner",
-    "deadline_month", "deadline_year",
+    "deadline_month", "deadline_year", "buyer",
 ]
 VALID_CHART_TYPES = ["bar", "line", "pie", "table", "kpi_card", "area", "scatter", "heatmap", "funnel"]
 VALID_AGGREGATIONS = ["sum", "avg", "count"]

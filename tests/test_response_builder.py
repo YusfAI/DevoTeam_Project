@@ -25,10 +25,23 @@ def test_no_data_message():
     assert build_data_response(intent, []).startswith("Aucune donnée trouvée")
 
 
-def test_kpi_with_null_value_reports_na():
-    intent = {"metric": "weighted_amount", "dimension": "", "chart_type": "kpi_card", "goal": "Montant pondéré"}
+def test_un_kpi_sans_valeur_le_dit_en_toutes_lettres():
+    # « Montant pondéré : N/A. » se lit comme une panne, pas comme un résultat. Et
+    # quand un filtre est en cause, c'est LUI qu'il faut nommer : les autres formes
+    # d'affichage le font déjà (« Aucune donnée trouvée — filtres : … »), le chiffre
+    # unique était le seul à rester muet sur la raison.
+    intent = {"metric": "weighted_amount", "dimension": "", "chart_type": "kpi_card",
+              "goal": "Montant pondéré", "filters": {}, "range_filters": {}}
     message = build_data_response(intent, [{"weighted_amount": None}])
-    assert "N/A" in message
+    assert "N/A" not in message
+    assert "aucune valeur" in message.lower()
+
+
+def test_un_kpi_vide_a_cause_d_un_filtre_nomme_ce_filtre():
+    intent = {"metric": "budget", "dimension": "", "chart_type": "kpi_card", "goal": "Budget",
+              "filters": {"practice": "Data Management"}, "range_filters": {}}
+    message = build_data_response(intent, [{"budget": None}])
+    assert "Data Management" in message, "l'utilisateur doit savoir ce qui a vidé le périmètre"
 
 
 def test_dimension_breakdown_excludes_null_rows_from_ranking():
@@ -89,15 +102,25 @@ def test_funnel_message_excludes_exit_statuses_not_shown_in_the_chart():
     assert "2 étape" in message
 
 
-def test_heatmap_message_respects_the_same_top_n_cap_as_the_chart():
-    # 20 countries: the chart caps to the top 15 by total (see vega_generator.py
-    # MAX_HEATMAP_ROWS) — the text must describe that same capped set, not all 20,
-    # or the message and the chart would silently disagree on what's shown.
-    intent = {"metric": "budget", "dimension": "country", "chart_type": "heatmap", "filters": {}, "range_filters": {}}
+def test_heatmap_message_dit_le_vrai_total_et_ce_que_la_carte_omet():
+    # 20 pays, dont la carte ne garde que les 15 plus forts (business_rules
+    # MAX_HEATMAP_ROWS). Le message annonçait alors « Total » pour la somme des
+    # SEULES cases affichées : sur les vraies données, 103 340 001 DT là où le
+    # portefeuille en pèse 103 900 001 — quatre pays soustraits en silence sous une
+    # étiquette qui promettait l'exhaustivité.
+    #
+    # Il doit désormais faire les deux : donner le vrai total, ET dire ce que la
+    # carte laisse de côté. Taire l'un ou l'autre est une façon différente de mentir.
+    intent = {"metric": "budget", "dimension": "country", "chart_type": "heatmap",
+              "filters": {}, "range_filters": {}}
     data = [{"country": f"C{i}", "practice": "Risk Advisory", "budget": i * 1000} for i in range(20)]
     message = build_data_response(intent, data)
-    assert "15 pays" in message
-    assert "20 pays" not in message
+
+    total_reel = sum(r["budget"] for r in data)
+    assert f"{total_reel:,.0f}".replace(",", " ") in message, "le total annoncé n'est pas le vrai total"
+    assert "20 pays" in message, "le nombre réel de pays doit être dit"
+    assert "15" in message, "la limite d'affichage doit être dite"
+    assert "n'y figurent pas" in message, "l'omission doit être nommée, pas déduite"
 
 
 def test_heatmap_message_sums_by_dimension_not_by_grid_cell():
@@ -216,3 +239,24 @@ def test_a_bounded_value_is_not_a_request_for_a_list():
     message = build_data_response(intent, [{"nb_opportunities": 14}])
     assert "14" in message
     assert "1 opportunité" not in message
+
+
+def test_l_intitule_ne_repete_pas_la_phrase_qui_le_suit():
+    """« Budget par pays — Budget par pays. Total : … » disait deux fois la même chose.
+
+    Le titre est désormais reconstruit depuis l'intention validée : il coïncide donc
+    très souvent avec l'en-tête de la phrase, et le préfixe n'apportait plus rien.
+    """
+    intent = {"metric": "budget", "dimension": "country", "chart_type": "bar",
+              "filters": {}, "range_filters": {}, "goal": "Budget par pays"}
+    message = build_data_response(intent, [{"country": "Tunisie", "budget": 100}])
+    assert not message.startswith("Budget par pays — Budget par pays")
+
+
+def test_mais_un_intitule_qui_apporte_quelque_chose_est_conserve():
+    intent = {"metric": "budget", "dimension": "country", "chart_type": "bar",
+              "filters": {}, "range_filters": {},
+              "exclude_filters": {"country": ["Tunisie"]},
+              "goal": "Budget par pays hors Tunisie"}
+    message = build_data_response(intent, [{"country": "France", "budget": 100}])
+    assert message.startswith("Budget par pays hors Tunisie — ")

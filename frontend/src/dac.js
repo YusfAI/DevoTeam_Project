@@ -1,8 +1,19 @@
 // Adressage des dashboards servis par Bruin DAC (processus séparé, port 8321 —
-// lancé par scripts/start_dev.bat). L'iframe charge l'URL directement depuis le
-// navigateur, donc aucun proxy Vite n'est nécessaire ici (contrairement aux appels
-// fetch vers /dashboard ou /sheets/sync, qui eux passent par le proxy).
-export const DAC_BASE_URL = 'http://localhost:8321'
+// lancé par scripts/start_dev.bat ou scripts/start_prod.bat). L'iframe charge
+// l'URL directement depuis le navigateur, donc aucun proxy Vite n'est nécessaire
+// ici (contrairement aux appels fetch vers /dashboard ou /sheets/sync, qui eux
+// passent par le proxy en développement).
+//
+// 127.0.0.1 plutôt que « localhost » : ce dernier résout d'abord en ::1 sur
+// Windows, alors que DAC n'écoute que sur l'IPv4 (vérifié : netstat ne montre que
+// 127.0.0.1:8321). Le navigateur y perdait le même délai que la sonde du backend,
+// qui pour cette raison exacte est passée de 2,0 s à 0,003 s.
+//
+// Surchargeable à la COMPILATION (VITE_DAC_BASE_URL) : la valeur est figée dans le
+// bundle par Vite, elle ne peut donc pas être changée après coup. Utile le jour où
+// DAC ne tourne plus sur la même machine que le navigateur.
+export const DAC_BASE_URL =
+  import.meta.env.VITE_DAC_BASE_URL || 'http://127.0.0.1:8321'
 
 // Doit correspondre EXACTEMENT au champ `name:` de dac/dashboards/accueil.yml —
 // DAC route ses dashboards par leur nom affiché, pas par leur nom de fichier.

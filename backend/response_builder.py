@@ -1,7 +1,16 @@
 """Build user-facing messages strictly from query results (no LLM hallucination)."""
 
-from .labels import DEVISE, METRIC_LABELS, DIMENSION_LABELS, FILTER_LABELS
-from .business_rules import FUNNEL_STAGE_ORDER, cap_heatmap_rows
+import re
+import unicodedata
+
+from .labels import (
+    DEVISE, METRIC_LABELS, DIMENSION_LABELS, FILTER_LABELS,
+    metric_label as libelle_metrique, distinct_label,
+)
+from .business_rules import (
+    FUNNEL_STAGE_ORDER, HOT_DEAL_MIN_PROBABILITY, HOT_DEAL_STATUSES, LOST_STATUSES,
+    cap_heatmap_rows, heatmap_secondary_dimension,
+)
 
 
 def get_help_message() -> str:
@@ -40,6 +49,14 @@ def extract_metric_value(row: dict, metric: str):
 
 def _describe_filters(intent: dict) -> str:
     parts = []
+
+    # Le périmètre « affaires chaudes » ne passe plus par un filtre ordinaire : c'est
+    # une réunion (remise OU ≥ 80 %), que les filtres — combinés par ET — ne savent
+    # pas porter. Sans cette ligne, la phrase ne dirait plus rien de la restriction
+    # appliquée, alors qu'elle l'annonçait quand la règle tenait dans une borne.
+    if intent.get("hot_deals"):
+        parts.append("affaires chaudes (%s, ou probabilité ≥ %g %%)"
+                     % (", ".join(HOT_DEAL_STATUSES), HOT_DEAL_MIN_PROBABILITY * 100))
     for key, value in intent.get("filters", {}).items():
         label = FILTER_LABELS.get(key, key)
         if isinstance(value, (list, tuple)):
@@ -54,9 +71,40 @@ def _describe_filters(intent: dict) -> str:
             parts.append(f"{label} entre {value[0]} et {value[1]}")
         else:
             parts.append(f"{label} {op} {value}")
+    # Les statuts EXCLUS font partie du périmètre au même titre que les statuts
+    # retenus. Ne pas les dire laissait « budget des offres non gagnées » se lire
+    # comme un total sans restriction : le chiffre était juste, la phrase muette sur
+    # ce qu'il recouvrait. Seules les exclusions DEMANDÉES sont annoncées — celle des
+    # affaires perdues est le comportement par défaut de l'application, décrit une
+    # fois pour toutes, et l'énoncer à chaque réponse n'apprendrait rien.
+    for statut in intent.get("exclude_statuses") or []:
+        if statut not in LOST_STATUSES:
+            parts.append(f"hors {FILTER_LABELS['status']} = {statut}")
+
+    # Les exclusions sur les autres colonnes, pour la même raison : « budget par pays
+    # hors Tunisie » affichait 69 370 001 DT sans que rien dans la phrase ne dise que
+    # la Tunisie avait été retirée. Le chiffre était juste, la phrase incomplète — et
+    # c'est justement sur ce périmètre-là que la question portait.
+    for cle, valeur in (intent.get("exclude_filters") or {}).items():
+        libelle = FILTER_LABELS.get(cle, cle)
+        valeurs = valeur if isinstance(valeur, (list, tuple)) else [valeur]
+        parts.append(f"hors {libelle} = {', '.join(str(v) for v in valeurs)}")
+
     if not parts:
         return ""
     return " — filtres : " + ", ".join(parts)
+
+
+def _norm_titre(texte: str) -> str:
+    """Forme comparable d'un intitulé : sans casse, sans accents, sans ponctuation.
+
+    Sert uniquement à repérer qu'un titre répète la phrase qui le suit. La casse et
+    les accents diffèrent souvent entre la question tapée et le libellé reconstruit,
+    sans que le sens change.
+    """
+    sans_accents = unicodedata.normalize("NFD", (texte or "").lower())
+    sans_accents = "".join(c for c in sans_accents if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9]+", " ", sans_accents).strip()
 
 
 def _top_entries(rows_with_values: list, metric: str, n: int = 3) -> str:
@@ -96,6 +144,24 @@ def _concentration_note(rows_with_values: list, total: float, dim_label: str) ->
             f"{part * 100:.0f} % du total.")
 
 
+def _synthese(rows_with_values: list, metric: str, dim_label: str, moyenne: bool) -> str:
+    """La phrase de synthèse qui suit le titre : « Total : … » sur des sommes,
+    l'étendue des valeurs sur des moyennes.
+
+    Additionner des moyennes ne produit rien d'interprétable — ni un total, ni une
+    moyenne d'ensemble. Plutôt que d'afficher ce chiffre sans signification sous
+    l'étiquette « Total », on dit ce que les données permettent réellement d'affirmer :
+    entre quelles bornes se situent les moyennes comparées.
+    """
+    valeurs = [v for _, v in rows_with_values]
+    if not moyenne:
+        total = sum(valeurs)
+        return f"Total : {format_metric_value(total, metric)} sur {len(valeurs)} {dim_label}(s). "
+    return (f"{len(valeurs)} {dim_label}(s) comparé(s), de "
+            f"{format_metric_value(min(valeurs), metric)} à "
+            f"{format_metric_value(max(valeurs), metric)}. ")
+
+
 def build_data_response(intent: dict, data: list) -> str:
     metric = intent.get("metric", "budget")
     dimension = intent.get("dimension", "")
@@ -108,7 +174,16 @@ def build_data_response(intent: dict, data: list) -> str:
     # souhait d'une liste s'exprime par use_raw_table ou chart_type == "table".
     use_raw = bool(intent.get("use_raw_table")) or chart_type == "table"
     filter_desc = _describe_filters(intent)
-    metric_label = METRIC_LABELS.get(metric, metric)
+    # Le libellé porte l'agrégation : « budget moyen par pays » et « budget par
+    # pays » ne doivent pas se lire pareil, sans quoi rien ne distingue un total
+    # d'une moyenne dans la phrase de réponse.
+    metric_label = libelle_metrique(metric, intent.get("aggregation", ""))
+    # Un comptage de valeurs distinctes n'est pas un nombre d'opportunités : dire
+    # « Nombre d'opportunités par practice : 3 » là où on compte des practices
+    # distinctes est faux deux fois — sur ce qui est compté, et sur la forme.
+    compte = intent.get("count_distinct")
+    if compte:
+        metric_label = distinct_label(compte)
     limit = int(intent.get("limit") or 0)
 
     if not data:
@@ -127,8 +202,8 @@ def build_data_response(intent: dict, data: list) -> str:
 
     if chart_type == "funnel" and dimension:
         # data = toutes les valeurs du dimension demandé (ex: 19 statuts), pas seulement
-        # les étapes du pipeline que le graphique affiche réellement (voir vega_generator.py
-        # ::_build_funnel_rows) — sans ce filtre, le texte inclurait des statuts de sortie
+        # les étapes du pipeline que le graphique affiche réellement (voir sql_builder.py
+        # ::funnel_sql) — sans ce filtre, le texte inclurait des statuts de sortie
         # ("Offre perdue"...) que l'entonnoir ne montre pas, et divergerait du graphique.
         stage_set = set(FUNNEL_STAGE_ORDER)
         rows_with_values = []
@@ -150,10 +225,15 @@ def build_data_response(intent: dict, data: list) -> str:
 
     if chart_type == "heatmap" and dimension:
         # data = toutes les valeurs de la dimension (ex: 21 pays), alors que le graphique
-        # ne garde que les plus fortes (voir vega_generator.py::_cap_heatmap_rows) — le
+        # ne garde que les plus fortes (voir sql_builder.py::MAX_CATEGORIES) — le
         # même plafond est appliqué ici pour que le texte décrive ce qui est réellement
         # affiché, jamais une donnée plus large que le graphique.
         dim_label = DIMENSION_LABELS.get(dimension, dimension)
+        # Le second axe était écrit « practice » en dur : quand l'axe demandé ÉTAIT
+        # la practice, le message annonçait « practice × practice » pendant que le
+        # graphique croisait, lui, avec les pays.
+        secondaire = heatmap_secondary_dimension(dimension)
+        sec_label = DIMENSION_LABELS.get(secondaire, secondaire)
         capped, _ = cap_heatmap_rows(data, dimension, metric)
         totals: dict = {}
         for row in capped:
@@ -163,12 +243,28 @@ def build_data_response(intent: dict, data: list) -> str:
                 totals[key] = (totals.get(key) or 0) + val
         if not totals:
             return f"Aucune valeur de {metric_label} disponible{filter_desc}."
-        grand_total = sum(totals.values())
-        return (
-            f"{metric_label.capitalize()} croisé(e) {dim_label} × practice{filter_desc}. "
-            f"Total : {format_metric_value(grand_total, metric)} sur {len(totals)} {dim_label}(s) "
-            f"et {len(capped)} combinaisons affichées."
-        )
+
+        # Le mot « Total » désignait la somme des seules cases AFFICHÉES : sur
+        # « budget par pays et practice », il annonçait 103 340 001 DT là où le
+        # portefeuille en pèse 103 900 001 — 560 000 DT et quatre pays écartés sous
+        # une étiquette qui promettait l'exhaustivité. Le total redevient le vrai
+        # total, et ce que la carte laisse de côté est dit plutôt que soustrait en
+        # silence. Une ligne « Autres » n'aurait pas convenu ici : sur une matrice,
+        # elle mélangerait des pays sans rapport dans une bande unique.
+        affiche = sum(totals.values())
+        reel = sum(v for v in (extract_metric_value(r, metric) for r in data) if v is not None)
+        tous_les_pays = len({r.get(dimension) for r in data})
+
+        phrase = (f"{metric_label.capitalize()} croisé(e) {dim_label} × {sec_label}{filter_desc}. "
+                  f"Total : {format_metric_value(reel, metric)} sur {tous_les_pays} {dim_label}(s).")
+        if len(totals) < tous_les_pays:
+            ecartes = tous_les_pays - len(totals)
+            phrase += (f" La carte montre les {len(totals)} premiers "
+                       f"({format_metric_value(affiche, metric)}, {len(capped)} combinaisons) ; "
+                       f"{ecartes} {dim_label}(s) de plus petit total n'y figurent pas.")
+        else:
+            phrase += f" {len(capped)} combinaisons affichées."
+        return phrase
 
     if use_raw or chart_type == "table":
         budgets = [extract_metric_value(r, "budget") for r in data]
@@ -180,6 +276,14 @@ def build_data_response(intent: dict, data: list) -> str:
     if chart_type == "kpi_card" or (not dimension and len(data) == 1):
         val = extract_metric_value(data[0], metric)
         label = goal or metric_label.capitalize()
+        # Un chiffre unique introuvable s'affichait « Budget : N/A. », sans dire ce
+        # qui avait vidé le périmètre — alors que les autres formes annoncent, elles,
+        # « Aucune donnée trouvée — filtres : … ». Un « N/A » nu se lit comme une
+        # panne ; nommer le filtre en fait un résultat.
+        if val is None:
+            return (f"Aucune donnée trouvée{filter_desc}. Essayez d'élargir vos critères."
+                    if filter_desc else
+                    f"{label} : aucune valeur disponible dans les données.")
         return f"{label} : {format_metric_value(val, metric)}."
 
     if dimension:
@@ -193,14 +297,27 @@ def build_data_response(intent: dict, data: list) -> str:
         if not rows_with_values:
             return f"Aucune valeur de {metric_label} disponible{filter_desc}."
 
+        # Ni une moyenne ni un comptage distinct ne s'ADDITIONNENT à travers les
+        # catégories : un client servi par deux practices y figure deux fois, si bien
+        # que « Total : 134 » s'affichait là où le portefeuille compte 84 clients.
+        moyenne = intent.get("aggregation") == "avg" or bool(intent.get("count_distinct"))
         total = sum(v for _, v in rows_with_values)
         top_line = _top_entries(rows_with_values, metric, 3)
-        prefix = f"{goal} — " if goal else ""
+        # L'intitulé ne précède la phrase que s'il APPORTE quelque chose. Quand il
+        # décrit déjà la même analyse — ce qui est le cas dès que le titre est
+        # reconstruit depuis l'intention — la réponse se lisait « Budget par pays —
+        # Budget par pays. Total : … », le même énoncé deux fois de suite.
+        entete = f"{metric_label.capitalize()} par {dim_label}"
+        prefix = f"{goal} — " if goal and _norm_titre(goal) != _norm_titre(entete) else ""
         limit_note = f" (top {limit})" if limit > 0 else ""
+        # La note de concentration exprime une part du total : elle n'a de sens que
+        # sur des sommes. Sur des moyennes, « les 3 premiers pèsent 60 % » ne veut
+        # rien dire — on n'ajoute donc rien.
+        note = "" if moyenne else _concentration_note(rows_with_values, total, dim_label)
         return (
             f"{prefix}{metric_label.capitalize()} par {dim_label}{filter_desc}{limit_note}. "
-            f"Total : {format_metric_value(total, metric)} sur {len(rows_with_values)} {dim_label}(s). "
-            f"Classement : {top_line}.{_concentration_note(rows_with_values, total, dim_label)}"
+            f"{_synthese(rows_with_values, metric, dim_label, moyenne)}"
+            f"Classement : {top_line}.{note}"
         )
 
     val = extract_metric_value(data[0], metric)
@@ -239,6 +356,23 @@ def _filter_summary(filters: dict) -> str:
     return ", ".join(parts)
 
 
+_AGREGATION_LABELS = {"sum": "total", "avg": "moyenne", "count": "comptage"}
+
+
+def _borne_summary(range_filters: dict) -> str:
+    """« probabilité de gain >= 0.8 » — les bornes en clair, pour le récit du
+    changement. Le même vocabulaire que `_describe_filters`, en plus court."""
+    morceaux = []
+    for cle, regle in range_filters.items():
+        libelle = FILTER_LABELS.get(cle, cle)
+        valeur = regle.get("value", "")
+        if regle.get("op") == "between" and isinstance(valeur, (list, tuple)) and len(valeur) == 2:
+            morceaux.append("%s entre %s et %s" % (libelle, valeur[0], valeur[1]))
+        else:
+            morceaux.append("%s %s %s" % (libelle, regle.get("op", ""), valeur))
+    return ", ".join(morceaux)
+
+
 def list_changes(previous: dict, current: dict) -> list:
     """Différences entre deux intentions, en clair. Une liste vide signifie que la
     demande n'a rien changé — information à part entière, à ne pas confondre avec
@@ -271,6 +405,27 @@ def list_changes(previous: dict, current: dict) -> list:
             changements.append(f"filtre ajouté : {_filter_summary(apres)}")
         else:
             changements.append(f"filtres : {_filter_summary(apres)}")
+
+    # Trois champs manquaient à cette comparaison, et une retouche qui ne touchait
+    # qu'eux s'annonçait donc « rien n'a changé » alors que les chiffres à l'écran
+    # venaient de bouger. « en somme » après « budget moyen par pays » en était le cas
+    # le plus net : la somme remplaçait la moyenne, et le message disait le contraire.
+    avant, apres = previous.get("aggregation") or "sum", current.get("aggregation") or "sum"
+    if avant != apres:
+        changements.append("calcul : %s → %s" % (_AGREGATION_LABELS.get(avant, avant),
+                                                 _AGREGATION_LABELS.get(apres, apres)))
+
+    avant, apres = previous.get("range_filters") or {}, current.get("range_filters") or {}
+    if avant != apres:
+        changements.append("bornes retirées" if not apres
+                           else "bornes : %s" % _borne_summary(apres))
+
+    avant = set(previous.get("exclude_statuses") or [])
+    apres = set(current.get("exclude_statuses") or [])
+    if avant != apres:
+        ajoutes = sorted(apres - avant)
+        changements.append("exclusions : %s" % ", ".join(ajoutes) if ajoutes
+                           else "exclusions levées")
 
     avant, apres = int(previous.get("limit") or 0), int(current.get("limit") or 0)
     if avant != apres:

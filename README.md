@@ -41,7 +41,7 @@ données à installer.
   groupé par jour rassemble toutes les questions posées et signale celle qui est
   affichée ; chacune rouvre le tableau de bord qu'elle avait produit.
 - **Affaires perdues exclues par défaut** : les statuts d'échec (Offre perdue,
-  Infructueux, NO GO, Hors scope, Non shortlisté) — 66 M€ sur 164 M€ — sortent de tous
+  Infructueux, NO GO, Hors scope, Non shortlisté) — 66 M DT sur 170 M DT — sortent de tous
   les chiffres et de tous les graphiques, sauf si la question porte explicitement sur
   un statut. Un « budget total » incluant les affaires mortes n'aide pas à décider.
 - **Type de graphique arbitré sur les données**, pas sur les mots : un camembert
@@ -52,7 +52,7 @@ données à installer.
   practice. Elle répond d'abord aux trois questions du métier — combien d'offres
   remises sur la période, comment elles se répartissent par practice, et ce qu'elles
   sont devenues (gagnées / perdues / en attente) — puis donne l'état du portefeuille,
-  le pipeline et les échéances urgentes. 19 widgets.
+  le pipeline et les échéances urgentes. 28 widgets sur 12 lignes.
 - **Période choisie à la main** : deux champs de date nommés, « Date de debut » et
   « Date de fin », chacun ouvrant le calendrier du navigateur. Vider l'un lève cette
   borne et garde l'autre. Les valeurs passent dans l'URL, donc un dashboard filtré se
@@ -67,15 +67,19 @@ données à installer.
 - **Taille d'affichage réglable** : Bruin DAC n'expose aucun jeton de typographie, un
   réglage de zoom (90 % à 140 %) sur le cadre produit le même effet et se souvient du
   choix.
-- **Chaque visuel s'explique** : une phrase courte sous le titre de chacun des 24
+- **Chaque visuel s'explique** : une phrase courte sous le titre de chacun des 28
   widgets de la vue d'ensemble, vérifiée par un test (moins de 100 caractères). Le
   raisonnement long vit en commentaire YAML, pour la revue.
-- **Affaires chaudes** : toute opportunité dont la probabilité de gain atteint 80 %.
-  Un seul critère — le statut n'entre pas en compte, donc les affaires déjà gagnées
-  (à 100 % dans ces données) en font partie. Trois KPI, un graphique par practice et
-  le détail opportunité par opportunité sur la vue d'ensemble. « Affaire chaude » et
-  « offre pondérée » sont deux noms du même concept et résolvent vers la même
-  définition (`business_rules.HOT_DEAL_MIN_PROBABILITY`).
+- **Affaires chaudes** : une affaire qu'on va *probablement* gagner et qui n'est
+  *pas encore* gagnée — statut « Offre remise », **ou** probabilité de gain dans
+  [80 %, 100 %[. Une réunion : l'un des deux critères suffit. La borne haute est
+  exclue parce que 100 % n'est pas une prévision dans ces données mais un constat —
+  les 88 lignes à 1,0 sont toutes « Offre gagnée » ou « Offre signée ». Six KPI
+  (chaque valeur suivie de sa part du portefeuille actif), un graphique en barres,
+  un camembert des proportions et le détail complet des huit métriques. « Affaire
+  chaude » et « offre pondérée » sont deux noms du même concept et résolvent vers la
+  même définition (`business_rules.hot_deal_sql` / `hot_deal_mask`, dérivées des
+  mêmes constantes pour les deux moteurs).
 - **« Offre remise » est un terme métier, pas un statut** : le statut décrit l'état
   *courant*, donc une offre partie chez le client et gagnée depuis n'y figure plus.
   Compter ce seul statut donnait 4 offres là où 57 avaient été déposées. La
@@ -88,9 +92,26 @@ données à installer.
 - Alertes deadlines : email quotidien (Gmail SMTP) + bannière dans le dashboard pour
   les opportunités actives (statuts clos exclus) à échéance ≤ 7 jours. Rattrapée
   automatiquement au redémarrage si le serveur était éteint pile à l'heure planifiée.
-- Anti-hallucination : toute métrique/dimension/valeur de filtre non reconnue déclenche
-  une demande de clarification plutôt qu'un résultat deviné. **Le LLM n'écrit jamais
-  de SQL** — il ne produit qu'une intention validée, traduite ensuite par du code.
+- Anti-hallucination : ce qui n'est pas compris est **dit**, jamais remplacé par une
+  approximation. Cinq contrôles, chacun né d'une réponse fausse observée :
+  - valeur de filtre inconnue → « Valeur « Atlantide » non reconnue »
+  - axe d'analyse inexistant → « budget par couleur de cheveux » nomme les axes réels
+  - période hors des données → « Aucune donnée pour 2030. Les échéances vont de 2025 à 2026 »
+  - mesure absente (taux de réussite) → refus explicite + la mesure la plus proche
+  - clé de filtre hors périmètre → refus plutôt qu'un filtre ignoré en silence
+
+  Chacun de ces cas renvoyait auparavant le total du portefeuille (103 900 001 DT)
+  comme s'il répondait à la question. **Le LLM n'écrit jamais de SQL** — il ne produit
+  qu'une intention validée, traduite ensuite par du code ; et l'axe, l'agrégation et
+  le périmètre d'une définition métier sont réimposés par le code même quand il en
+  propose d'autres.
+- Axes d'analyse : pays, practice, statut, **client**, **partenaire**, mois, année,
+  source de financement, type d'opportunité. Les deux derniers arrivés existaient déjà
+  dans les données — leur absence de la whitelist rendait « budget par client »
+  inrépondable, et la question repartait avec le total général.
+- Somme ou moyenne : « budget moyen par pays » calcule bien une moyenne, dans les deux
+  moteurs, et le libellé la nomme (« Budget moyen ») pour qu'aucun total ne puisse se
+  lire comme une moyenne ni l'inverse.
 - Google Sheets comme source de données unique : l'application lit directement le
   Sheet (via pandas), en mémoire, rafraîchi toutes les 15 minutes + au démarrage +
   sur demande (`POST /sheets/sync`). Le Sheet sert aussi de formulaire d'ajout/
@@ -222,6 +243,49 @@ déclenche un démarrage à froid du moteur de requête) puis ouvre
 http://localhost:5173. Il n'en relance aucun s'il tourne déjà. Ne pas fermer les
 fenêtres qu'il ouvre.
 
+## Lancer en production
+
+Deux services au lieu de trois : **le frontend est compilé et servi par le backend
+lui-même** (`app.mount(StaticFiles)` dans `backend/main.py`), donc tout passe par
+le port 8000 — en même origine, sans proxy.
+
+```bash
+cd frontend && npm run build                 # OBLIGATOIRE avant de démarrer
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1
+cd dac && dac serve --dir . --port 8321 --template themes/devoteam.yml
+```
+
+**Windows** : `scripts/start_prod.bat` enchaîne les trois, et s'arrête si la
+compilation échoue.
+
+Trois différences avec le mode développement, chacune pour une raison :
+
+- **Pas de `--reload`.** Le rechargement à chaud surveille l'arborescence — que
+  l'application modifie elle-même : chaque question réécrit
+  `dac/dashboards/_principal.yml`. En production, le serveur se redémarrerait à
+  chaque réponse qu'il vient de produire.
+- **Pas de serveur Vite.** Il ne sert plus à rien une fois `frontend/dist` compilé,
+  et le proxy de développement devient sans objet. **Compiler d'abord** : le
+  backend sert `dist` tel qu'il le trouve, donc démarrer sur une compilation
+  périmée afficherait l'ancienne interface sans le moindre signe d'anomalie.
+- **Un seul worker.** Le jeu de données vit en mémoire dans le processus
+  (`backend/data_store.py`) et un planificateur y tourne. Avec plusieurs workers,
+  chacun garderait sa propre copie des données ET relancerait le planificateur :
+  emails d'alerte en double, écritures concurrentes dans le Google Sheet. Le
+  goulot d'étranglement n'est de toute façon pas le backend (0,03 s par question)
+  mais le quota du modèle.
+
+`tests/test_lanceurs.py` vérifie que ces trois différences restent vraies : les
+deux scripts ne peuvent pas dériver l'un vers l'autre sans faire échouer les tests.
+
+> **Ce que ce mode ne couvre pas.** Il fait tourner l'application proprement sur un
+> poste ; il ne la rend pas déployable en entreprise. Manquent notamment
+> l'authentification (l'API est ouverte à qui atteint le port), la limitation de
+> débit (le quota Gemini gratuit tient ~16 requêtes/minute) et l'épinglage des
+> dépendances (`requirements.txt` n'en fixe aucune version). Les services
+> n'écoutent que sur la boucle locale, ce qui rend l'absence d'authentification
+> sans conséquence tant qu'on ne les expose pas.
+
 Pour le raccourci du Bureau :
 
 ```powershell
@@ -290,7 +354,7 @@ frontend/              Vite + React (build servi par FastAPI en local)
 credentials/           clé de compte de service Google (gitignoré, absent par défaut)
 data/                  scheduler_state.json (état local, gitignoré) ; dump SQL
                        historique de l'ancienne base MySQL, conservé pour référence
-tests/                 suite pytest (mock Gemini/Sheets), 238 tests
+tests/                 suite pytest (mock Gemini/Sheets), 337 tests
 Documentation/
   WORKFLOW.md            traçage concret d'une question, du prompt au dashboard affiché
   reports/              rapport professionnel + guide technique (.docx) et leur générateur

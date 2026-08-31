@@ -12,16 +12,20 @@ import datetime
 
 import pandas as pd
 
-from .business_rules import LOST_STATUSES
+from .business_rules import (
+    LOST_STATUSES, heatmap_secondary_dimension, hot_deal_mask,
+)
 from .data_store import get_dataframe
 
 INT_COLS = {"deadline_year", "days_remaining", "id"}
 FLOAT_COLS = {"budget", "financial_offer", "weighted_amount", "win_probability"}
 VALID_OPS = {"<", ">", "<=", ">=", "=", "between"}
 
-# Une valeur de metric détermine SA PROPRE agrégation, indépendamment du champ
-# "aggregation" de l'intention (déjà le comportement de l'ancienne couche SQL —
-# budget est toujours sommé, win_probability toujours moyenné, etc.).
+# Agrégation PAR DÉFAUT de chaque métrique : un montant se somme, une probabilité se
+# moyenne, des opportunités se comptent. C'est le défaut, plus la règle absolue qu'elle
+# était : une question qui demande explicitement une moyenne (« budget moyen par
+# pays ») la reçoit — voir `_agregation`. Ignorer ce mot faisait afficher une somme
+# sous une étiquette de moyenne, à un facteur 74 près.
 METRIC_AGG = {
     "budget": ("budget", "sum"),
     "financial_offer": ("financial_offer", "sum"),
@@ -29,6 +33,19 @@ METRIC_AGG = {
     "nb_opportunities": (None, "count"),
     "win_probability": ("win_probability", "mean"),
 }
+
+
+def _agregation(metric: str, intent: dict) -> tuple:
+    """(colonne, opération pandas) en tenant compte de l'agrégation demandée.
+
+    Seule "avg" peut surcharger le défaut, et jamais pour un comptage : « nombre
+    moyen d'opportunités » n'a pas de sens sans préciser moyen SUR QUOI, et la
+    probabilité de gain est déjà une moyenne.
+    """
+    col, how = METRIC_AGG.get(metric, ("budget", "sum"))
+    if how == "sum" and (intent or {}).get("aggregation") == "avg":
+        return col, "mean"
+    return col, how
 
 RAW_TABLE_COLUMNS = [
     "country", "practice", "status", "buyer", "budget",
@@ -44,8 +61,16 @@ def _cast(col: str, val):
     return val
 
 
-def _apply_filters(df: pd.DataFrame, filters: dict, range_filters: dict, exclude_statuses: list) -> pd.DataFrame:
+def _apply_filters(df: pd.DataFrame, filters: dict, range_filters: dict,
+                   exclude_statuses: list, exclude_filters: dict | None = None,
+                   hot_deals: bool = False) -> pd.DataFrame:
     mask = pd.Series(True, index=df.index)
+
+    # « Affaire chaude » : déjà remise OU probabilité >= 80 %. Une RÉUNION, que les
+    # filtres de l'intention — tous combinés par ET — ne savent pas exprimer. La
+    # définition vit dans business_rules, une seule fois pour les deux moteurs.
+    if hot_deals:
+        mask &= hot_deal_mask(df)
 
     for col, val in filters.items():
         if col not in df.columns:
@@ -54,6 +79,20 @@ def _apply_filters(df: pd.DataFrame, filters: dict, range_filters: dict, exclude
             mask &= df[col].isin([_cast(col, v) for v in val])
         else:
             mask &= df[col] == _cast(col, val)
+
+    # Exclusions sur une colonne autre que le statut (« hors Tunisie », « sauf Risk
+    # Advisory »). Même règle que dans sql_builder._where_clause, et pour la même
+    # raison : sans elle, le mot de négation était ignoré et la valeur partait en
+    # filtre POSITIF — la réponse donnait alors l'inverse exact de la question.
+    for col, val in (exclude_filters or {}).items():
+        if col not in df.columns:
+            continue
+        valeurs = val if isinstance(val, (list, tuple)) else [val]
+        valeurs = [_cast(col, v) for v in valeurs if v is not None]
+        if not valeurs:
+            continue
+        # Les lignes SANS valeur restent : « hors Tunisie » les concerne aussi.
+        mask &= ~df[col].isin(valeurs)
 
     # Exclusion par défaut des affaires perdues, identique à celle du SQL des widgets
     # (sql_builder._where_clause) : sans cette symétrie, le message du chat et les
@@ -92,8 +131,8 @@ def _apply_filters(df: pd.DataFrame, filters: dict, range_filters: dict, exclude
     return df[mask]
 
 
-def _agg_metric(grouped, metric: str):
-    col, how = METRIC_AGG.get(metric, ("budget", "sum"))
+def _agg_metric(grouped, metric: str, intent: dict | None = None):
+    col, how = _agregation(metric, intent or {})
     if how == "count":
         return grouped.size()
     return grouped[col].agg(how)
@@ -124,6 +163,8 @@ def build_and_execute_query(intent: dict) -> list:
     range_filters = intent.get("range_filters", {})
     chart_type = intent.get("chart_type", "")
     exclude_statuses = intent.get("exclude_statuses") or []
+    exclude_filters = intent.get("exclude_filters") or {}
+    hot_deals = bool(intent.get("hot_deals"))
     limit = int(intent.get("limit") or 0)
 
     # Le scatter a besoin de plusieurs mesures par opportunité (budget, probabilité
@@ -138,12 +179,23 @@ def build_and_execute_query(intent: dict) -> list:
     # chart_type == "table", jamais par le seul fait de borner une valeur.
     use_raw = intent.get("use_raw_table", False) or chart_type in ("table", "scatter")
 
-    filtered = _apply_filters(df, filters, range_filters, exclude_statuses)
+    filtered = _apply_filters(df, filters, range_filters, exclude_statuses,
+                              exclude_filters, hot_deals)
+
+    # « combien de clients différents » : une CARDINALITÉ, pas un volume. Placé avant
+    # tout le reste — la question ne demande ni répartition, ni liste, ni graphique.
+    compte = intent.get("count_distinct")
+    if compte and compte in filtered.columns:
+        if dimension and dimension in filtered.columns:
+            # Regroupé : « combien de clients distincts PAR practice ».
+            distincts = filtered.groupby(dimension)[compte].nunique()
+            return _to_records(distincts.reset_index(name="nb_opportunities"))
+        return _to_records(pd.DataFrame([{"nb_opportunities": int(filtered[compte].nunique())}]))
 
     if chart_type == "heatmap" and dimension:
-        secondary = "country" if dimension == "practice" else "practice"
+        secondary = heatmap_secondary_dimension(dimension)
         grouped = filtered.groupby([dimension, secondary])
-        values = _agg_metric(grouped, metric)
+        values = _agg_metric(grouped, metric, intent)
         result = values.reset_index(name=metric)
         return _to_records(result)
 
@@ -154,7 +206,7 @@ def build_and_execute_query(intent: dict) -> list:
         return _to_records(result)
 
     if not dimension:
-        col, how = METRIC_AGG.get(metric, ("budget", "sum"))
+        col, how = _agregation(metric, intent)
         if how == "count":
             value = len(filtered)
         elif filtered.empty:
@@ -165,7 +217,7 @@ def build_and_execute_query(intent: dict) -> list:
         return _to_records(pd.DataFrame([{alias: value}]))
 
     grouped = filtered.groupby(dimension)
-    metric_values = _agg_metric(grouped, metric)
+    metric_values = _agg_metric(grouped, metric, intent)
     nb_opportunities = grouped.size()
 
     # Colonnes construites une par une (pas un seul dict littéral) : quand

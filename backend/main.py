@@ -79,6 +79,15 @@ def _refresh_data() -> dict:
 
 @app.post("/dashboard")
 async def generate_dashboard(request: ChatRequest):
+    # Une question vide n'atteint jamais le modèle. Le parseur rapide la rejetait
+    # bien, mais elle repartait alors vers Gemini — qui, n'ayant rien à interpréter,
+    # inventait une demande plausible : « Top 5 des pratiques par nombre
+    # d'opportunités » a été servi pour une chaîne vide. Une analyse que personne
+    # n'a demandée est une hallucination comme une autre, et c'est ici qu'on
+    # l'arrête, pas dans le prompt. Au passage, l'appel économisé est du quota gardé.
+    if not (request.query or "").strip():
+        return {"ai_message": get_help_message()}
+
     try:
         # Phase 4: Intent parsing
         intent = parse_user_query(request.query, previous_intent=request.previous_intent)
@@ -196,7 +205,15 @@ async def get_deadline_alerts():
     return {"opportunities": opportunities, "window_days": 7}
 
 
-DAC_URL = os.getenv("DAC_URL", "http://localhost:8321")
+# 127.0.0.1 et non « localhost » : ce dernier résout d'abord en ::1 sur Windows,
+# alors que DAC n'écoute que sur l'IPv4. La sonde y épuisait donc TOUT son délai
+# d'attente avant de retomber sur la bonne adresse — 2,0 s mesurées contre 0,001 s
+# ici, à chaque appel de /health, donc après chaque question posée.
+DAC_URL = os.getenv("DAC_URL", "http://127.0.0.1:8321")
+
+# Une sonde qui met plus longtemps que ça n'apprend plus rien d'utile : sur une
+# boucle locale, un serveur en vie répond en une poignée de millisecondes.
+_DAC_PROBE_TIMEOUT_SECONDS = 0.5
 
 
 def _dac_is_reachable() -> bool:
@@ -206,10 +223,57 @@ def _dac_is_reachable() -> bool:
     panne de DAC se traduisait par un cadre vide et muet, sans erreur exploitable)."""
     import urllib.request
     try:
-        with urllib.request.urlopen(DAC_URL, timeout=2) as response:
+        with urllib.request.urlopen(DAC_URL, timeout=_DAC_PROBE_TIMEOUT_SECONDS) as response:
             return response.status == 200
     except Exception:
         return False
+
+
+# DAC n'exécute pas le SQL lui-même : il le délègue au binaire `bruin`, qu'il cherche
+# dans le PATH. Les deux vivent dans ~/.local/bin, que l'installeur n'ajoute PAS au
+# PATH système — un DAC lancé sans cette précaution DÉMARRE normalement, répond 200,
+# et fait échouer chaque widget séparément : « bruin: executable file not found ».
+# `_dac_is_reachable` répondait donc « ok » devant un mur d'erreurs.
+#
+# La sonde ci-dessous exécute vraiment une requête. Elle est plus coûteuse, donc son
+# résultat est mis en cache : ce qu'elle détecte est un problème d'installation, qui
+# ne va ni apparaître ni disparaître d'une seconde à l'autre.
+_DAC_QUERY_PROBE_DASHBOARD = "Qualité des données"  # versionné, donc toujours présent
+_DAC_QUERY_PROBE_TIMEOUT_SECONDS = 5.0
+_DAC_QUERY_PROBE_TTL_SECONDS = 60.0
+_dac_query_probe_cache: tuple[float, str | None] = (0.0, None)
+
+
+def _dac_query_failure() -> str | None:
+    """Le message d'erreur si DAC ne sait pas exécuter ses requêtes, sinon None."""
+    global _dac_query_probe_cache
+    import time
+    import urllib.parse
+    import urllib.request
+
+    expire_a, precedent = _dac_query_probe_cache
+    if time.monotonic() < expire_a:
+        return precedent
+
+    erreur = None
+    try:
+        url = "%s/api/v1/dashboards/%s/data" % (
+            DAC_URL, urllib.parse.quote(_DAC_QUERY_PROBE_DASHBOARD))
+        requete = urllib.request.Request(
+            url, b"{}", {"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(requete, timeout=_DAC_QUERY_PROBE_TIMEOUT_SECONDS) as reponse:
+            widgets = (json.loads(reponse.read()) or {}).get("widgets") or {}
+        for detail in widgets.values():
+            if detail.get("error"):
+                erreur = str(detail["error"])
+                break
+    except Exception:
+        # Injoignable ou réponse inattendue : `_dac_is_reachable` couvre déjà ce cas
+        # et le dit mieux. Cette sonde-ci ne se prononce que sur l'exécution du SQL.
+        logger.debug("Sonde d'exécution DAC indisponible.", exc_info=True)
+
+    _dac_query_probe_cache = (time.monotonic() + _DAC_QUERY_PROBE_TTL_SECONDS, erreur)
+    return erreur
 
 
 @app.get("/health")
@@ -219,17 +283,35 @@ async def health():
     l'autre, et l'utilisateur n'a aucun moyen de trancher sans cette information."""
     summary = get_last_refresh_summary() or {}
     df = get_dataframe()
-    dac_ok = _dac_is_reachable()
+    dac_repond = _dac_is_reachable()
+    # Répondre ne suffit pas : DAC peut être debout et incapable d'exécuter la moindre
+    # requête (voir _dac_query_failure). Tant qu'on ne distinguait pas les deux, un
+    # tableau de bord entièrement en erreur s'accompagnait d'un « dac ok » rassurant.
+    echec_requetes = _dac_query_failure() if dac_repond else None
+    dac_ok = dac_repond and not echec_requetes
+
+    if not dac_repond:
+        aide = ("Le serveur de dashboards ne répond pas. Lancez-le depuis le dossier "
+                "dac/ : dac serve --dir . --port 8321 (le dossier ~/.local/bin doit "
+                "être dans le PATH).")
+    elif echec_requetes and "bruin" in echec_requetes.lower():
+        aide = ("Le serveur de dashboards tourne mais ne trouve pas « bruin », à qui "
+                "il délègue l'exécution du SQL — tous les visuels restent donc en "
+                "erreur. Relancez-le avec ~/.local/bin dans le PATH : le script "
+                "scripts/start_dev.bat le fait pour vous.")
+    elif echec_requetes:
+        aide = "Le serveur de dashboards n'exécute pas ses requêtes : %s" % echec_requetes[:200]
+    else:
+        aide = None
+
     return {
         "ok": dac_ok and df is not None and not df.empty,
         "dac": {
             "ok": dac_ok,
+            "repond": dac_repond,
+            "requetes_ok": dac_repond and not echec_requetes,
             "url": DAC_URL,
-            "aide": None if dac_ok else (
-                "Le serveur de dashboards ne répond pas. Lancez-le depuis le dossier "
-                "dac/ : dac serve --dir . --port 8321 (le dossier ~/.local/bin doit "
-                "être dans le PATH)."
-            ),
+            "aide": aide,
         },
         "donnees": {
             "ok": df is not None and not df.empty,

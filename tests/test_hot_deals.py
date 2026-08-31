@@ -76,24 +76,50 @@ def test_the_threshold_is_a_minimum_not_an_equality():
     # ne contiennent aucune valeur entre 80 et 100 %, donc seules des lignes
     # fabriquées peuvent le prouver — remplacer « >= » par « = » ne changerait sinon
     # aucun chiffre affiché et passerait inaperçu.
+    #
+    # Statut « Lead » partout : la définition étant une RÉUNION (remise OU ≥ 80 %),
+    # laisser le statut par défaut « Offre remise » rendrait les quatre lignes chaudes
+    # par ce seul biais, et le test ne prouverait plus rien du seuil.
     df = _df([
-        {"buyer": "Certaine", "win_probability": 1.0},
-        {"buyer": "Presque sûre", "win_probability": 0.9},
-        {"buyer": "Au seuil", "win_probability": HOT_DEAL_MIN_PROBABILITY},
-        {"buyer": "Juste en dessous", "win_probability": 0.79},
+        {"buyer": "Presque sûre", "status": "Lead", "win_probability": 0.95},
+        {"buyer": "Très probable", "status": "Lead", "win_probability": 0.9},
+        {"buyer": "Au seuil", "status": "Lead", "win_probability": HOT_DEAL_MIN_PROBABILITY},
+        {"buyer": "Juste en dessous", "status": "Lead", "win_probability": 0.79},
     ])
     assert _kpi_affaires_chaudes(df) == 3
 
 
-def test_the_status_plays_no_part():
-    # Décision métier explicite : seule la probabilité décide. Une affaire déjà
-    # gagnée est à 100 %, donc chaude elle aussi.
+def test_chacun_des_deux_criteres_suffit_a_lui_seul():
+    """La définition est une RÉUNION : remise OU ≥ 80 %. L'un suffit.
+
+    Elle a d'abord exigé les deux, puis la seule probabilité, et enfin cette
+    réunion — décision métier explicite. Ce test tient les trois cas de figure
+    séparés, parce que c'est exactement là que les versions successives diffèrent.
+    """
     df = _df([
-        {"buyer": "Gagnée", "status": "Offre gagnée", "win_probability": 1.0},
-        {"buyer": "Amont", "status": "Lead", "win_probability": 1.0},
-        {"buyer": "Remise", "status": "Offre remise", "win_probability": 0.8},
+        # Chaude par la PROBABILITÉ seule : son statut ne la retiendrait pas.
+        {"buyer": "Probable", "status": "Lead", "win_probability": 0.95},
+        # Chaude par le STATUT seul : sa probabilité ne la retiendrait pas. C'est le
+        # cas qu'aucune version précédente ne comptait.
+        {"buyer": "Remise tiède", "status": "Offre remise", "win_probability": 0.4},
+        # Chaude par les deux.
+        {"buyer": "Les deux", "status": "Offre remise", "win_probability": 0.9},
+        # Chaude par aucun : la seule qui doit sortir.
+        {"buyer": "Ni l'un ni l'autre", "status": "Lead", "win_probability": 0.4},
     ])
     assert _kpi_affaires_chaudes(df) == 3
+
+
+def test_une_offre_remise_sous_le_seuil_est_chaude(monkeypatch):
+    # Le cas qui distingue la définition ACTUELLE de la précédente. Sur les vraies
+    # données il n'existe pas encore (les 7 offres remises portent toutes ≥ 80 %),
+    # donc seules des lignes fabriquées peuvent le prouver — et sans lui, revenir à
+    # l'ancienne règle ne ferait échouer aucun test.
+    df = _df([
+        {"buyer": "Remise tiède", "status": "Offre remise", "win_probability": 0.3},
+    ])
+    assert _kpi_affaires_chaudes(df) == 1
+    assert _compte_par_le_chat(df, monkeypatch) == 1
 
 
 def test_an_opportunity_without_a_probability_stays_out():
@@ -109,19 +135,19 @@ def test_an_opportunity_without_a_probability_stays_out():
 
 
 def _detail_complet(df):
-    """Les trois colonnes du détail, remises bout à bout dans l'ordre de lecture."""
-    con = _duckdb_avec(df)
-    lignes = []
-    for rang in (1, 2, 3):
-        lignes += con.execute(
-            _sans_jinja(_widget("Affaires chaudes (%d/3)" % rang)["sql"])).fetchall()
-    return lignes
+    """Le détail, dans son ordre de lecture."""
+    return _duckdb_avec(df).execute(
+        _sans_jinja(_widget("Détail des affaires chaudes")["sql"])).fetchall()
 
 
-def test_the_three_columns_hold_every_hot_deal_exactly_once():
-    # C'était la contrainte : diviser la hauteur SANS perdre une opportunité. Un
-    # découpage qui doublonne ou qui saute une ligne échouerait ici, alors qu'aucune
-    # requête n'aurait échoué.
+def test_le_detail_montre_chaque_affaire_une_fois_et_une_seule():
+    """Aucune affaire perdue, aucune en double, dans l'ordre du classement.
+
+    Le détail a été découpé en trois colonnes, puis en deux, tant que la définition
+    d'alors en retenait plus d'une centaine ; il tient aujourd'hui dans une table
+    unique. La propriété vérifiée ici n'a jamais changé — c'est elle qui rendait
+    chaque découpage sûr, et elle reste le garde-fou maintenant qu'il n'y en a plus.
+    """
     df = _df([{"buyer": "C%02d" % i, "weighted_amount": float(1000 - i)} for i in range(30)])
     lignes = _detail_complet(df)
 
@@ -132,40 +158,30 @@ def test_the_three_columns_hold_every_hot_deal_exactly_once():
     assert [l[2] for l in lignes] == ["C%02d" % i for i in range(30)]
 
 
-def test_the_split_adapts_to_how_many_deals_there_are():
-    # Un découpage à rang fixe laisserait une colonne vide dès que le filtre de
-    # période fait baisser le total. NTILE répartit au plus juste.
-    for total in (5, 17, 55):
-        df = _df([{"buyer": "C%02d" % i, "weighted_amount": float(1000 - i)}
-                   for i in range(total)])
-        con = _duckdb_avec(df)
-        tailles = [len(con.execute(_sans_jinja(_widget("Affaires chaudes (%d/3)" % r)["sql"])).fetchall())
-                    for r in (1, 2, 3)]
-        assert sum(tailles) == total
-        assert max(tailles) - min(tailles) <= 1, tailles
-
-
-def test_the_detail_occupies_one_row_of_its_own():
-    # Trois tables côte à côte, et rien d'autre sur la ligne : un widget voisin
-    # s'étirerait à la hauteur de la liste.
+def test_le_detail_occupe_sa_ligne_en_pleine_largeur():
+    # Seul sur sa ligne : un widget voisin s'étirerait à la hauteur de la liste. Et
+    # en pleine largeur, sans quoi les huit colonnes partiraient en défilement
+    # horizontal — le tableau de DAC réclame 400 px au minimum.
     doc = yaml.safe_load(ACCUEIL.read_text(encoding="utf-8"))
     ligne = next(r for r in doc["rows"]
-                  if any(w["name"].startswith("Affaires chaudes (") for w in r["widgets"]))
+                  if any(w["name"] == "Détail des affaires chaudes" for w in r["widgets"]))
 
-    assert [w["name"] for w in ligne["widgets"]] == [
-        "Affaires chaudes (1/3)", "Affaires chaudes (2/3)", "Affaires chaudes (3/3)"]
-    assert all(w["col"] == 4 for w in ligne["widgets"])
+    assert [w["name"] for w in ligne["widgets"]] == ["Détail des affaires chaudes"]
+    assert ligne["widgets"][0]["col"] == 12
     # Aucune hauteur : le tableau de DAC ne défile pas verticalement, la borner
     # clipperait les affaires suivantes au lieu de les rendre atteignables.
     assert "height" not in ligne
 
 
 def test_the_dashboard_and_the_chat_count_the_same_population(monkeypatch):
+    # Statuts explicites sur chaque ligne : avec le défaut « Offre remise », les
+    # quatre seraient chaudes par le statut et le test ne comparerait plus que ça.
     df = _df([
-        {"buyer": "A", "win_probability": 1.0, "status": "Offre gagnée"},
-        {"buyer": "B", "win_probability": 0.8},
-        {"buyer": "C", "win_probability": 0.79},
-        {"buyer": "D", "win_probability": None, "weighted_amount": None},
+        {"buyer": "A", "status": "Offre gagnée", "win_probability": 1.0},   # ACQUISE, pas chaude
+        {"buyer": "B", "status": "Lead", "win_probability": 0.8},            # chaude (proba)
+        {"buyer": "C", "status": "Offre remise", "win_probability": 0.79},   # chaude (statut)
+        {"buyer": "D", "status": "Lead", "win_probability": None,
+         "weighted_amount": None},                                           # ni l'un ni l'autre
     ])
     assert _kpi_affaires_chaudes(df) == _compte_par_le_chat(df, monkeypatch) == 2
 
@@ -194,3 +210,73 @@ def test_the_export_writes_nulls_never_nans(tmp_path, monkeypatch):
         "SELECT COUNT(*) FROM opportunities WHERE win_probability IS NULL").fetchone()[0] == 1
     assert con.execute(
         "SELECT COUNT(*) FROM opportunities WHERE win_probability >= 0.8").fetchone()[0] == 1
+
+
+def test_le_detail_porte_toutes_les_metriques_de_l_affaire():
+    """Le détail ne montrait que rang, opportunité, client et montant pondéré.
+
+    Practice, budget et probabilité en étaient absents — or ce sont eux qui disent
+    POURQUOI l'affaire est chaude et ce qu'elle pèse. Sept colonnes ne tenant pas
+    dans un tiers de largeur, le détail est passé de trois colonnes à deux moitiés.
+    """
+    colonnes = [c["name"] for c in _widget("Détail des affaires chaudes")["columns"]]
+    for attendue in ("rang", "description", "buyer", "practice", "status", "budget",
+                     "win_probability", "weighted_amount"):
+        assert attendue in colonnes, f"« {attendue} » manque au détail"
+
+
+def test_les_parts_rapportent_les_affaires_chaudes_au_portefeuille_actif():
+    """Un nombre seul ne dit pas s'il est gros.
+
+    « 105 affaires chaudes » prend un tout autre sens selon qu'il représente 5 % ou
+    46 % de ce qui est en jeu. Le dénominateur doit être le portefeuille ACTIF —
+    affaires perdues exclues — le même que celui des KPI de santé : le rapporter au
+    portefeuille entier gonflerait le dénominateur avec des affaires mortes.
+    """
+    for nom in ("Part des opportunités", "Part du budget"):
+        sql = _widget(nom)["sql"]
+        assert "status NOT IN" in sql, f"« {nom} » ne rapporte pas au portefeuille actif"
+        assert "NULLIF" in sql, f"« {nom} » divise sans se protéger d'un dénominateur nul"
+
+
+def test_une_part_vaut_bien_le_rapport_des_deux_kpi():
+    # Le chiffre lui-même, sur des lignes fabriquées : 2 chaudes sur 4 actives.
+    df = _df([
+        {"buyer": "Chaude 1", "status": "Offre remise", "win_probability": 0.9},
+        {"buyer": "Chaude 2", "status": "Lead", "win_probability": 0.9},
+        {"buyer": "Tiède", "status": "Lead", "win_probability": 0.2},
+        {"buyer": "Tiède 2", "status": "Lead", "win_probability": 0.2},
+    ])
+    con = _duckdb_avec(df)
+    part = con.execute(_sans_jinja(_widget("Part des opportunités")["sql"])).fetchall()[0][0]
+    assert abs(part - 0.5) < 1e-9, part
+
+
+def test_une_affaire_a_cent_pour_cent_est_acquise_pas_chaude(monkeypatch):
+    """La borne haute, exclue — et la seule chose qui distingue cette définition
+    de la précédente.
+
+    Sur les vraies données, 100 % n'est jamais une prévision : les 88 lignes à 1,0
+    sont toutes « Offre gagnée » ou « Offre signée ». Les compter faisait passer le
+    portefeuille chaud de 9 à 97 opportunités, en y versant l'acquis avec l'à-venir.
+    """
+    df = _df([
+        {"buyer": "Déjà gagnée", "status": "Offre gagnée", "win_probability": 1.0},
+        {"buyer": "Déjà signée", "status": "Offre signée", "win_probability": 1.0},
+        {"buyer": "À aller chercher", "status": "Lead", "win_probability": 0.99},
+    ])
+    assert _kpi_affaires_chaudes(df) == 1
+    assert _compte_par_le_chat(df, monkeypatch) == 1
+
+
+def test_les_deux_bornes_sont_verifiees_ensemble(monkeypatch):
+    # L'intervalle complet, borne par borne : 0,79 dehors, 0,80 dedans, 0,99 dedans,
+    # 1,00 dehors. Chacune des quatre casse une erreur d'inégalité différente.
+    df = _df([
+        {"buyer": "0.79", "status": "Lead", "win_probability": 0.79},
+        {"buyer": "0.80", "status": "Lead", "win_probability": 0.80},
+        {"buyer": "0.99", "status": "Lead", "win_probability": 0.99},
+        {"buyer": "1.00", "status": "Lead", "win_probability": 1.00},
+    ])
+    assert _kpi_affaires_chaudes(df) == 2
+    assert _compte_par_le_chat(df, monkeypatch) == 2

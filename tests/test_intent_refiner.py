@@ -235,33 +235,46 @@ def test_no_relative_period_phrase_leaves_dates_untouched():
 
 
 # --- « Offre pondérée » / « affaire chaude » : deux noms, une seule définition ---
-# UN SEUL critère : win_probability >= 0.8. Le statut ne joue aucun rôle — une affaire
-# déjà gagnée est à 100 %, donc chaude elle aussi.
+# DEUX critères réunis par un OU : déjà remise, OU probabilité >= 80 %. L'un suffit.
+# La réunion ne peut pas s'écrire avec les filtres de l'intention, qui sont tous
+# combinés par ET — d'où le drapeau `hot_deals`, que les deux moteurs traduisent
+# depuis business_rules (hot_deal_sql / hot_deal_mask).
 
 def test_offre_ponderee_applies_the_business_rule_filters():
     intent = _base_intent(chart_type="table", use_raw_table=True)
     result = refine_intent("liste des offres pondérées", intent)
-    assert result["range_filters"]["win_probability"] == {
-        "op": ">=", "value": HOT_DEAL_MIN_PROBABILITY,
-    }
-    # Aucun filtre de statut : le statut ne fait pas partie de la définition.
+    assert result["hot_deals"] is True
+    # Ni filtre de statut ni borne de probabilité : posés EN PLUS du drapeau, ils
+    # rétabliraient le ET que la réunion vient précisément de remplacer.
     assert "status" not in result["filters"]
+    assert "win_probability" not in result.get("range_filters", {})
 
 
 def test_offres_ponderees_plural_also_matches():
     intent = _base_intent(chart_type="kpi_card")
     result = refine_intent("combien d'opportunités pondérées avons-nous ?", intent)
-    assert result["range_filters"]["win_probability"] == {"op": ">=", "value": 0.8}
+    assert result["hot_deals"] is True
 
 
 def test_offre_ponderee_applies_its_threshold_whatever_the_llm_guessed():
     # La définition métier fait autorité sur le seuil, quoi qu'ait proposé le modèle.
-    # Le statut, lui, n'appartient plus à la définition : celui que le modèle a posé
-    # est donc respecté plutôt qu'écrasé.
+    # Et le statut qu'il a ajouté SANS que la question en parle est retiré : c'est un
+    # vestige de l'ancienne définition, qui faisait répondre 7 opportunités ici et 105
+    # à une formulation voisine de la même question.
     intent = _base_intent(chart_type="table", use_raw_table=True, filters={"status": "Lead"})
     result = refine_intent("liste des offres pondérées", intent)
-    assert result["range_filters"]["win_probability"] == {"op": ">=", "value": 0.8}
-    assert result["filters"]["status"] == "Lead"
+    assert result["hot_deals"] is True
+    assert "status" not in result["filters"]
+
+
+def test_offre_ponderee_garde_le_statut_que_la_question_nomme():
+    # L'inverse du test précédent, et la raison pour laquelle le retrait n'est pas
+    # aveugle : quand la QUESTION nomme un statut, il restreint légitimement le
+    # périmètre et doit survivre. Seule l'initiative du modèle est écartée.
+    intent = _base_intent(chart_type="table", use_raw_table=True, filters={"status": "Offre gagnée"})
+    result = refine_intent("liste des affaires chaudes gagnées", intent)
+    assert result["hot_deals"] is True
+    assert result["filters"]["status"] == "Offre gagnée"
 
 
 def test_offre_ponderee_does_not_force_the_chart_type():
@@ -270,7 +283,7 @@ def test_offre_ponderee_does_not_force_the_chart_type():
     intent = _base_intent(chart_type="bar", dimension="country")
     result = refine_intent("budget des offres pondérées par pays", intent)
     assert result["chart_type"] == "bar"
-    assert result["range_filters"]["win_probability"] == {"op": ">=", "value": 0.8}
+    assert result["hot_deals"] is True
 
 
 def test_montant_pondere_does_not_trigger_the_weighted_offer_rule():
@@ -279,14 +292,14 @@ def test_montant_pondere_does_not_trigger_the_weighted_offer_rule():
     intent = _base_intent(metric="weighted_amount", dimension="country")
     result = refine_intent("montant pondéré par pays", intent)
     assert "status" not in result.get("filters", {})
-    assert "win_probability" not in result.get("range_filters", {})
+    assert not result.get("hot_deals")
 
 
 def test_budget_pondere_alone_does_not_trigger_the_weighted_offer_rule():
     intent = _base_intent(metric="weighted_amount")
     result = refine_intent("quel est le budget pondéré total", intent)
     assert "status" not in result.get("filters", {})
-    assert "win_probability" not in result.get("range_filters", {})
+    assert not result.get("hot_deals")
 
 
 # --- Choix du type de graphique ---
@@ -494,7 +507,9 @@ def test_weighted_offers_keep_their_own_narrower_meaning():
     # Règle plus spécifique et périmètre tout autre : elle ne doit pas être avalée
     # par celle des offres remises, dont elle partage pourtant le mot « offres ».
     intent = refine_intent("liste des offres pondérées", _intent_vierge())
-    assert intent["range_filters"]["win_probability"] == {"op": ">=", "value": 0.8}
+    assert intent["hot_deals"] is True
+    # Surtout pas le filtre des offres REMISES (SUBMITTED_STATUSES) : les deux règles
+    # partagent le mot « offres » mais ne désignent pas le même périmètre.
     assert "status" not in intent["filters"]
 
 

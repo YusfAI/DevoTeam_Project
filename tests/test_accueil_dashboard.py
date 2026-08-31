@@ -81,24 +81,44 @@ def _executer(con, nom_widget):
 # ---------------------------------------------------------------------------
 
 def test_the_hot_deal_kpis_count_every_deal_above_the_threshold(base):
+    # Statut « Lead » partout : la définition est une RÉUNION (remise OU ≥ 80 %), et
+    # le statut par défaut « Offre remise » rendrait les trois lignes chaudes par ce
+    # seul biais — le test ne prouverait alors plus rien du seuil de probabilité.
     _remplir(base, [
-        _opportunite(win_probability=1.0, budget=200000.0, weighted_amount=200000.0),
-        _opportunite(win_probability=0.8, budget=100000.0, weighted_amount=72000.0),
-        _opportunite(win_probability=0.4, budget=999999.0, weighted_amount=1.0),
+        _opportunite(status="Lead", win_probability=0.9, budget=200000.0, weighted_amount=200000.0),
+        _opportunite(status="Lead", win_probability=0.8, budget=100000.0, weighted_amount=72000.0),
+        _opportunite(status="Lead", win_probability=0.4, budget=999999.0, weighted_amount=1.0),
     ])
     assert _executer(base, "Affaires chaudes")[0][0] == 2
     assert _executer(base, "Budget à forte confiance (DT)")[0][0] == 300000.0
     assert _executer(base, "Montant pondéré associé (DT)")[0][0] == 272000.0
 
 
-def test_a_won_deal_counts_as_hot_for_the_kpis_too(base):
-    # Le statut ne joue aucun rôle, côté SQL comme côté Python.
+def test_une_affaire_deja_gagnee_n_est_pas_chaude(base):
+    """Une affaire chaude est à aller CHERCHER : gagnée, elle ne l'est plus.
+
+    Le test disait exactement l'inverse tant que la borne haute n'existait pas. Dans
+    ces données, 100 % n'est jamais une prévision — les 88 lignes à 1,0 sont toutes
+    « Offre gagnée » ou « Offre signée » —, si bien que les compter revenait à
+    présenter un portefeuille déjà remporté comme un pipeline à pousser.
+    """
     _remplir(base, [
-        _opportunite(status="Offre gagnée", win_probability=1.0),
-        _opportunite(status="Lead", win_probability=1.0),
+        _opportunite(status="Offre gagnée", win_probability=1.0),   # acquise
+        _opportunite(status="Lead", win_probability=1.0),            # acquise aussi
+        _opportunite(status="Lead", win_probability=0.9),            # à aller chercher
         _opportunite(status="Offre perdue", win_probability=None, weighted_amount=None),
     ])
-    assert _executer(base, "Affaires chaudes")[0][0] == 2
+    assert _executer(base, "Affaires chaudes")[0][0] == 1
+
+
+def test_une_offre_remise_entre_meme_sans_probabilite_suffisante(base):
+    # L'autre moitié de la réunion, côté SQL du tableau de bord. Sans ce test, revenir
+    # à la définition précédente (probabilité seule) ne ferait échouer aucun widget.
+    _remplir(base, [
+        _opportunite(status="Offre remise", win_probability=0.3, weighted_amount=1.0),
+        _opportunite(status="Lead", win_probability=0.3, weighted_amount=1.0),
+    ])
+    assert _executer(base, "Affaires chaudes")[0][0] == 1
 
 
 # ---------------------------------------------------------------------------

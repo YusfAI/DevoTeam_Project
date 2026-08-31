@@ -1,3 +1,21 @@
+================================================================================
+DOCUMENT HISTORIQUE — NE DÉCRIT PLUS L'APPLICATION ACTUELLE (relu le 28/08/2026)
+================================================================================
+Ce document date d'une conception antérieure. Trois de ses choix techniques ont
+été abandonnés depuis :
+
+  - SQLite / MySQL  ->  le Google Sheet chargé en mémoire par pandas est la
+                        source unique ; DuckDB n'est qu'une projection en lecture
+                        seule pour les dashboards (backend/data_store.py).
+  - Vega-Lite       ->  les visuels sont produits par Bruin DAC en YAML versionné
+                        (dac/dashboards/, backend/dac_composer.py).
+  - Dashboard unique par question  ->  un tableau de bord de travail réécrit en
+                        place, plus un instantané par analyse.
+
+Il est conservé pour mémoire du raisonnement d'origine. L'architecture qui fait
+foi est décrite dans README.md et PROGRESS.md.
+================================================================================
+
 Objectif du projet
 Ton application doit faire 3 choses très bien: comprendre la demande, choisir les bonnes données dans SQLite, puis afficher un dashboard Vega adapté. Vega est pertinent ici parce qu’il décrit les visualisations en JSON, avec la source de données, les axes, les marks, les interactions, et le rendu web.
 vega

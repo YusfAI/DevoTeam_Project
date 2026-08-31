@@ -13,14 +13,21 @@ quota gratuit Gemini (~16 requêtes/minute) pour un gain nul en qualité.
 """
 import hashlib
 import logging
+import os
 import re
+import threading
+import time
 from pathlib import Path
 
 import yaml
 
-from .labels import DEVISE, DIMENSION_LABELS, METRIC_LABELS, with_unit
+from .business_rules import heatmap_secondary_dimension
+from .labels import (
+    DEVISE, DIMENSION_LABELS, FILTER_LABELS, METRIC_LABELS, metric_label, with_unit,
+)
 from .sql_builder import (
-    MAX_CATEGORIES, METRIC_SQL, RAW_COLUMNS, _where_clause, build_sql, funnel_sql,
+    MAX_CATEGORIES, METRIC_SQL, RAW_COLUMNS, _metric_expr, _where_clause, build_sql,
+    funnel_sql,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,6 +52,18 @@ _LiteralDumper.add_representer(str, _represent_str)
 
 DASHBOARDS_DIR = Path(__file__).resolve().parent.parent / "dac" / "dashboards"
 
+# Les fichiers provisoires de l'écriture atomique vivent HORS du dossier surveillé
+# par DAC. Placés dedans, ils y étaient vus comme des changements : DAC journalisait
+# deux lignes par fichier temporaire et par écriture — la moitié de son journal
+# n'était plus que ce bruit, ce qui le rendait inutilisable le jour où il fallait y
+# lire une vraie panne. Ils y échappaient de surcroît au ménage de
+# `_prune_generated`, qui ne connaît que les `_analyse_*.yml`.
+#
+# Toujours sur le MÊME disque que la destination : `os.replace` n'est atomique qu'à
+# l'intérieur d'un système de fichiers, ce qu'un dossier temporaire système ne
+# garantit pas.
+TEMP_DIR = Path(__file__).resolve().parent.parent / ".dac_tmp"
+
 # Un fichier par question, nommé d'après un condensé de son titre. Un fichier unique
 # réécrit à chaque fois était plus simple, mais rendait tout retour en arrière
 # impossible : poser une deuxième question effaçait le dashboard de la première,
@@ -53,7 +72,22 @@ GENERATED_PREFIX = "_analyse_"
 
 # Plafond du nombre de dashboards générés conservés : au-delà, les plus anciens sont
 # supprimés. Sans ce ménage, chaque question laisserait un fichier derrière elle.
-MAX_GENERATED_DASHBOARDS = 12
+# COUPLÉ à MAX_MESSAGES dans frontend/src/hooks/useChatHistory.js : l'historique y
+# conserve 100 messages, soit 50 questions (une question = un message utilisateur +
+# une réponse). Garder moins d'instantanés que d'entrées d'historique laissait des
+# entrées pointer vers un fichier supprimé — et DAC répond alors 200 avec une page
+# vide, donc le frontend ne pouvait même pas le signaler. Les deux nombres doivent
+# rester cohérents ; tests/test_historique_instantanes.py le vérifie.
+MAX_GENERATED_DASHBOARDS = 50
+
+# Remplacement atomique : nombre de tentatives et pause entre elles. Sous Windows,
+# remplacer un fichier qu'un lecteur tient ouvert échoue au lieu d'attendre — et DAC
+# relit ces fichiers en permanence. Le lecteur relâche en quelques millisecondes, mais
+# le budget est volontairement large (une seconde au total) : au-delà, il n'y a plus
+# de repli sûr, et une seconde d'attente dans le pire des cas reste invisible à côté
+# du temps de réponse du modèle.
+_TENTATIVES_REMPLACEMENT = 40
+_ATTENTE_REMPLACEMENT_S = 0.025
 
 
 def _generated_filename(name: str) -> str:
@@ -117,8 +151,14 @@ def _fmt(metric: str) -> str:
     return ",.0f"
 
 
-def _metric_label(metric: str) -> str:
-    return METRIC_LABELS.get(metric, metric).capitalize()
+def _metric_label(metric: str, intent: dict | None = None) -> str:
+    """« Budget », ou « Budget moyen » si la question demande une moyenne.
+
+    L'intention est facultative : les widgets de CONTEXTE (part du portefeuille,
+    ordre de grandeur) parlent toujours de totaux et ne la passent pas, alors que
+    ceux qui affichent la métrique interrogée la passent toujours.
+    """
+    return metric_label(metric, (intent or {}).get("aggregation", "")).capitalize()
 
 
 def _dimension_label(dimension: str) -> str:
@@ -178,7 +218,7 @@ def _widget_from_intent(intent: dict, title: str, col: int) -> dict:
         }
 
     if chart_type == "heatmap":
-        secondary = "country" if dimension == "practice" else "practice"
+        secondary = heatmap_secondary_dimension(dimension)
         return {
             "name": title, "type": "chart", "chart": "heatmap", "col": col, "sql": sql,
             "x": {"field": secondary, "type": "category", "title": _dimension_label(secondary)},
@@ -192,7 +232,7 @@ def _widget_from_intent(intent: dict, title: str, col: int) -> dict:
         "name": title, "type": "chart", "chart": chart, "col": col, "sql": sql,
         "x": {"field": dimension, "type": "category", "title": _dimension_label(dimension)},
         "y": {"field": metric, "type": "number",
-               "title": with_unit(_metric_label(metric), metric), "format": fmt},
+               "title": with_unit(_metric_label(metric, intent), metric), "format": fmt},
     }
     if chart == "bar" and dimension:
         # Une couleur par catégorie plutôt qu'une teinte unique pour toutes les
@@ -206,14 +246,37 @@ def _widget_from_intent(intent: dict, title: str, col: int) -> dict:
     return widget
 
 
+# Ce qui définit le PÉRIMÈTRE et le MODE DE CALCUL d'une question : tout widget
+# dérivé doit en hériter intégralement, sinon le tableau de bord juxtapose des
+# chiffres qui ne parlent pas de la même chose.
+#
+# Cette liste était écrite en dur, deux fois, et n'avait pas suivi l'ajout de
+# `exclude_filters` ni celui de `aggregation`. Conséquences constatées : sur
+# « budget par pays hors Tunisie », cinq widgets sur huit incluaient la Tunisie à
+# côté d'un graphique qui l'excluait ; et sur « budget moyen par client », deux
+# widgets affichaient « Budget moyen » au-dessus d'une SOMME — le libellé venait de
+# l'intention d'origine, le calcul d'une copie amputée.
+#
+# `tests/test_dac_composer.py` vérifie que tout widget composé porte bien chacune de
+# ces clés : ajouter un champ de périmètre sans l'inscrire ici fait échouer les tests.
+_CLES_DE_PERIMETRE = (
+    "filters", "range_filters", "exclude_statuses", "exclude_filters", "aggregation",
+    "hot_deals",
+)
+
+
+def _perimetre(intent: dict) -> dict:
+    """Les clés de périmètre de `intent`, telles quelles."""
+    return {cle: intent[cle] for cle in _CLES_DE_PERIMETRE if intent.get(cle)}
+
+
 def _kpi_intent(intent: dict, metric: str) -> dict:
-    """Même filtres que la question, mais sans dimension : un total global."""
+    """Même périmètre que la question, mais sans dimension : un total global."""
     return {
         "metric": metric, "dimension": "", "chart_type": "kpi_card",
-        "filters": intent.get("filters") or {},
-        "range_filters": intent.get("range_filters") or {},
-        "exclude_statuses": intent.get("exclude_statuses") or [],
+        "filters": {}, "range_filters": {}, "exclude_statuses": [],
         "use_raw_table": False, "limit": 0,
+        **_perimetre(intent),
     }
 
 
@@ -225,11 +288,12 @@ def _variant_intent(intent: dict, **overrides) -> dict:
         "metric": intent.get("metric") or "budget",
         "dimension": intent.get("dimension") or "",
         "chart_type": intent.get("chart_type") or "bar",
-        "filters": intent.get("filters") or {},
-        "range_filters": intent.get("range_filters") or {},
-        "exclude_statuses": intent.get("exclude_statuses") or [],
+        "filters": {}, "range_filters": {}, "exclude_statuses": [],
         "use_raw_table": intent.get("use_raw_table", False),
         "limit": intent.get("limit") or 0,
+        # Le périmètre en dernier : il fait autorité sur les valeurs par défaut
+        # ci-dessus, et un seul endroit décide de ce qu'il contient.
+        **_perimetre(intent),
     }
     variant.update(overrides)
     return variant
@@ -292,7 +356,7 @@ def _kpi_row(intent: dict, metric: str) -> list:
     comparaison — le poids du périmètre dans le portefeuille quand la question
     filtre, sinon la valeur moyenne par opportunité."""
     widgets = [_widget_from_intent(_kpi_intent(intent, metric),
-                                    with_unit(_metric_label(metric), metric), col=3)]
+                                    with_unit(_metric_label(metric, intent), metric), col=3)]
     if metric != "nb_opportunities":
         widgets.append(_widget_from_intent(
             _kpi_intent(intent, "nb_opportunities"), "Opportunités", col=3))
@@ -302,7 +366,10 @@ def _kpi_row(intent: dict, metric: str) -> list:
     # de grandeur unitaire, qui situe le total tout aussi bien.
     if intent.get("filters") or intent.get("range_filters"):
         widgets.append(_share_of_portfolio_widget(intent, metric, col=3))
-    elif metric != "nb_opportunities":
+    elif metric != "nb_opportunities" and intent.get("aggregation") != "avg":
+        # Pas de moyenne d'appoint quand la question EST déjà une moyenne : le KPI
+        # principal l'affiche alors, et les deux widgets portaient le même nom
+        # (« Budget moyen (DT) ») pour le même chiffre, côte à côte.
         widgets.append(_average_widget(intent, metric, col=3))
 
     if metric != "weighted_amount":
@@ -348,7 +415,7 @@ def _complement_widget(intent: dict, metric: str, col: int, exclude: set | None 
     widget = _widget_from_intent(
         _variant_intent(intent, dimension=complement, chart_type=chart,
                          use_raw_table=False, limit=0),
-        f"{_metric_label(metric)} par {_dimension_label(complement).lower()}",
+        f"{_metric_label(metric, intent)} par {_dimension_label(complement).lower()}",
         col=col,
     )
     widget["_dimension"] = complement  # retiré avant écriture, sert au chaînage
@@ -393,9 +460,14 @@ def _is_pie_readable(dimension: str, intent: dict) -> bool:
 def _share_of_portfolio_widget(intent: dict, metric: str, col: int) -> dict:
     """Poids du périmètre interrogé dans le portefeuille entier.
 
-    C'est la réponse directe à « 72 M€, c'est beaucoup ? » : un montant absolu n'a
+    C'est la réponse directe à « 72 MDT, c'est beaucoup ? » : un montant absolu n'a
     aucun point de comparaison tant qu'on ne sait pas ce qu'il représente du tout.
-    Ne vaut la peine que si la question filtre — sans filtre, la part vaut 100 %."""
+    Ne vaut la peine que si la question filtre — sans filtre, la part vaut 100 %.
+
+    Reste sur une SOMME même quand la question demande une moyenne : une part se
+    calcule sur des totaux, et un rapport de deux moyennes ne représenterait aucune
+    part de quoi que ce soit. Le libellé du widget dit bien « part du portefeuille »,
+    pas « part de la moyenne »."""
     expr = METRIC_SQL.get(metric, METRIC_SQL["budget"])
     where = _where_clause(intent)
     sql = (
@@ -411,7 +483,7 @@ def _share_of_portfolio_widget(intent: dict, metric: str, col: int) -> dict:
 
 def _average_widget(intent: dict, metric: str, col: int) -> dict:
     """Valeur moyenne par opportunité : un ordre de grandeur unitaire, qui situe le
-    total (350 opportunités à 470 k€ n'est pas la même histoire que 10 à 16 M€)."""
+    total (350 opportunités à 470 kDT n'est pas la même histoire que 10 à 16 MDT)."""
     column = {"budget": "budget", "financial_offer": "financial_offer",
               "weighted_amount": "weighted_amount"}.get(metric, "budget")
     where = _where_clause(intent)
@@ -424,8 +496,11 @@ def _average_widget(intent: dict, metric: str, col: int) -> dict:
 
 
 def _share_of_total_widget(intent: dict, metric: str, col: int) -> dict:
-    """Part de chaque valeur dans le total, en pourcentage. Répond à « 72 M€,
-    c'est beaucoup ? » : un chiffre absolu seul n'a pas de point de comparaison."""
+    """Part de chaque valeur dans le total, en pourcentage. Répond à « 72 MDT,
+    c'est beaucoup ? » : un chiffre absolu seul n'a pas de point de comparaison.
+
+    Sur des sommes, comme `_share_of_portfolio_widget` et pour la même raison : une
+    part se calcule sur des totaux, jamais sur des moyennes."""
     dimension = intent.get("dimension") or "practice"
     expr = METRIC_SQL.get(metric, METRIC_SQL["budget"])
     where = _where_clause(intent)
@@ -541,7 +616,7 @@ def _grouped_bar_widget(intent: dict, metric: str, axis: str, series: str, col: 
     C'est ce qui rend une comparaison lisible — voir côte à côte le budget de chaque
     pays DÉCOMPOSÉ par practice montre d'où vient l'écart, là où deux barres totales
     disent seulement qu'il existe."""
-    expr = METRIC_SQL.get(metric, METRIC_SQL["budget"])
+    expr = _metric_expr(metric, intent)
     where = _where_clause(intent)
     sql = (
         f"SELECT {axis}, {series}, {expr} AS {metric}\n"
@@ -550,13 +625,13 @@ def _grouped_bar_widget(intent: dict, metric: str, axis: str, series: str, col: 
         f"ORDER BY {axis}, {series}"
     )
     return {
-        "name": f"{_metric_label(metric)} par {_dimension_label(axis).lower()} "
+        "name": f"{_metric_label(metric, intent)} par {_dimension_label(axis).lower()} "
                  f"et {_dimension_label(series).lower()}",
         "type": "chart", "chart": "bar", "col": col, "sql": sql, "stacked": True,
         "color": {"field": series},
         "x": {"field": axis, "type": "category", "title": _dimension_label(axis)},
         "y": {"field": metric, "type": "number",
-               "title": with_unit(_metric_label(metric), metric), "format": _fmt(metric)},
+               "title": with_unit(_metric_label(metric, intent), metric), "format": _fmt(metric)},
     }
 
 
@@ -631,6 +706,63 @@ def _pack_rows(widgets: list) -> list:
     return rows
 
 
+def _borne_lisible(colonne: str, regle: dict) -> str:
+    """« probabilité de gain 80 % et plus » plutôt que « win_probability >= 0.8 ».
+
+    Un titre de tableau de bord est lu par quelqu'un qui ne connaît pas les noms de
+    colonnes ; y laisser l'opérateur brut le rendait illisible.
+    """
+    libelle = FILTER_LABELS.get(colonne, colonne.replace("_", " "))
+    op = regle.get("op", "")
+    valeur = regle.get("value", "")
+
+    if colonne == "win_probability":
+        try:
+            valeur = "%g %%" % (float(valeur) * 100)
+        except (TypeError, ValueError):
+            pass
+
+    if op == "between" and isinstance(valeur, (list, tuple)) and len(valeur) == 2:
+        return "%s de %s à %s" % (libelle, valeur[0], valeur[1])
+    mots = {">=": "et plus", ">": "et plus", "<=": "au plus", "<": "au plus", "=": ""}
+    return ("%s %s %s" % (libelle, valeur, mots.get(op, op))).strip()
+
+
+def _titre_depuis_intention(intent: dict) -> str:
+    """« Budget moyen par pays — practice = Risk Advisory », construit de toutes pièces.
+
+    Chaque morceau vient d'une valeur déjà validée contre la whitelist : la métrique,
+    l'axe et les filtres résolus. Rien de ce que l'utilisateur a tapé n'y transite,
+    donc le nom du tableau de bord reste un nom de tableau de bord.
+    """
+    metric = intent.get("metric") or ""
+    if not metric or intent.get("is_conversation"):
+        return ""
+
+    titre = _metric_label(metric, intent)
+    dimension = intent.get("dimension") or ""
+    if dimension:
+        titre += " par %s" % _dimension_label(dimension).lower()
+
+    # Les filtres appliqués font partie de l'identité de l'analyse : sans eux,
+    # « budget par pays » et « budget par pays pour Risk Advisory » porteraient le
+    # même nom et se partageraient donc le même instantané.
+    precisions = []
+    for cle, valeur in (intent.get("filters") or {}).items():
+        libelle = FILTER_LABELS.get(cle, cle)
+        if isinstance(valeur, (list, tuple)):
+            precisions.append("%s %s" % (libelle, ", ".join(str(v) for v in valeur)))
+        else:
+            precisions.append("%s %s" % (libelle, valeur))
+    for cle, regle in (intent.get("range_filters") or {}).items():
+        precisions.append(_borne_lisible(cle, regle))
+    if precisions:
+        # Tiret simple, pas cadratin : le nom sert aussi de route DAC, et
+        # `_dashboard_name` ne garde que les caractères sûrs pour une URL.
+        titre += " - %s" % " et ".join(precisions)
+    return titre
+
+
 def _analysis_title(query: str, intent: dict) -> str:
     """Intitulé de l'analyse : l'objectif résolu de préférence à la phrase tapée.
 
@@ -640,7 +772,17 @@ def _analysis_title(query: str, intent: dict) -> str:
     partir de la métrique, de l'axe et des filtres réellement appliqués : deux
     demandes qui aboutissent à la même analyse portent donc le même nom, et se
     partagent le même instantané au lieu d'en accumuler deux identiques.
+
+    L'intitulé est RECONSTRUIT à partir de l'intention validée avant de retomber sur
+    quoi que ce soit d'écrit ailleurs. `goal` est rédigé par le modèle, qui reprend
+    volontiers la phrase de l'utilisateur mot pour mot : le nom du tableau de bord,
+    qui est aussi une route et un nom de fichier, se retrouvait alors à recopier
+    n'importe quel texte tapé — y compris une tentative d'injection, inoffensive
+    pour la requête mais qui traînait ensuite dans dac/dashboards/.
     """
+    depuis_intention = _titre_depuis_intention(intent)
+    if depuis_intention:
+        return depuis_intention
     return ((intent.get("goal") or "").strip() or query)
 
 
@@ -665,11 +807,52 @@ def _write_dashboard(filename: str, name: str, description: str, widgets: list) 
     DASHBOARDS_DIR.mkdir(parents=True, exist_ok=True)
     # allow_unicode : les titres et valeurs sont en français (accents) et doivent
     # rester lisibles dans le YAML versionné, pas être échappés en \uXXXX.
-    (DASHBOARDS_DIR / filename).write_text(
-        yaml.dump(dashboard, Dumper=_LiteralDumper, allow_unicode=True,
-                   sort_keys=False, width=120),
-        encoding="utf-8",
-    )
+    contenu = yaml.dump(dashboard, Dumper=_LiteralDumper, allow_unicode=True,
+                        sort_keys=False, width=120)
+
+    # Écriture ATOMIQUE. `write_text` tronque le fichier avant de le remplir : entre
+    # les deux, il est vide ou incomplet. Or DAC surveille ce dossier en rechargement
+    # direct et peut le relire à cet instant précis ; et deux questions posées en même
+    # temps visent le MÊME `_principal.yml`. Un remplacement d'un seul tenant supprime
+    # les deux fenêtres à la fois : les lecteurs voient l'ancien fichier ou le nouveau,
+    # jamais un état intermédiaire.
+    #
+    # Le fichier temporaire est créé dans le dossier de destination — os.replace n'est
+    # atomique qu'à l'intérieur d'un même système de fichiers. Son nom porte l'identité
+    # du processus et du thread pour que deux écritures simultanées ne se disputent pas
+    # le même intermédiaire.
+    cible = DASHBOARDS_DIR / filename
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    provisoire = TEMP_DIR / ("%s.%d.%d.tmp" % (filename, os.getpid(), threading.get_ident()))
+    try:
+        provisoire.write_text(contenu, encoding="utf-8")
+        # Sous Windows, remplacer un fichier qu'un autre processus a ouvert échoue
+        # (« Access is denied ») au lieu d'attendre. Le cas est bref — le temps d'une
+        # lecture — donc quelques tentatives espacées suffisent presque toujours.
+        for tentative in range(_TENTATIVES_REMPLACEMENT):
+            try:
+                os.replace(provisoire, cible)
+                return
+            except PermissionError:
+                if tentative == _TENTATIVES_REMPLACEMENT - 1:
+                    # PAS de repli sur une écriture directe. Elle rouvrirait
+                    # exactement la fenêtre que ce mécanisme ferme, et un test de
+                    # charge l'a confirmé : le lecteur voyait alors un YAML tronqué.
+                    # Mieux vaut laisser en place le fichier précédent, qui est
+                    # valide, et propager l'échec — `main.py` traite déjà l'écriture
+                    # du tableau de bord comme non bloquante et renvoie la réponse
+                    # texte, plutôt que de servir un dashboard illisible.
+                    logger.warning(
+                        "Remplacement de %s impossible après %d tentatives ; le "
+                        "tableau de bord précédent est conservé intact.",
+                        filename, _TENTATIVES_REMPLACEMENT,
+                    )
+                    raise
+                time.sleep(_ATTENTE_REMPLACEMENT_S)
+    finally:
+        # Si le remplacement a échoué, l'intermédiaire ne doit pas rester derrière :
+        # `_prune_generated` ne le connaît pas et il s'accumulerait sans fin.
+        provisoire.unlink(missing_ok=True)
 
 
 def write_main_dashboard(query: str, intent: dict, widgets: list | None = None) -> str:

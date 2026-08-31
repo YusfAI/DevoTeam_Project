@@ -93,9 +93,20 @@ export default function DashboardPanel({
   function handleLoad(chargé) {
     setReady((prev) => ({ ...prev, [chargé]: true }))
     const timer = window.setTimeout(() => {
-      setFrames((prev) => (prev.length > 1 ? prev.filter((f) => f.token === chargé) : prev))
+      setFrames((prev) => {
+        // Le cadre qui vient de charger est-il TOUJOURS à l'écran ? Une question
+        // posée pendant le fondu l'a peut-être déjà remplacé. Sans cette
+        // vérification, le filtre ne gardait alors plus rien : la liste se vidait et
+        // l'utilisateur se retrouvait devant un panneau blanc, sans rien pour en
+        // sortir sinon reposer une question.
+        if (!prev.some((f) => f.token === chargé)) return prev
+        return prev.length > 1 ? prev.filter((f) => f.token === chargé) : prev
+      })
       // Sans ce ménage, la table des cadres prêts grossirait à chaque question.
       setReady((prev) => (prev[chargé] ? { [chargé]: true } : prev))
+      // Le minuteur a fait son travail : le retirer évite que la liste enfle d'une
+      // entrée morte à chaque question de la session.
+      timers.current = timers.current.filter((t) => t !== timer)
     }, FONDU_MS)
     timers.current.push(timer)
   }
@@ -134,15 +145,24 @@ export default function DashboardPanel({
               onClick={() => decalerZoom(-1)}
               disabled={zoom === ZOOMS[0]}
               title="Réduire l’affichage"
+              /* Le contenu visible est un signe « − » : un lecteur d'écran
+                 l'annonce « moins », sans dire moins de quoi. Le libellé
+                 accessible porte l'action, le title reste l'infobulle. */
+              aria-label="Réduire l’affichage"
             >
               −
             </button>
-            <span aria-live="polite">{Math.round(zoom * 100)} %</span>
+            {/* `aria-live` annonce la nouvelle valeur après chaque clic ; le
+                libellé dit CE QUE le nombre mesure, que rien d'autre n'indique. */}
+            <span aria-live="polite" aria-label={`Taille d’affichage : ${Math.round(zoom * 100)} %`}>
+              {Math.round(zoom * 100)} %
+            </span>
             <button
               type="button"
               onClick={() => decalerZoom(1)}
               disabled={zoom === ZOOMS[ZOOMS.length - 1]}
               title="Agrandir l’affichage"
+              aria-label="Agrandir l’affichage"
             >
               +
             </button>

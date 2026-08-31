@@ -332,10 +332,13 @@ def test_old_generated_dashboards_are_pruned(tmp_path, monkeypatch):
     # Sans ménage, chaque question laisserait un fichier derrière elle indéfiniment.
     monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path)
     monkeypatch.setattr(dac_composer, "MAX_GENERATED_DASHBOARDS", 3)
-    for i in range(6):
-        # Des objectifs distincts : ce sont bien six analyses différentes, pas six
-        # formulations de la même (qui, elles, partagent volontairement un fichier).
-        write_generated_dashboard(f"question numero {i}", _intent(goal=f"Analyse numero {i}"))
+    # Six analyses réellement DIFFÉRENTES — des axes distincts, pas seulement des
+    # intitulés distincts. Le nom est reconstruit depuis l'intention validée (métrique,
+    # axe, filtres) et non depuis le texte de `goal`, qui est rédigé par le modèle :
+    # six `goal` différents pour la même analyse partagent volontairement un fichier.
+    for dimension in ("country", "practice", "status", "opp_type", "funding_source",
+                      "deadline_year"):
+        write_generated_dashboard(f"budget par {dimension}", _intent(dimension=dimension))
 
     restants = list(tmp_path.glob(f"{dac_composer.GENERATED_PREFIX}*.yml"))
     assert len(restants) == 3
@@ -418,3 +421,142 @@ def test_the_working_dashboard_keeps_its_name_when_completed(tmp_path, monkeypat
 
     contenu = yaml.safe_load((tmp_path / dac_composer.MAIN_FILENAME).read_text(encoding="utf-8"))
     assert nom == contenu["name"] == dac_composer.MAIN_DASHBOARD_NAME
+
+
+def test_l_ecriture_du_dashboard_ne_laisse_jamais_un_fichier_a_moitie(tmp_path, monkeypatch):
+    """Deux questions posées en même temps visent le MÊME `_principal.yml`.
+
+    `write_text` tronque avant de remplir : entre les deux, le fichier est vide ou
+    incomplet — et DAC surveille ce dossier en rechargement direct, donc il peut le
+    relire précisément à cet instant. L'écriture passe désormais par un fichier
+    provisoire remplacé d'un seul tenant ; ce test hammer le cas.
+    """
+    import threading
+    import time
+
+    import yaml as _yaml
+
+    monkeypatch.setattr(dac_composer, "DASHBOARDS_DIR", tmp_path / "dashboards")
+    monkeypatch.setattr(dac_composer, "TEMP_DIR", tmp_path / "tmp")
+    (tmp_path / "dashboards").mkdir()
+    anomalies = []
+
+    def ecrire(dimension):
+        for _ in range(15):
+            try:
+                dac_composer.write_main_dashboard(f"budget par {dimension}",
+                                                  _intent(dimension=dimension))
+            except Exception as erreur:  # noqa: BLE001 - on veut voir TOUTE défaillance
+                anomalies.append(f"écriture : {erreur!r}")
+
+    def relire():
+        """Un lecteur qui RELÂCHE le fichier entre deux lectures, comme DAC.
+
+        Sans la pause, trois threads Python en boucle serrée gardent le fichier
+        ouvert en permanence : sous Windows aucun remplacement ne peut alors
+        aboutir, et le test mesurerait la contention artificielle qu'il crée
+        lui-même plutôt que la propriété recherchée.
+        """
+        fichier = tmp_path / "dashboards" / dac_composer.MAIN_FILENAME
+        for _ in range(120):
+            time.sleep(0.001)
+            if not fichier.exists():
+                continue
+            try:
+                contenu = _yaml.safe_load(fichier.read_text(encoding="utf-8"))
+            except (FileNotFoundError, PermissionError):
+                # Le fichier a été remplacé entre le exists() et la lecture. Sous
+                # Windows, un échange atomique en cours refuse l'ouverture au lieu
+                # de servir l'ancienne version — c'est le signe que le mécanisme
+                # fonctionne, pas une défaillance. Un vrai lecteur réessaie.
+                continue
+            except Exception as erreur:  # noqa: BLE001
+                # TOUT le reste est la faute qu'on traque : un YAML malformé ne peut
+                # venir que d'un fichier lu à moitié écrit.
+                anomalies.append(f"lecture tronquée : {erreur!r}")
+                continue
+            if contenu is not None and "rows" not in contenu:
+                anomalies.append("dashboard lu sans ses lignes")
+
+    fils = ([threading.Thread(target=ecrire, args=(d,))
+             for d in ("country", "practice", "status", "buyer")]
+            + [threading.Thread(target=relire) for _ in range(3)])
+    for f in fils:
+        f.start()
+    for f in fils:
+        f.join()
+
+    assert not anomalies, anomalies[:5]
+    assert not list((tmp_path / "tmp").glob("*.tmp")), "un fichier provisoire est resté derrière"
+    # L'invariant qui compte : DAC surveille le dossier des dashboards en rechargement
+    # direct. Un fichier provisoire posé DEDANS y déclenchait deux événements par
+    # écriture — la moitié du journal de DAC n'était plus que ce bruit.
+    assert not list((tmp_path / "dashboards").glob("*.tmp")), (
+        "un provisoire a été écrit dans le dossier surveillé par DAC"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Le périmètre de la question doit atteindre TOUS les widgets
+# ---------------------------------------------------------------------------
+
+def test_tous_les_widgets_portent_l_exclusion_demandee():
+    """Cinq widgets sur huit l'ignoraient.
+
+    `_kpi_intent` et `_variant_intent` recopiaient une liste FERMÉE de clés, qui
+    n'avait pas suivi l'ajout de `exclude_filters`. Sur « budget par pays hors
+    Tunisie », le tableau de bord affichait donc « Budget : 103 900 001 DT » —
+    Tunisie comprise — juste à côté d'un graphique qui l'excluait. Deux chiffres
+    contradictoires sur le même écran, pour la même question.
+    """
+    widgets = compose_widgets(_intent(exclude_filters={"country": ["Tunisie"]}))
+    sans = [w["name"] for w in widgets
+            if not ("NOT IN" in w["sql"] and "Tunisie" in w["sql"])]
+    assert not sans, f"widgets sans l'exclusion : {sans}"
+
+
+def test_aucun_libelle_moyen_ne_recouvre_une_somme():
+    """Le libellé venait de l'intention, le calcul d'une copie amputée.
+
+    `aggregation` manquait lui aussi à la liste des clés recopiées : deux widgets
+    s'intitulaient « Budget moyen (DT) » au-dessus d'une SOMME, à côté d'un
+    troisième, homonyme, qui affichait bien la moyenne.
+    """
+    widgets = compose_widgets(_intent(aggregation="avg"))
+    menteurs = [w["name"] for w in widgets
+                if "moyen" in w["name"].lower() and "AVG(budget)" not in w["sql"]]
+    assert not menteurs, f"libellés démentis par leur calcul : {menteurs}"
+
+
+def test_une_question_de_moyenne_n_affiche_pas_deux_fois_la_meme_moyenne():
+    # Le KPI principal EST la moyenne : le widget d'appoint « ordre de grandeur »
+    # faisait alors double emploi, sous un nom identique.
+    noms = [w["name"] for w in compose_widgets(_intent(aggregation="avg"))]
+    assert len(noms) == len(set(noms)), f"widgets en double : {noms}"
+
+
+def test_toute_cle_de_perimetre_atteint_les_widgets_derives():
+    """Le garde-fou contre la prochaine clé oubliée.
+
+    Les deux défauts ci-dessus ont la MÊME cause : une liste de clés recopiées à la
+    main, qui ne suit pas quand l'intention gagne un champ. Ce test échoue dès qu'une
+    clé déclarée dans `_CLES_DE_PERIMETRE` cesse d'être propagée.
+    """
+    perimetre = {
+        "filters": {"practice": "Risk Advisory"},
+        "range_filters": {"budget": {"op": ">", "value": 1000}},
+        "exclude_statuses": ["Offre gagnée"],
+        "exclude_filters": {"country": ["Tunisie"]},
+        "aggregation": "avg",
+        "hot_deals": True,
+    }
+    assert set(perimetre) == set(dac_composer._CLES_DE_PERIMETRE), (
+        "ce test doit couvrir chaque clé de périmètre déclarée"
+    )
+
+    intent = _intent(**perimetre)
+    for constructeur in (lambda: dac_composer._kpi_intent(intent, "budget"),
+                         lambda: dac_composer._variant_intent(intent)):
+        derive = constructeur()
+        for cle, valeur in perimetre.items():
+            assert derive.get(cle) == valeur, f"{cle} perdue par {constructeur}"

@@ -12,7 +12,9 @@ plutôt qu'une opération pandas. Les deux doivent rester d'accord — c'est vé
 par les tests (même filtre => même total).
 """
 from .schema_and_whitelist import VALID_DIMENSIONS, VALID_FILTERS, VALID_METRICS
-from .business_rules import FUNNEL_STAGE_ORDER, LOST_STATUSES
+from .business_rules import (
+    FUNNEL_STAGE_ORDER, LOST_STATUSES, heatmap_secondary_dimension, hot_deal_sql,
+)
 
 
 def _question_targets_status(intent: dict) -> bool:
@@ -45,6 +47,16 @@ RAW_COLUMNS = [
 ]
 
 VALID_OPS = {"<", ">", "<=", ">=", "=", "between"}
+
+# Métriques pour lesquelles une moyenne est une demande légitime : des montants.
+_MOYENNABLES = {"budget", "financial_offer", "weighted_amount"}
+
+# Colonnes numériques qu'une question peut borner (« budget supérieur à 500 000 »,
+# « probabilité de plus de 80 % »). Elles ne sont pas des filtres d'égalité, d'où
+# leur absence de VALID_FILTERS — mais elles doivent être acceptées ici, sinon la
+# borne est appliquée par pandas et ignorée par le SQL.
+_COLONNES_BORNABLES = {"days_remaining", "win_probability", "budget",
+                       "financial_offer", "weighted_amount"}
 
 # Au-delà, un graphique catégoriel devient illisible. La traîne est regroupée dans
 # « Autres » (voir build_sql) et non supprimée, pour que le total reste vérifiable.
@@ -102,11 +114,25 @@ def funnel_sql(intent: dict, cumulative: bool = True, conversion: bool = False) 
     return base + "SELECT status, atteint AS nb_opportunities FROM cumul ORDER BY rang"
 
 
-def _agg_kind(metric: str) -> str:
-    """« sum » si les valeurs de la métrique s'additionnent (budget, comptage),
-    « mean » sinon (probabilité de gain). Détermine si la traîne d'un graphique peut
-    être regroupée : additionner des sommes a du sens, moyenner des moyennes non."""
-    return "mean" if metric == "win_probability" else "sum"
+def _moyenne_demandee(intent) -> bool:
+    """La question demande-t-elle explicitement une moyenne ?
+
+    Vaut pour une intention (dict) comme pour son seul champ. Le mot était ignoré :
+    « budget moyen par pays » renvoyait la somme sous une étiquette de moyenne.
+    """
+    if isinstance(intent, dict):
+        return intent.get("aggregation") == "avg"
+    return intent == "avg"
+
+
+def _agg_kind(metric: str, intent=None) -> str:
+    """« sum » si les valeurs affichées s'additionnent (budget sommé, comptage),
+    « mean » sinon (probabilité de gain, ou montant explicitement moyenné). Détermine
+    si la traîne d'un graphique peut être regroupée dans « Autres » : additionner des
+    sommes a du sens, moyenner des moyennes non."""
+    if metric == "win_probability":
+        return "mean"
+    return "mean" if _moyenne_demandee(intent) else "sum"
 
 # Colonnes numériques : leurs valeurs de filtre ne doivent pas être quotées comme
 # du texte (WHERE deadline_year = 2026, pas = '2026').
@@ -126,6 +152,12 @@ def _literal(column: str, value) -> str:
 def _where_clause(intent: dict) -> str:
     conditions = []
 
+    # « Affaire chaude » : déjà remise OU probabilité >= 80 %. La condition est
+    # parenthésée par `hot_deal_sql` — sans quoi son OR absorberait les AND qui
+    # suivent et le périmètre de la question disparaîtrait en silence.
+    if intent.get("hot_deals"):
+        conditions.append(hot_deal_sql())
+
     for column, value in (intent.get("filters") or {}).items():
         if column not in VALID_FILTERS:
             continue  # défense en profondeur : déjà rejeté en amont par Pydantic
@@ -138,7 +170,11 @@ def _where_clause(intent: dict) -> str:
             conditions.append(f"{column} = {_literal(column, value)}")
 
     for column, rule in (intent.get("range_filters") or {}).items():
-        if column not in VALID_FILTERS and column not in ("days_remaining", "win_probability", "budget"):
+        # `financial_offer` et `weighted_amount` manquaient à cette liste : une borne
+        # posée sur eux était appliquée par pandas et ignorée par le SQL. Les deux
+        # moteurs auraient répondu deux chiffres différents à la même question —
+        # exactement la divergence que tout ce module cherche à empêcher.
+        if column not in VALID_FILTERS and column not in _COLONNES_BORNABLES:
             continue
         op = (rule or {}).get("op", "<")
         value = (rule or {}).get("value")
@@ -151,6 +187,24 @@ def _where_clause(intent: dict) -> str:
             conditions.append(f"{column} BETWEEN {lo} AND {hi}")
         else:
             conditions.append(f"{column} {op} {_literal(column, value)}")
+
+    # Exclusions sur une colonne AUTRE que le statut : « budget par pays hors
+    # Tunisie », « tout sauf Risk Advisory ». Elles n'existaient pas, et le mot de
+    # négation était simplement ignoré : la valeur partait en filtre POSITIF et la
+    # réponse donnait exactement l'inverse de la question — 34 530 000 DT (le budget
+    # de la Tunisie) pour « hors Tunisie », dont la vraie valeur est 69 370 001.
+    for column, value in (intent.get("exclude_filters") or {}).items():
+        if column not in VALID_FILTERS:
+            continue
+        valeurs = value if isinstance(value, (list, tuple)) else [value]
+        valeurs = [v for v in valeurs if v is not None]
+        if not valeurs:
+            continue
+        litteraux = ", ".join(_literal(column, v) for v in valeurs)
+        # `IS NULL OR NOT IN` : en SQL, `colonne NOT IN (...)` est FAUX quand la
+        # colonne est vide, ce qui écarterait aussi les lignes sans valeur — or
+        # « hors Tunisie » les concerne tout autant.
+        conditions.append(f"({column} IS NULL OR {column} NOT IN ({litteraux}))")
 
     excluded = list(intent.get("exclude_statuses") or [])
 
@@ -170,12 +224,38 @@ def _where_clause(intent: dict) -> str:
     return " AND ".join(conditions) if conditions else "1 = 1"
 
 
-def _metric_expr(metric: str) -> str:
+def _metric_expr(metric: str, intent=None) -> str:
+    """Expression SQL de la métrique, moyenne comprise.
+
+    Le passage à AVG ne concerne que les montants : un comptage moyen n'a pas de
+    sens sans préciser moyen sur quoi, et la probabilité de gain est déjà une
+    moyenne. Le même arbitrage qu'en pandas (db_layer._agregation) — les deux
+    moteurs doivent répondre le même chiffre à la même question.
+    """
+    if _moyenne_demandee(intent) and metric in _MOYENNABLES:
+        return f"AVG({metric})"
     return METRIC_SQL.get(metric, METRIC_SQL["budget"])
 
 
 def build_sql(intent: dict) -> str:
     """SQL DuckDB correspondant à l'intention, adapté au type de graphique."""
+    # Un comptage de valeurs distinctes court-circuite tout le reste : la question
+    # ne demande ni répartition ni graphique, seulement combien il en existe.
+    compte = intent.get("count_distinct")
+    if compte in VALID_DIMENSIONS:
+        axe = intent.get("dimension") or ""
+        where = _where_clause(intent)
+        if axe in VALID_DIMENSIONS and axe != compte:
+            # Regroupé : « combien de clients distincts PAR practice ». L'alias reste
+            # `nb_opportunities`, comme pour tout comptage — c'est ce que le reste de
+            # la chaîne (widgets, message) sait lire.
+            return ("SELECT {axe}, COUNT(DISTINCT {compte}) AS nb_opportunities\n"
+                    "FROM {table}\nWHERE {where}\nGROUP BY {axe}\n"
+                    "ORDER BY nb_opportunities DESC"
+                    .format(axe=axe, compte=compte, table=TABLE, where=where))
+        return ("SELECT COUNT(DISTINCT {}) AS value\nFROM {}\nWHERE {}"
+                .format(compte, TABLE, where))
+
     metric = intent.get("metric") or "budget"
     if metric not in VALID_METRICS:
         metric = "budget"
@@ -185,13 +265,13 @@ def build_sql(intent: dict) -> str:
     chart_type = intent.get("chart_type") or "bar"
     limit = int(intent.get("limit") or 0)
     where = _where_clause(intent)
-    expr = _metric_expr(metric)
+    expr = _metric_expr(metric, intent)
 
     if chart_type == "funnel":
         return funnel_sql(intent, cumulative=True)
 
     if chart_type == "heatmap" and dimension:
-        secondary = "country" if dimension == "practice" else "practice"
+        secondary = heatmap_secondary_dimension(dimension)
         return (
             f"SELECT {dimension}, {secondary}, {expr} AS {metric}\n"
             f"FROM {TABLE}\nWHERE {where}\n"
@@ -237,9 +317,9 @@ def build_sql(intent: dict) -> str:
 
     # Plafond de lisibilité. Le reste est REGROUPÉ dans « Autres » plutôt que jeté :
     # un simple LIMIT ferait disparaître des lignes sans le dire, et le total affiché
-    # en KPI ne correspondrait plus à la somme des barres (constaté : 6,58 M€ d'écart
+    # en KPI ne correspondrait plus à la somme des barres (constaté : 6,58 MDT d'écart
     # sur « budget par pays », 9 pays sur 21 absents du graphique).
-    if _agg_kind(metric) != "sum":
+    if _agg_kind(metric, intent) != "sum":
         # Une moyenne de moyennes n'a pas de sens statistique : sur ce type de métrique
         # (probabilité de gain), on tronque honnêtement au lieu d'inventer un agrégat.
         return f"{sql}\nLIMIT {MAX_CATEGORIES}"

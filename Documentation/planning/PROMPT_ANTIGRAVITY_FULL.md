@@ -1,3 +1,22 @@
+> ================================================================================
+> DOCUMENT HISTORIQUE — NE DÉCRIT PLUS L'APPLICATION ACTUELLE (relu le 28/08/2026)
+> ================================================================================
+> Ce document date d'une conception antérieure. Trois de ses choix techniques ont
+> été abandonnés depuis :
+> 
+>   - SQLite / MySQL  ->  le Google Sheet chargé en mémoire par pandas est la
+>                         source unique ; DuckDB n'est qu'une projection en lecture
+>                         seule pour les dashboards (backend/data_store.py).
+>   - Vega-Lite       ->  les visuels sont produits par Bruin DAC en YAML versionné
+>                         (dac/dashboards/, backend/dac_composer.py).
+>   - Dashboard unique par question  ->  un tableau de bord de travail réécrit en
+>                         place, plus un instantané par analyse.
+> 
+> Il est conservé pour mémoire du raisonnement d'origine. L'architecture qui fait
+> foi est décrite dans README.md et PROGRESS.md.
+> ================================================================================
+> 
+
 # Rôle
 
 Tu es l'ingénieur full-stack en charge de construire, **de bout en bout et de façon autonome**, une application de dashboard conversationnel pour DevoTeam. Tu ne dois pas t'arrêter demander validation entre les étapes — construis, teste toi-même, corrige, et avance jusqu'à un produit complet et fonctionnel. Documente ce que tu fais au fur et à mesure dans un fichier `PROGRESS.md` à la racine du projet, mis à jour à chaque étape terminée.

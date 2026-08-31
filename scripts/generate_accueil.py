@@ -15,8 +15,8 @@ import sys
 
 sys.path.insert(0, ".")
 from backend.business_rules import (
-    FUNNEL_STAGE_ORDER, HOT_DEAL_MIN_PROBABILITY, LOST_STATUSES, PENDING_SUBMISSION,
-    SUBMITTED_STATUSES, WON_STATUSES,
+    FUNNEL_STAGE_ORDER, LOST_STATUSES, PENDING_SUBMISSION,
+    SUBMITTED_STATUSES, WON_STATUSES, hot_deal_sql,
 )
 
 
@@ -107,6 +107,13 @@ def _bloc(texte, indent="          "):
     return ">-\n" + "\n".join(indent + ligne for ligne in lignes)
 
 
+# Ferme la rangée en cours et en ouvre une nouvelle, au milieu d'un bloc de widgets.
+# Six KPI ne tiennent pas sur les 12 colonnes d'une rangée ; les couper permet de
+# garder chaque valeur COLLÉE à sa part — c'est ce voisinage qui les rend lisibles,
+# et le renvoyer à une rangée séparée l'aurait perdu.
+_RUPTURE_DE_LIGNE = "\n\n  - widgets:\n"
+
+
 def kpi(name, col, corps, fmt, desc=None):
     d = "\n        description: %s" % _bloc(desc) if desc else ""
     return ("      - name: %s\n"
@@ -121,52 +128,63 @@ def kpi_remises(name, col, expr, fmt, desc=None):
     return kpi(name, col, REMISES_CTE + "\n          SELECT %s AS value FROM remises" % expr, fmt, desc)
 
 
-# Affaire chaude : UN SEUL critère, la probabilité de gain. Le statut ne joue aucun
-# rôle — une affaire déjà gagnée est à 100 %, donc chaude elle aussi. Les offres
-# perdues sortent d'elles-mêmes : leur probabilité est vide dans le Sheet, et une
-# comparaison avec une valeur absente est toujours fausse.
+# Affaire chaude : probablement gagnée, PAS ENCORE gagnée — déjà remise, OU
+# probabilité dans [80 %, 100 %[. Une réunion, pas une intersection : l'un des deux
+# critères suffit. La borne haute est exclue parce que 100 % n'est pas une prévision
+# ici mais un constat : les 88 lignes à 1,0 sont toutes déjà gagnées ou signées.
+# Les offres perdues sortent d'elles-mêmes : ni leur statut ni leur probabilité
+# (vide) ne les retiennent.
+#
+# La condition vient de business_rules.hot_deal_sql, la même que celle qu'appliquent
+# le chat et les tableaux de bord générés. La recopier ici l'aurait fait diverger au
+# premier changement de définition — et elle a déjà changé deux fois.
 #
 # Pas de borne haute sur l'échéance, contrairement aux offres remises : la question
 # porte sur la confiance, pas sur une fenêtre de dépôt.
 CHAUDES_CTE = """          WITH chaudes AS (
             SELECT * FROM opportunities
-            WHERE win_probability >= %s
+            WHERE %s
 %s
-          )""" % (HOT_DEAL_MIN_PROBABILITY, FILTRES)
+          )""" % (hot_deal_sql(), FILTRES)
 
 
-# Nombre de colonnes du détail des affaires chaudes. Trois divisent la hauteur par
-# trois tout en laissant à chaque table les ~400 px dont le tableau de DAC a besoin
-# au minimum (`min-w-[400px]` dans son bundle).
-COLONNES_CHAUDES = 3
+def table_chaudes():
+    """LE détail des affaires chaudes : une seule table, pleine largeur.
 
+    Elle a longtemps été découpée — trois colonnes, puis deux — parce que la
+    définition d'alors en retenait plus d'une centaine et que le tableau de DAC ne
+    défile pas verticalement : la page devenait interminable. La borne haute sur la
+    probabilité a ramené le périmètre à ce qu'il désigne vraiment, une poignée
+    d'affaires encore à gagner. Le découpage n'a plus d'objet, et la pleine largeur
+    laisse enfin la place aux huit colonnes.
 
-def table_chaudes(rang, description):
-    """Une des colonnes du détail. Toutes partagent le même découpage NTILE."""
+    Le rang reste affiché : il dit d'un coup d'œil où l'on en est dans le classement
+    par espérance de gain, qui est l'ordre de lecture utile.
+    """
     return (
-        "      - name: Affaires chaudes (%d/%d)\n"
+        "      - name: Détail des affaires chaudes\n"
         "        type: table\n"
-        "        col: %d\n"
-        "        description: %s\n"
+        "        col: 12\n"
+        "        description: >-\n"
+        "          Toutes les affaires encore à gagner, par espérance de gain\n"
+        "          décroissante.\n"
         "        sql: |\n"
-        "%s,\n"
-        "          classees AS (\n"
-        "            SELECT description, buyer, weighted_amount,\n"
-        "              ROW_NUMBER() OVER (ORDER BY weighted_amount DESC) AS rang,\n"
-        "              NTILE(%d) OVER (ORDER BY weighted_amount DESC) AS colonne\n"
-        "            FROM chaudes\n"
-        "          )\n"
-        "          SELECT rang, description, buyer, weighted_amount\n"
-        "          FROM classees\n"
-        "          WHERE colonne = %d\n"
-        "          ORDER BY rang\n"
+        "%s\n"
+        "          SELECT ROW_NUMBER() OVER (ORDER BY weighted_amount DESC) AS rang,\n"
+        "                 description, buyer, practice, status, budget, win_probability,\n"
+        "                 weighted_amount\n"
+        "          FROM chaudes\n"
+        "          ORDER BY weighted_amount DESC\n"
         "        columns:\n"
         "          - { name: rang, label: \"N°\", number: number }\n"
         "          - { name: description, label: Opportunité }\n"
         "          - { name: buyer, label: Client }\n"
+        "          - { name: practice, label: Practice }\n"
+        "          - { name: status, label: Statut }\n"
+        "          - { name: budget, label: Budget (DT), number: number }\n"
+        "          - { name: win_probability, label: Probabilité, number: percent }\n"
         "          - { name: weighted_amount, label: Montant pondéré (DT), number: number }"
-        % (rang, COLONNES_CHAUDES, 12 // COLONNES_CHAUDES, description,
-            CHAUDES_CTE, COLONNES_CHAUDES, rang)
+        % CHAUDES_CTE
     )
 
 
@@ -223,7 +241,7 @@ connection: devoteam_duckdb
 # encore partie (20 opportunités sont dans ce cas et sortent donc du compte).
 #
 # EXCLUSION DES AFFAIRES PERDUES. La règle par défaut de l'application les écarte de
-# tous les chiffres (66,1 M€ d'affaires mortes dans un « budget total » ne servent
+# tous les chiffres (66,1 MDT d'affaires mortes dans un « budget total » ne servent
 # aucune décision). Elle est LEVÉE dans le bloc « offres remises », qui filtre
 # lui-même sur le statut : c'est exactement l'échappatoire prévue — sans elle, la
 # question « combien de perdues ? » ne pourrait pas recevoir de réponse. Le bloc
@@ -378,8 +396,8 @@ __CHAUDES_KPI__
       - name: Affaires chaudes par practice
         type: chart
         chart: bar
-        col: 12
-        description: Répartition des affaires chaudes entre les practices.
+        col: 6
+        description: Combien chaque practice en compte, en valeur absolue.
         sql: |
 __CHAUDES__
           SELECT practice, COUNT(*) AS nb
@@ -389,6 +407,25 @@ __CHAUDES__
         x: { field: practice, type: category, title: Practice }
         y: { field: nb, type: number, title: Affaires chaudes, format: ",.0f" }
         color: { field: practice }
+
+      # Le camembert PORTE les pourcentages : DAC écrit « nom NN % » sur chaque part,
+      # sans qu'il faille les calculer. Les barres à côté donnent les valeurs
+      # absolues ; les deux répondent à des questions différentes — « combien » et
+      # « quelle proportion » — et trois practices restent sous le plafond de six
+      # parts au-delà duquel deux angles voisins ne se comparent plus à l'œil.
+      - name: Poids de chaque practice
+        type: chart
+        chart: pie
+        col: 6
+        description: La même répartition en pourcentages du total des affaires chaudes.
+        sql: |
+__CHAUDES__
+          SELECT practice, COUNT(*) AS nb
+          FROM chaudes
+          GROUP BY practice
+          ORDER BY nb DESC
+        label: practice
+        value: { field: nb }
 
 
   # Le détail des affaires chaudes, réparti sur TROIS colonnes côte à côte.
@@ -519,21 +556,52 @@ NOUVELLE_LIGNE = """
   - widgets:
 """
 
+# Chaque valeur est suivie de SA PART du portefeuille. Un nombre seul ne dit pas
+# s'il est gros : « 105 affaires chaudes » prend un tout autre sens selon qu'il
+# représente 5 % ou 46 % de ce qui est en jeu.
+#
+# Le dénominateur est le portefeuille ACTIF, affaires perdues exclues — le même que
+# celui des KPI de santé plus bas. Le rapporter au portefeuille entier gonflerait le
+# dénominateur avec des affaires mortes et écraserait la part sans raison.
+def part_chaudes(nom, col, expression, desc):
+    corps = ("          SELECT (SELECT %s FROM opportunities\n"
+             "                  WHERE %s\n%s)\n"
+             "                 / NULLIF((SELECT %s FROM opportunities\n"
+             "                           WHERE status NOT IN (%s)\n%s), 0) AS value"
+             % (expression, hot_deal_sql(), FILTRES, expression, PERDUS, FILTRES))
+    return kpi(nom, col, corps, ".1%", desc)
+
+
 chaudes_kpi = "\n\n".join([
-    kpi_chaudes("Affaires chaudes", 4, "COUNT(*)", ",.0f",
-                "Opportunités à 80 % de probabilité ou plus. Le statut n'entre pas en compte."),
-    kpi_chaudes("Budget à forte confiance (DT)", 4, "SUM(budget)", ",.0f",
+    kpi_chaudes("Affaires chaudes", 3, "COUNT(*)", ",.0f",
+                "Probablement gagnées, pas encore gagnées : remises, ou de 80 à 99 % de probabilité."),
+    part_chaudes("Part des opportunités", 3, "COUNT(*) * 1.0",
+                 "Ce que les affaires chaudes pèsent dans le portefeuille actif, en nombre."),
+    kpi_chaudes("Budget à forte confiance (DT)", 3, "SUM(budget)", ",.0f",
                 "Budget cumulé des affaires chaudes."),
-    kpi_chaudes("Montant pondéré associé (DT)", 4, "SUM(weighted_amount)", ",.0f",
+    part_chaudes("Part du budget", 3, "SUM(budget)",
+                 "La même chose en montant : la part du budget actif qui est chaude."),
+]) + _RUPTURE_DE_LIGNE + "\n\n".join([
+    kpi_chaudes("Montant pondéré associé (DT)", 6, "SUM(weighted_amount)", ",.0f",
                 "Offre financière × probabilité, sur ce même périmètre."),
+    # Sur quelle part du portefeuille ce bloc peut-il se prononcer ? Près d'une ligne
+    # sur deux n'a pas de probabilité renseignée : elle ne peut alors être ni retenue
+    # ni écartée comme affaire chaude. Sans ce chiffre, les trois KPI ci-dessus se
+    # lisent comme portant sur l'ensemble du portefeuille, ce qui est faux — et rien
+    # dans l'interface ne le disait.
+    # « WHERE 1 = 1 » parce que les filtres de tête sont écrits en « AND … » : ils
+    # se greffent sur une clause existante et ne peuvent pas en ouvrir une.
+    kpi("Probabilité renseignée", 6,
+        "          SELECT COUNT(win_probability) * 1.0 / NULLIF(COUNT(*), 0) AS value\n"
+        "          FROM opportunities\n          WHERE 1 = 1\n" + FILTRES,
+        ".0%",
+        # Sous les 100 caractères que s'impose le tableau de bord : une description
+        # se lit d'un coup d'œil sous son titre, le raisonnement vit ici.
+        "Sur cette part seulement, une affaire peut être dite chaude ou non."),
 ])
 
 doc = HEADER + ligne1 + NOUVELLE_LIGNE + ligne2 + BODY + ligne3 + FOOTER
-chaudes_colonnes = "\n\n".join([
-    table_chaudes(1, "Les plus fortes espérances de gain. La suite se lit dans les colonnes à droite."),
-    table_chaudes(2, "Suite du classement, par espérance de gain décroissante."),
-    table_chaudes(3, "Fin du classement — aucune affaire chaude n'est laissée de côté."),
-])
+chaudes_colonnes = table_chaudes()
 
 doc = (doc.replace("__CHAUDES_COLONNES__", chaudes_colonnes)
           .replace("__CHAUDES_KPI__", chaudes_kpi)
@@ -564,8 +632,9 @@ attendus = [
     "Issue des offres remises", "Offres remises par practice",
     "Issue par practice", "Offres remises par mois",
     "Affaires chaudes", "Budget à forte confiance (DT)", "Montant pondéré associé (DT)",
-    "Affaires chaudes par practice",
-    "Affaires chaudes (1/3)", "Affaires chaudes (2/3)", "Affaires chaudes (3/3)",
+    "Part des opportunités", "Part du budget", "Probabilité renseignée",
+    "Affaires chaudes par practice", "Poids de chaque practice",
+    "Détail des affaires chaudes",
     "Budget actif (DT)", "Offre financière (DT)", "Écart offre / budget", "Montant pondéré (DT)",
     "Entonnoir de vente", "Taux de passage entre étapes", "Budget actif par pays (DT)",
     "Opportunités urgentes (échéance ≤ 7 jours)",

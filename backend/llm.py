@@ -60,6 +60,10 @@ DIMENSION_KEYWORDS = {
     "status": ("stat",),
     "funding_source": ("financ", "source"),
     "opp_type": ("type",),
+    # "client"/"buyer"/"acheteur" désignent tous la colonne buyer. "lead" est le mot
+    # qu'emploie l'équipe pour la même chose dans le tableau des affaires chaudes.
+    "buyer": ("client", "buyer", "acheteur", "lead", "compte"),
+    "partner": ("partenaire", "partner"),
 }
 
 
@@ -155,16 +159,31 @@ def _resolve_metric(raw: str) -> str:
     )
 
 
+# Ce que le modèle renvoie quand la question demande une répartition selon quelque
+# chose qui n'existe pas dans les données. Un marqueur explicite plutôt qu'une chaîne
+# vide : "" veut dire « aucune répartition demandée » (un KPI global est alors la
+# bonne réponse), et confondre les deux faisait répondre le total du portefeuille à
+# « budget par couleur de cheveux ».
+DIMENSION_INCONNUE = "__inconnu__"
+
+AXES_DISPONIBLES = ("pays, practice, statut, client, partenaire, mois, année, "
+                    "source de financement, type d'opportunité")
+
+
 def _resolve_dimension(raw: str) -> str:
     if raw in VALID_DIMENSIONS:
         return raw
+    if raw == DIMENSION_INCONNUE:
+        raise IntentUnclear(
+            "Cette répartition n'existe pas dans les données. Axes disponibles : "
+            f"{AXES_DISPONIBLES}."
+        )
     low = raw.lower()
     for canonical, keywords in DIMENSION_KEYWORDS.items():
         if any(kw in low for kw in keywords):
             return canonical
     raise IntentUnclear(
-        f"Je ne reconnais pas l'axe d'analyse « {raw} ». Axes possibles : pays, practice, "
-        "statut, mois, année, source de financement, type d'opportunité."
+        f"Je ne reconnais pas l'axe d'analyse « {raw} ». Axes possibles : {AXES_DISPONIBLES}."
     )
 
 
@@ -181,6 +200,8 @@ def _filter_source(key: str, db_ctx: dict) -> tuple[list, dict]:
         return db_ctx.get("funding_sources", []), {}
     if key == "partner":
         return db_ctx.get("partners", []), {}
+    if key == "buyer":
+        return db_ctx.get("buyers", []), {}
     return [], {}
 
 
@@ -222,6 +243,51 @@ def _resolve_filter_value(key: str, value, db_ctx: dict):
     return match
 
 
+# Une seule définition du contexte vide : les deux sorties de secours de
+# `_load_db_context` (données absentes, chargement en échec) doivent porter les
+# mêmes clés que le cas nominal, sinon un `.get()` oublié ailleurs lève un KeyError
+# exactement le jour où les données manquent.
+_EMPTY_DB_CONTEXT = {
+    "countries": [], "funding_sources": [], "partners": [], "buyers": [], "years": [],
+}
+
+
+def _verifier_periode(filters: dict, db_ctx: dict) -> None:
+    """Refuse une période entièrement hors des données plutôt que de l'ignorer.
+
+    « budget en 2030 » renvoyait le portefeuille complet, tous exercices confondus :
+    la contrainte disparaissait de la requête mais restait dans la question, donc la
+    réponse avait toutes les apparences d'y répondre. Une année PARTIELLEMENT couverte
+    passe normalement — c'est seulement quand il ne reste rien à montrer qu'on parle.
+    """
+    annees_connues = db_ctx.get("years") or []
+    if not annees_connues:
+        return  # Données indisponibles : on ne bloque pas sur une liste vide.
+
+    demandees = filters.get("deadline_year")
+    if demandees is None:
+        return
+    if not isinstance(demandees, list):
+        demandees = [demandees]
+
+    hors_perimetre = []
+    for annee in demandees:
+        try:
+            valeur = int(str(annee).strip())
+        except (TypeError, ValueError):
+            continue  # Valeur illisible : ce n'est pas à ce garde-fou de la juger.
+        if valeur not in annees_connues:
+            hors_perimetre.append(str(valeur))
+
+    if hors_perimetre and len(hors_perimetre) == len(demandees):
+        couverture = (f"{annees_connues[0]}" if len(annees_connues) == 1
+                      else f"{annees_connues[0]} à {annees_connues[-1]}")
+        raise IntentUnclear(
+            f"Aucune donnée pour {', '.join(hors_perimetre)}. Les échéances connues vont "
+            f"de {couverture}."
+        )
+
+
 def _load_db_context() -> dict:
     # Pas de cache ici (contrairement à avant, où c'était une vraie requête réseau
     # MySQL qu'on ne voulait pas refaire à chaque appel) : le DataFrame lui-même est
@@ -232,15 +298,20 @@ def _load_db_context() -> dict:
         from .data_store import get_dataframe
         df = get_dataframe()
         if df is None or df.empty:
-            return {"countries": [], "funding_sources": [], "partners": []}
+            return _EMPTY_DB_CONTEXT.copy()
         return {
             "countries": sorted(df["country"].dropna().unique().tolist()),
             "funding_sources": sorted(df["funding_source"].dropna().unique().tolist()),
             "partners": sorted(df["partner"].dropna().unique().tolist()),
+            "buyers": sorted(df["buyer"].dropna().unique().tolist()),
+            # Années réellement couvertes par les données. Sert à refuser une période
+            # hors périmètre plutôt qu'à répondre le portefeuille entier : « budget en
+            # 2030 » ne doit pas renvoyer le total de tous les exercices confondus.
+            "years": sorted({int(a) for a in df["deadline_year"].dropna().unique().tolist()}),
         }
     except Exception:
         logger.warning("Contexte des données indisponible, poursuite sans listes de référence.", exc_info=True)
-        return {"countries": [], "funding_sources": [], "partners": []}
+        return _EMPTY_DB_CONTEXT.copy()
 
 
 def _unclear_intent(message: str) -> dict:
@@ -260,6 +331,32 @@ _LOCATION_PATTERN = re.compile(r"\b(?:en|au|aux)\s+[a-zàâäéèêëïîôöù�
 # aucune notion de filtre à valeurs multiples, il ne doit jamais y prétendre
 # répondre seul (voir _augment_rule_based_result).
 _COMPARISON_WORDS = ("compar", " vs ", " versus ", " contre ")
+
+# « pour le client X », « chez le partenaire Y » : une désignation explicite d'entité
+# que le parseur rapide ne sait pas résoudre. Quand elle ne correspond à aucun nom
+# connu, mieux vaut le modèle et sa validation stricte qu'une réponse muette sur le
+# complément.
+_DESIGNATION_PATTERN = re.compile(
+    r"\b(?:client|acheteur|partenaire|compte|lead)\s+[\w'&.-]{2,}", re.IGNORECASE
+)
+
+
+def _entites_nommees(q_lower: str, connues: list) -> list:
+    """Les noms de `connues` cités dans la question.
+
+    La comparaison est ancrée sur des frontières de mots : sans ça, un client nommé
+    « CDC » se reconnaîtrait à l'intérieur de n'importe quel mot le contenant, et une
+    question sans rapport se retrouverait filtrée sur lui. Les noms très courts sont
+    écartés pour la même raison — le risque de collision y dépasse le service rendu.
+    """
+    trouves = []
+    for nom in connues:
+        nom_bas = str(nom).lower().strip()
+        if len(nom_bas) < 3:
+            continue
+        if re.search(r"(?<![\w])%s(?![\w])" % re.escape(nom_bas), q_lower):
+            trouves.append(nom)
+    return trouves
 
 
 def _augment_rule_based_result(query: str, ruled: dict, db_ctx: dict) -> Optional[dict]:
@@ -288,7 +385,30 @@ def _augment_rule_based_result(query: str, ruled: dict, db_ctx: dict) -> Optiona
     if len(matched_countries) > 1:
         return None
 
-    if not ruled.get("filters") and _LOCATION_PATTERN.search(query):
+    # La condition portait sur « aucun filtre du tout » : « budget pour Data
+    # Management en Islande » avait déjà son filtre de practice, la garde ne se
+    # déclenchait donc pas et le complément de lieu disparaissait sans un mot — le
+    # budget de la practice entière repartait comme celui de l'Islande. Ce qui
+    # compte n'est pas qu'un filtre existe, c'est qu'aucun ne réponde AU LIEU cité.
+    if "country" not in (ruled.get("filters") or {}) and _LOCATION_PATTERN.search(query):
+        return None
+
+    # Même raisonnement que pour les pays, appliqué aux clients et aux partenaires :
+    # le parseur rapide ne connaît pas ces listes (96 clients, 13 partenaires) et
+    # rendait « budget pour le client ASIN » avec un `filters` vide — donc le budget
+    # de TOUT le portefeuille présenté comme celui d'un client. Un nom reconnu
+    # devient un filtre ; une désignation explicite qui ne correspond à rien de connu
+    # repasse par le modèle et sa validation stricte, qui saura le dire.
+    for colonne, cle_ctx in (("buyer", "buyers"), ("partner", "partners")):
+        trouves = _entites_nommees(q_lower, db_ctx.get(cle_ctx, []))
+        if len(trouves) == 1:
+            ruled.setdefault("filters", {})
+            ruled["filters"].setdefault(colonne, trouves[0])
+            return ruled
+        if len(trouves) > 1:
+            return None
+
+    if not ruled.get("filters") and _DESIGNATION_PATTERN.search(query):
         return None
 
     return ruled
@@ -370,7 +490,13 @@ User: "évolution du budget en aire"
 → {"goal":"Évolution du budget","metric":"budget","dimension":"deadline_month","filters":{},"range_filters":{},"chart_type":"area","aggregation":"sum","use_raw_table":false,"is_conversation":false}
 
 User: "liste des offres pondérées"
-→ {"goal":"Offres pondérées","metric":"budget","dimension":"","filters":{"status":"Offre remise"},"range_filters":{"win_probability":{"op":">=","value":0.8}},"chart_type":"table","aggregation":"sum","use_raw_table":true,"is_conversation":false}
+→ {"goal":"Offres pondérées","metric":"budget","dimension":"","filters":{},"range_filters":{"win_probability":{"op":">=","value":0.8}},"chart_type":"table","aggregation":"sum","use_raw_table":true,"is_conversation":false}
+
+User: "budget moyen par pays"
+→ {"goal":"Budget moyen par pays","metric":"budget","dimension":"country","filters":{},"range_filters":{},"chart_type":"bar","aggregation":"avg","use_raw_table":false,"is_conversation":false}
+
+User: "top 5 des clients par budget"
+→ {"goal":"Top 5 des clients par budget","metric":"budget","dimension":"buyer","filters":{},"range_filters":{},"chart_type":"bar","aggregation":"sum","use_raw_table":false,"is_conversation":false}
 
 User: "montant pondéré par pays"
 → {"goal":"Montant pondéré par pays","metric":"weighted_amount","dimension":"country","filters":{},"range_filters":{},"chart_type":"bar","aggregation":"sum","use_raw_table":false,"is_conversation":false}
@@ -397,6 +523,15 @@ COLONNES metric autorisées : {VALID_METRICS}
   financial_offer = offre ; weighted_amount = pondéré ; win_probability = proba, chance
 
 COLONNES dimension autorisées : {VALID_DIMENSIONS} ("" si total global ou KPI)
+  buyer = client, acheteur, lead, compte ; partner = partenaire ;
+  funding_source = source de financement ; opp_type = type d'opportunité
+  N'utilise "" QUE si la question ne demande vraiment aucune répartition. Si elle demande
+  une répartition selon quelque chose qui ne figure PAS dans cette liste, mets
+  dimension = "__inconnu__" — ne réponds jamais un total global à la place.
+
+aggregation : "avg" dès que la question demande une MOYENNE ("moyen", "moyenne", "en moyenne").
+  "sum" sinon pour un montant, "count" pour nb_opportunities. Une moyenne et une somme ne
+  répondent pas à la même question : ne les confonds jamais.
 
 chart_type : {VALID_CHART_TYPES} — choisis selon le JOB de la question, pas selon des mots-clés isolés :
   - Un seul chiffre demandé, sans dimension (« combien », « quel est », « total ») → kpi_card
@@ -425,12 +560,15 @@ MAPPING FR → filters :
 - "gagné/gagnées/remporté" → status "Offre gagnée"
 - "perdu/perdue" → status "Offre perdue"
 - "signé" → status "Offre signée"
+- "pour/chez le client X", "le compte X", "le lead X" → filters.buyer = "X"
+- "avec le partenaire Y", "en partenariat avec Y" → filters.partner = "Y"
 - "Data" → practice "Data Management"
 - "Risk" → practice "Risk Advisory"
 - "Digital" → practice "Digital Transformation"
-- "offre(s)/opportunité(s) pondérée(s)" (jamais "montant pondéré", qui désigne le metric
-  weighted_amount) → filters.status = "Offre remise" ET range_filters.win_probability =
-  {{"op": ">=", "value": 0.8}}. Définition métier fixe, ne dépend pas du contexte.
+- "offre(s)/opportunité(s) pondérée(s)" et "affaire(s) chaude(s)" (jamais "montant pondéré",
+  qui désigne le metric weighted_amount) → range_filters.win_probability = {{"op": ">=",
+  "value": 0.8}} et RIEN D'AUTRE. Le statut ne joue AUCUN rôle dans cette définition :
+  n'ajoute jamais filters.status ici. Définition métier fixe, ne dépend pas du contexte.
 
 Pour COMPARER plusieurs valeurs d'une même colonne (ex: "compare la France et le Maroc"), mets une
 LISTE de valeurs dans filters au lieu d'une seule : {{"country": ["France", "Maroc"]}}.
@@ -523,8 +661,18 @@ goal, metric, dimension, filters, range_filters, chart_type, aggregation, use_ra
 
         resolved_filters = {}
         for k, v in intent.filters.items():
+            # Une clé de filtre hors périmètre passait jusqu'ici sans bruit : aucune
+            # liste de référence n'existe pour elle, donc sa valeur était acceptée
+            # telle quelle puis ignorée en aval — la réponse portait alors sur tout
+            # le portefeuille en prétendant être filtrée.
+            if k not in VALID_FILTERS:
+                raise IntentUnclear(
+                    f"Je ne peux pas filtrer sur « {k} ». Filtres disponibles : "
+                    f"{AXES_DISPONIBLES}."
+                )
             resolved_filters[k] = _resolve_filter_value(k, v, db_ctx)
         intent.filters = resolved_filters
+        _verifier_periode(resolved_filters, db_ctx)
         intent.limit = int(intent.limit or 0)
     except IntentUnclear as e:
         logger.info("Intention ambiguë pour %r : %s", query, e)
