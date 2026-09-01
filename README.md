@@ -158,6 +158,14 @@ données à installer.
   le dashboard « Qualité des données », sans quoi tolérer reviendrait à corrompre les
   données en silence.
 
+## Démonstration
+
+Une visite guidée de l'application, sans rien installer :
+**[Voir la démonstration](https://app.arcade.software/flows/0JEAJAGmgCqMbVXfQo2R/view)**
+
+Le même lien est dans `Demo video.url`, à la racine : un double-clic l'ouvre dans le
+navigateur, pour qui reçoit le dossier sans passer par ce fichier.
+
 ## Installer sur un autre poste
 
 Procédure complète, pensée pour une machine qui n'est pas celle du développeur :

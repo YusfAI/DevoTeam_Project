@@ -7,6 +7,9 @@ Compter une heure la première fois, dont l'essentiel est du téléchargement.
 
 ---
 
+> Pour voir l'application avant de l'installer :
+> [démonstration guidée](https://app.arcade.software/flows/0JEAJAGmgCqMbVXfQo2R/view) (aussi dans `Demo video.url`, à la racine du projet).
+
 ## Avant le jour de l'installation
 
 Trois choses doivent être obtenues **à l'avance**. Ce sont elles qui font échouer une
