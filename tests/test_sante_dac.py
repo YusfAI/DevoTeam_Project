@@ -25,10 +25,15 @@ from backend import main
 @pytest.fixture(autouse=True)
 def _vider_le_cache_de_sonde():
     """La sonde met son verdict en cache : sans remise à zéro, un test hériterait
-    de la réponse du précédent."""
-    main._dac_query_probe_cache = (0.0, None)
+    de la réponse du précédent.
+
+    Le cache est un dictionnaire indexé par SERVEUR depuis que le mode sombre a le
+    sien : le clair et le sombre s'installent indépendamment, et l'un peut exécuter
+    ses requêtes quand l'autre en est incapable.
+    """
+    main._dac_query_probe_cache.clear()
     yield
-    main._dac_query_probe_cache = (0.0, None)
+    main._dac_query_probe_cache.clear()
 
 
 def _sante(monkeypatch, *, repond: bool, erreur_widget: str | None):

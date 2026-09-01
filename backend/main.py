@@ -262,24 +262,31 @@ def _dac_is_reachable() -> bool:
 _DAC_QUERY_PROBE_DASHBOARD = "Qualité des données"  # versionné, donc toujours présent
 _DAC_QUERY_PROBE_TIMEOUT_SECONDS = 5.0
 _DAC_QUERY_PROBE_TTL_SECONDS = 60.0
-_dac_query_probe_cache: tuple[float, str | None] = (0.0, None)
+# Une entrée par serveur : le clair et le sombre s'installent indépendamment,
+# et l'un peut très bien exécuter ses requêtes quand l'autre en est incapable.
+_dac_query_probe_cache: dict[str, tuple[float, str | None]] = {}
 
 
-def _dac_query_failure() -> str | None:
-    """Le message d'erreur si DAC ne sait pas exécuter ses requêtes, sinon None."""
-    global _dac_query_probe_cache
+def _dac_query_failure(racine: str | None = None) -> str | None:
+    """Le message d'erreur si ce serveur DAC ne sait pas exécuter ses requêtes.
+
+    `racine` désigne le serveur sondé — le clair par défaut. Les deux s'installent
+    indépendamment : le sombre peut être incapable d'exécuter la moindre requête
+    pendant que le clair fonctionne parfaitement.
+    """
     import time
     import urllib.parse
     import urllib.request
 
-    expire_a, precedent = _dac_query_probe_cache
+    racine = racine or DAC_URL
+    expire_a, precedent = _dac_query_probe_cache.get(racine, (0.0, None))
     if time.monotonic() < expire_a:
         return precedent
 
     erreur = None
     try:
         url = "%s/api/v1/dashboards/%s/data" % (
-            DAC_URL, urllib.parse.quote(_DAC_QUERY_PROBE_DASHBOARD))
+            racine, urllib.parse.quote(_DAC_QUERY_PROBE_DASHBOARD))
         requete = urllib.request.Request(
             url, b"{}", {"Content-Type": "application/json"}, method="POST")
         with urllib.request.urlopen(requete, timeout=_DAC_QUERY_PROBE_TIMEOUT_SECONDS) as reponse:
@@ -293,8 +300,42 @@ def _dac_query_failure() -> str | None:
         # et le dit mieux. Cette sonde-ci ne se prononce que sur l'exécution du SQL.
         logger.debug("Sonde d'exécution DAC indisponible.", exc_info=True)
 
-    _dac_query_probe_cache = (time.monotonic() + _DAC_QUERY_PROBE_TTL_SECONDS, erreur)
+    _dac_query_probe_cache[racine] = (
+        time.monotonic() + _DAC_QUERY_PROBE_TTL_SECONDS, erreur)
     return erreur
+
+
+# Le serveur DAC du mode sombre. Un thème DAC est une carte de valeurs fixes,
+# appliquée au lancement : il n'y a pas de bascule possible dans le fichier, d'où un
+# SECOND processus plutôt qu'un second jeu de jetons.
+DAC_DARK_URL = os.getenv("DAC_DARK_URL", "http://127.0.0.1:8322")
+
+
+def _dac_dark_is_reachable() -> bool:
+    """Le serveur sombre répond-il ? Son absence est normale, jamais une panne.
+
+    Il est facultatif par construction : le mode sombre est un confort, et exiger un
+    processus de plus pour afficher un tableau de bord ferait dépendre l'essentiel de
+    l'accessoire. Quand il manque, l'iframe reprend le serveur clair.
+    """
+    # Importé ICI, comme les deux autres sondes du fichier : `urllib.request` n'est
+    # pas chargé au niveau du module, et le référencer sans l'importer levait une
+    # AttributeError que le `except` avalait — la sonde répondait « absent » sur un
+    # serveur parfaitement joignable.
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(DAC_DARK_URL, timeout=_DAC_PROBE_TIMEOUT_SECONDS):
+            pass
+    except Exception:
+        return False
+
+    # Répondre ne suffit pas. Un DAC lancé dans un environnement fautif démarre
+    # normalement, sert ses pages, et fait échouer CHAQUE widget séparément
+    # (« bruin query failed »). Le proposer dans cet état ferait basculer le mode
+    # sombre sur un mur d'erreurs, alors que le serveur clair juste à côté
+    # fonctionne — l'exact contraire du repli qu'on cherche à garantir.
+    return _dac_query_failure(DAC_DARK_URL) is None
 
 
 @app.get("/health")
@@ -338,6 +379,10 @@ async def health():
             "requetes_ok": dac_repond and not echec_requetes,
             "url": DAC_URL,
             "aide": aide,
+            # Le second serveur, qui rend les mêmes dashboards avec le thème sombre.
+            # Son absence n'est PAS une panne : le frontend retombe simplement sur le
+            # serveur clair. C'est pour cela qu'il ne pèse pas sur `ok`.
+            "sombre_url": DAC_DARK_URL if _dac_dark_is_reachable() else None,
         },
         "donnees": {
             "ok": df is not None and not df.empty,

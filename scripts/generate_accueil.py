@@ -15,6 +15,7 @@ import re
 import sys
 
 sys.path.insert(0, ".")
+from backend.alerts import EXCLUDED_STATUSES
 from backend.business_rules import (
     FUNNEL_STAGE_ORDER, LOST_STATUSES, PENDING_SUBMISSION,
     SUBMITTED_STATUSES, WON_STATUSES, hot_deal_sql,
@@ -169,6 +170,28 @@ CHAUDES_CTE = """          WITH chaudes AS (
             WHERE %s
 %s
           )""" % (hot_deal_sql(), FILTRES)
+
+
+# Les statuts CLOS : une affaire déjà gagnée, perdue ou écartée n'a plus d'échéance
+# à traiter, même si sa date tombe dans la fenêtre. La liste est celle de
+# backend/alerts.py (EXCLUDED_STATUSES) : une seule définition de « encore ouverte »,
+# sinon l'email de rappel et le tableau de bord annonceraient deux nombres.
+CLOS = ", ".join("'" + s.replace("'", "''") + "'" for s in EXCLUDED_STATUSES)
+
+
+def kpi_echeance(name, col, expr, fmt, jours, desc=None):
+    """Un KPI sur les affaires encore ouvertes dont l'échéance tombe dans `jours`.
+
+    Volontairement hors des deux filtres de date, comme le tableau qu'ils surmontent :
+    la fenêtre de ces indicateurs se définit toute seule, et une date de fin posée à
+    aujourd'hui les viderait — l'exact contraire de leur propos. Le filtre de
+    practice, lui, s'applique normalement.
+    """
+    corps = ("          SELECT %s AS value FROM opportunities\n"
+             "          WHERE days_remaining BETWEEN 0 AND %d\n"
+             "            AND status NOT IN (%s)\n"
+             "__PRACTICE_SEULE__" % (expr, jours, CLOS))
+    return kpi(name, col, corps, fmt, desc)
 
 
 def table_chaudes():
@@ -494,6 +517,23 @@ ligne3 = "\n\n".join([
         "Offre × probabilité, sur les seules lignes où la probabilité est renseignée."),
 ])
 
+# Les indicateurs de la section « Échéances à venir ». Ils précèdent le tableau et
+# répondent à ce qu'on se demande avant de le lire.
+#
+# Le horizon à 30 jours est là pour DONNER SA MESURE au chiffre à 7 jours : « 4 »
+# ne dit pas s'il faut s'inquiéter tant qu'on ignore si le mois en compte 5 ou 40.
+KPI_ECHEANCES = "\n".join([
+    kpi_echeance("Échéances à 7 jours", 3, "COUNT(*)", ",.0f", 7,
+                 "Affaires encore ouvertes à traiter cette semaine."),
+    kpi_echeance("Budget en jeu (DT)", 3, "SUM(budget)", ",.0f", 7,
+                 "Ce que pèsent ces échéances de la semaine."),
+    kpi_echeance("La plus proche (jours)", 3, "MIN(days_remaining)", ",.0f", 7,
+                 "Jours restants sur l'échéance la plus urgente."),
+    kpi_echeance("Échéances à 30 jours", 3, "COUNT(*)", ",.0f", 30,
+                 "Le mois qui vient — de quoi situer le chiffre de la semaine."),
+])
+
+
 FOOTER = """
 
   # === Pipeline : où en sont les affaires encore ouvertes ===
@@ -557,6 +597,9 @@ __FILTRES__
   # === Ce qu'il faut traiter maintenant ===
   - widgets:
 __SECTION_URGENCES__
+
+  - widgets:
+__KPI_ECHEANCES__
 
   - widgets:
       - name: Opportunités urgentes (échéance ≤ 7 jours)
@@ -668,6 +711,7 @@ doc = (doc
           .replace("__REMISES__", REMISES_CTE)
           .replace("__ISSUES__", ISSUES)
           .replace("__ETAPES__", etapes_cte())
+          .replace("__KPI_ECHEANCES__", KPI_ECHEANCES)
           .replace("__PERDUS__", PERDUS)
           .replace("__PRACTICE_SEULE__", PRACTICE)
           .replace("__FILTRES__", FILTRES))
@@ -768,6 +812,8 @@ attendus = [
     "Détail des affaires chaudes",
     "Budget actif (DT)", "Offre financière (DT)", "Écart offre / budget", "Montant pondéré (DT)",
     "Entonnoir de vente", "Taux de passage entre étapes", "Budget actif par pays (DT)",
+    "Échéances à 7 jours", "Budget en jeu (DT)", "La plus proche (jours)",
+    "Échéances à 30 jours",
     "Opportunités urgentes (échéance ≤ 7 jours)",
 ]
 manquants = [n for n in attendus if n not in noms]

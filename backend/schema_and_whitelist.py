@@ -19,9 +19,14 @@ VALID_METRICS = ["budget", "financial_offer", "weighted_amount", "nb_opportuniti
 # le total du portefeuille comme si c'était la réponse. Leur cardinalité est élevée
 # (96 clients, 13 partenaires), ce que le regroupement « Autres » de sql_builder
 # absorbe déjà pour tous les axes (MAX_CATEGORIES).
+# `issue` n'est pas une colonne du Sheet : c'est le regroupement des statuts d'une
+# offre remise en gagnée / perdue / en attente (business_rules.issue_sql). Il figure
+# ici parce que c'est un AXE légitime — « sur les offres remises, combien gagnées,
+# perdues, en attente » est la question que le métier pose le plus souvent — mais
+# volontairement PAS dans VALID_FILTERS : on ne filtre pas dessus, on groupe.
 VALID_DIMENSIONS = [
     "country", "practice", "status", "deadline_month", "deadline_year",
-    "funding_source", "opp_type", "buyer", "partner",
+    "funding_source", "opp_type", "buyer", "partner", "issue",
 ]
 VALID_FILTERS = [
     "country", "practice", "status", "funding_source", "opp_type", "partner",

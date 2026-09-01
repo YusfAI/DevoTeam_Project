@@ -80,6 +80,56 @@ PENDING_SUBMISSION = ["Offre remise", "En attente du plan de charge"]
 
 
 # ---------------------------------------------------------------------------
+# Issue d'une offre remise : gagnée, perdue, ou en attente de décision
+#
+# « Issue » n'est pas une colonne des données — c'est le regroupement des statuts en
+# trois cas, celui que le lecteur a en tête quand il demande « sur les offres
+# remises, combien gagnées, perdues, en attente ». Le tableau de bord le calculait
+# déjà en SQL ; le chat ne savait pas grouper là-dessus et répondait par statut brut,
+# soit cinq lignes au lieu des trois attendues.
+#
+# La définition vit ici, une seule fois, et les deux moteurs la lisent — même raison
+# que pour les affaires chaudes : deux écritures finiraient par diverger.
+# ---------------------------------------------------------------------------
+
+ISSUE_DIMENSION = "issue"
+ISSUE_WON = "Gagnée"
+ISSUE_LOST = "Perdue"
+ISSUE_PENDING = "En attente"
+
+# Une offre perdue l'est par ce seul statut : « Infructueux », « NO GO » et les
+# autres statuts morts ne sont pas des offres remises (voir SUBMITTED_STATUSES) et
+# ne peuvent donc pas se présenter ici.
+ISSUE_LOST_STATUSES = ["Offre perdue"]
+
+# L'ordre du récit, jamais l'ordre alphabétique : on lit d'abord ce qui est acquis,
+# puis ce qui est perdu, puis ce qui reste à jouer.
+ISSUE_ORDER = [ISSUE_WON, ISSUE_LOST, ISSUE_PENDING]
+
+
+def issue_sql(colonne_statut: str = "status") -> str:
+    """L'expression CASE qui range un statut dans son issue."""
+    def _liste(statuts):
+        return ", ".join("'" + s.replace("'", "''") + "'" for s in statuts)
+
+    return ("CASE WHEN %s IN (%s) THEN '%s' "
+            "WHEN %s IN (%s) THEN '%s' "
+            "ELSE '%s' END"
+            % (colonne_statut, _liste(WON_STATUSES), ISSUE_WON,
+               colonne_statut, _liste(ISSUE_LOST_STATUSES), ISSUE_LOST,
+               ISSUE_PENDING))
+
+
+def issue_series(df):
+    """La même chose pour pandas : une colonne d'issues, alignée sur df."""
+    import numpy as np
+
+    return np.where(
+        df["status"].isin(WON_STATUSES), ISSUE_WON,
+        np.where(df["status"].isin(ISSUE_LOST_STATUSES), ISSUE_LOST, ISSUE_PENDING))
+
+
+# ---------------------------------------------------------------------------
 # Affaires chaudes
 #
 # Une affaire qu'on va PROBABLEMENT gagner, et qui n'est PAS ENCORE gagnée :

@@ -5,6 +5,9 @@ credentials/
 devoteam-*.json
 
 # Python
+# Environnement isole cree par scripts/install.bat : des binaires propres a une
+# machine et a une version de Python, reconstruits par l'installation.
+.venv/
 __pycache__/
 *.pyc
 *.pyo

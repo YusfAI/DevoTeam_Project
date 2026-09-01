@@ -149,6 +149,7 @@ export default function App() {
         <DashboardPanel
           dashboard={dashboard}
           dashboardKey={dashboardKey}
+          theme={theme}
           onOpenSection={handleOpenSection}
           historyOpen={historyOpen}
           onToggleHistory={() => setHistoryOpen((open) => !open)}

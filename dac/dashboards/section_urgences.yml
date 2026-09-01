@@ -72,6 +72,60 @@ filters:
 
 rows:
   - widgets:
+      - name: Échéances à 7 jours
+        type: metric
+        col: 3
+        description: >-
+          Affaires encore ouvertes à traiter cette semaine.
+        sql: |
+          SELECT COUNT(*) AS value FROM opportunities
+          WHERE days_remaining BETWEEN 0 AND 7
+            AND status NOT IN ('Offre gagnée', 'Offre perdue', 'Offre signée', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+        value: { field: value, type: number, format: ",.0f" }
+      - name: Budget en jeu (DT)
+        type: metric
+        col: 3
+        description: >-
+          Ce que pèsent ces échéances de la semaine.
+        sql: |
+          SELECT SUM(budget) AS value FROM opportunities
+          WHERE days_remaining BETWEEN 0 AND 7
+            AND status NOT IN ('Offre gagnée', 'Offre perdue', 'Offre signée', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+        value: { field: value, type: number, format: ",.0f" }
+      - name: La plus proche (jours)
+        type: metric
+        col: 3
+        description: >-
+          Jours restants sur l'échéance la plus urgente.
+        sql: |
+          SELECT MIN(days_remaining) AS value FROM opportunities
+          WHERE days_remaining BETWEEN 0 AND 7
+            AND status NOT IN ('Offre gagnée', 'Offre perdue', 'Offre signée', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+        value: { field: value, type: number, format: ",.0f" }
+      - name: Échéances à 30 jours
+        type: metric
+        col: 3
+        description: >-
+          Le mois qui vient — de quoi situer le chiffre de la semaine.
+        sql: |
+          SELECT COUNT(*) AS value FROM opportunities
+          WHERE days_remaining BETWEEN 0 AND 30
+            AND status NOT IN ('Offre gagnée', 'Offre perdue', 'Offre signée', 'Infructueux', 'NO GO', 'Hors scope', 'Non shortlisté')
+          {% if filters.practice != 'Toutes' %}
+            AND practice = '{{ filters.practice }}'
+          {% endif %}
+        value: { field: value, type: number, format: ",.0f" }
+
+  - widgets:
       - name: Opportunités urgentes (échéance ≤ 7 jours)
         type: table
         col: 12

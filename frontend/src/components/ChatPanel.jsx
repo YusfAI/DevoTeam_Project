@@ -11,7 +11,13 @@ import DevoteamLogo from './DevoteamLogo'
 // l'utilisateur découvre l'étendue de l'outil en cliquant plutôt qu'en devinant.
 // Elles disparaissent dès la première réponse : passé ce point, c'est la phrase
 // tapée qui pilote le tableau de bord, pas des boutons.
+// Les trois premières sont celles que la direction pose réellement, dans l'ordre où
+// elle les pose : le volume déposé et son issue, puis la répartition par practice,
+// puis la période. Elles ouvrent la liste parce que ce sont elles qu'on cherche.
 const SUGGESTIONS = [
+  'Sur le total des offres remises, combien gagnées, perdues, et en attente ?',
+  'Quelle est la répartition par practice ?',
+  "Combien d'offres a-t-on remis entre novembre 2025 et à date actuelle ?",
   'Budget par pays pour Risk Advisory',
   'Compare le budget entre la France et le Maroc',
   "Montre-moi l'entonnoir de vente",

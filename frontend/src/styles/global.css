@@ -356,15 +356,20 @@ body::before {
   letter-spacing: 0.06em;
 }
 
+/* Un bloc arrondi, pas une pilule : les questions du métier sont des phrases
+   entières, et une pilule dont le texte revient à la ligne prend l'allure d'un
+   accident. Le rayon fixe donne la même forme aux courtes et aux longues. */
 .chat-suggestion {
   text-align: left;
   background: var(--surface-page);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
   padding: 8px 14px;
+  max-width: 100%;
   font: inherit;
   font-size: 0.85rem;
+  line-height: 1.45;
   cursor: pointer;
   transition: border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
@@ -522,6 +527,7 @@ body::before {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 16px;
   margin-bottom: 18px;
 }
@@ -1062,4 +1068,111 @@ body::before {
   border-color: var(--brand-primary);
   color: var(--text-primary);
   font-weight: 600;
+}
+
+
+/* ---------- Navigation au clavier ----------
+   Un seul élément de l'application portait un style de focus : le champ de saisie.
+   Tout le reste — les suggestions, les onglets de section, le retour au tableau de
+   bord, le zoom, l'historique, le lien qualité — se parcourait à la tabulation sans
+   qu'aucun repère ne dise où l'on était. Le contour par défaut du navigateur, lui,
+   disparaît dès qu'un fond ou un rayon est défini.
+
+   `:focus-visible` plutôt que `:focus` : l'anneau apparaît à la tabulation et pas au
+   clic, là où il ne ferait que salir un bouton qu'on vient de presser.
+
+   L'anneau est peint en DEUX couches — un liseré clair contre l'élément, puis la
+   teinte de marque — pour rester visible aussi bien sur les fonds clairs que sur le
+   dégradé sombre de l'en-tête, où une seule couche corail se perdrait. */
+:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.chat-header :focus-visible,
+.message.user :focus-visible {
+  outline-color: #ffffff;
+}
+
+/* Le champ de saisie garde son propre traitement, plus discret : il est focalisé en
+   permanence pendant qu'on tape, et un anneau franc y clignoterait à chaque envoi. */
+.chat-form input:focus-visible {
+  outline: none;
+}
+
+/* Un contour est invisible en mode « contraste forcé » de Windows, où les couleurs
+   sont remplacées : le navigateur y rend `outline` avec sa propre teinte système
+   uniquement si on ne la fixe pas. */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid CanvasText;
+  }
+}
+
+/* ---------- Écrans étroits ----------
+   L'application était dessinée pour un grand écran : chat figé à 360 px, panneau à
+   28 px de marge, en-tête sur une seule ligne. Sur un portable de 13 pouces, le
+   tableau de bord se retrouvait à l'étroit et les commandes de l'en-tête se
+   chevauchaient. Deux paliers plutôt qu'une refonte : l'un resserre, l'autre
+   empile. */
+
+@media (max-width: 1280px) {
+  /* Le chat cède de la place au tableau de bord : c'est lui qu'on regarde, le chat
+     ne sert qu'à poser la question. 300 px laissent une bulle lisible. */
+  .chat-panel {
+    width: 300px;
+  }
+
+  .dashboard-panel {
+    padding: 18px;
+  }
+
+  .dashboard-sections {
+    padding: 0 14px 8px;
+  }
+
+  .section-tab {
+    padding: 5px 10px;
+    font-size: 0.8rem;
+  }
+
+  .quality-link,
+  .back-to-overview {
+    font-size: 0.78rem;
+    padding: 5px 10px;
+  }
+}
+
+@media (max-width: 900px) {
+  /* Côte à côte, plus rien n'est lisible : le tableau de bord passe sous le chat.
+     Le chat garde une hauteur bornée et son propre défilement, sans quoi une
+     conversation longue repousserait les graphiques hors de l'écran. */
+  .app {
+    flex-direction: column;
+  }
+
+  .chat-panel {
+    width: 100%;
+    max-height: 42vh;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .dashboard-panel {
+    padding: 14px;
+    min-height: 58vh;
+  }
+
+  /* L'en-tête passe en colonne : le titre garde toute la largeur, les commandes
+     s'alignent dessous plutôt que de rétrécir jusqu'à l'illisible. */
+  .dashboard-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .dashboard-header-actions {
+    flex-wrap: wrap;
+  }
 }

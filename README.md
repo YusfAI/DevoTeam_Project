@@ -67,6 +67,27 @@ données à installer.
   | Santé du portefeuille | 4 | Que pèse ce qui est encore en jeu ? |
   | Pipeline commercial | 3 | Où en sont les affaires ouvertes, et où perd-on du monde ? |
   | Échéances à venir | 1 | Quelles échéances tombent dans les sept jours ? |
+- **Un banc de questions plutôt qu'une impression** : trente questions fréquentes
+  sont rejouées à chaque exécution de la suite. Chacune est vérifiée deux fois — sa
+  réponse contre un calcul refait en pandas nu, et sa STABILITÉ en la repassant avec
+  plusieurs ébauches plausibles du modèle. C'est ce second axe qui tient le défaut
+  « bonne réponse parfois, mauvaise d'autres fois » : si le chiffre dépend de
+  l'humeur du modèle, le banc le dit.
+- **Les termes métier sont tranchés par le code** : « offres remises » vaut cinq
+  statuts ET une échéance déjà passée (147, comme le tableau de bord — le chat en
+  comptait 167) ; « offres gagnées » vaut les deux statuts d'issue favorable, dans un
+  sens comme dans l'autre. La phrase de réponse les NOMME au lieu d'énumérer leur
+  mécanique.
+- **L'issue d'une offre remise** est un axe à part entière : gagnée, perdue, en
+  attente — trois cas, là où une répartition par statut brut en donnait cinq, les
+  gagnées coupées en deux et les perdues noyées dans le reste.
+- **Périodes en mois nommés** : « entre novembre 2025 et à date actuelle », « depuis
+  janvier 2026 », « en mars 2026 ». Ces tournures n'étaient reconnues par aucune
+  règle : la période était purement perdue et la réponse portait sur tout le
+  portefeuille sans que rien ne le signale.
+- **Mode sombre jusque dans les graphiques** : les tableaux de bord suivent le thème,
+  via un second serveur DAC (un thème DAC est figé au lancement du processus). Ce
+  serveur est facultatif — s'il ne tourne pas, l'affichage reprend le thème clair.
 - **Période choisie à la main** : deux champs de date nommés, « Date de debut » et
   « Date de fin », chacun ouvrant le calendrier du navigateur. Vider l'un lève cette
   borne et garde l'autre. Les valeurs passent dans l'URL, donc un dashboard filtré se
@@ -136,6 +157,21 @@ données à installer.
   recensé — colonne, valeur d'origine, numéro de ligne — dans `GET /data/quality` et
   le dashboard « Qualité des données », sans quoi tolérer reviendrait à corrompre les
   données en silence.
+
+## Installer sur un autre poste
+
+Procédure complète, pensée pour une machine qui n'est pas celle du développeur :
+**`Documentation/INSTALLATION.md`**.
+
+```
+scripts\install.bat                    installe tout, puis vérifie
+scriptserifier_installation.py       vérifie seul, sans rien modifier
+```
+
+Le script de vérification contrôle chaque maillon séparément — clé, feuille (lecture
+ET écriture), colonnes, valeurs inconnues, `bruin`, interface compilée — parce qu'une
+installation ratée ne se signale pas : l'application démarre, la page s'ouvre, et les
+tableaux de bord restent vides.
 
 ## Prérequis
 
@@ -360,6 +396,8 @@ backend/
 dac/
   .bruin.yml             connexion DuckDB (aucun secret, versionnée volontairement)
   themes/devoteam.yml    thème aux couleurs de l'application (palette CVD comprise)
+  themes/devoteam-dark.yml  sa variante sombre, servie par un SECOND dac serve
+                         (port 8322) — un thème DAC est figé au lancement
   dashboards/accueil.yml  section « Vue d'ensemble commerciale », PRODUITE par
                          scripts/generate_accueil.py (étapes du pipeline et statuts
                          dérivés de business_rules.py) — ne pas éditer à la main
@@ -374,7 +412,10 @@ frontend/              Vite + React (build servi par FastAPI en local)
 credentials/           clé de compte de service Google (gitignoré, absent par défaut)
 data/                  scheduler_state.json — anti-doublon du digest quotidien
                        (état local, gitignoré, régénéré au besoin)
-tests/                 suite pytest (mock Gemini/Sheets), 418 tests
+tests/                 suite pytest (mock Gemini/Sheets), 489 tests
+  test_banc_de_questions.py  trente questions fréquentes, chacune vérifiée
+                         contre un calcul refait en pandas nu ET rejouée avec
+                         plusieurs ébauches du modèle (justesse + stabilité)
 Documentation/
   WORKFLOW.md            traçage concret d'une question, du prompt au dashboard affiché
   reports/              rapport professionnel + guide technique (.docx), leur

@@ -45,6 +45,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 38 — Unité DT sur tous les montants, et jetons d'élévation pour l'interface
 - [x] Phase 39 — Synchro Sheets 2,5× plus rapide (seules les cellules modifiées repartent), composition faite une fois
 - [x] Phase 40 — Tableau de bord principal découpé en cinq sections navigables, aiguillage des questions déjà traitées, et le terme « offres gagnées » tranché par le code
+- [x] Phase 41 — Un banc de trente questions, l'issue des offres remises, les périodes en mois nommés, et les finitions demandées par la direction
 
 ## 📝 Journaux
 
@@ -359,6 +360,22 @@ Suite `pytest` : 238 tests (était 235).
 *Vérification finale sur données réelles* : douze questions fréquentes confrontées à une vérité calculée séparément sous pandas — budget total, par practice, par pays, filtré par practice, offres gagnées, portefeuille, affaires chaudes, montant pondéré, offre financière, top 5, urgences. Les douze concordent.
 
 Suite `pytest` : 418 tests. `dac validate` : 22 dashboards.
+
+**Phase 41** : Terminée. La direction a demandé de meilleures réponses, trois questions ajoutées aux suggestions, et les finitions. Les trois questions ont servi de révélateur.
+
+*Ce que les trois questions ont mis au jour.* « Sur le total des offres remises, combien gagnées, perdues, en attente » recevait une répartition par statut BRUT : cinq lignes au lieu de trois, les gagnées coupées en deux et les perdues noyées. « Entre novembre 2025 et à date actuelle » perdait purement et simplement la période — aucune règle ne reconnaissait un mois nommé — et répondait sur tout le portefeuille sans le signaler. En les corrigeant, un troisième défaut est apparu, plus grave que les deux autres : le chat comptait **167 offres remises quand le tableau de bord en affichait 147**. Le statut atteste le dépôt, mais l'échéance dit quand : une échéance à venir signifie que l'offre n'est pas encore remise, règle que le tableau de bord appliquait depuis toujours et que le chat ignorait.
+
+*Trois ajouts au moteur.* L'issue d'une offre remise devient un AXE à part entière (gagnée / perdue / en attente), calculé depuis une définition unique que les deux moteurs lisent — 80 / 57 / 10, exactement les KPI de la vue d'ensemble. Les périodes acceptent les mois nommés sous toutes leurs formes. Et la borne d'échéance des offres remises passe par `deadline` et non par `days_remaining` : cette colonne-là porte partout la sémantique de l'URGENCE, et l'employer déclenchait deux garde-fous écrits pour elle qui vidaient « offres remises » de ses gagnées et de ses perdues.
+
+*Un banc plutôt qu'une impression.* « De meilleures réponses » ne se vérifie pas en relisant du code. Trente questions fréquentes sont désormais rejouées à chaque exécution de la suite, chacune sur deux axes : sa réponse contre un calcul refait en pandas nu — une erreur commise dans les deux moteurs à la fois resterait invisible à toute comparaison interne — et sa STABILITÉ, en la repassant avec plusieurs ébauches plausibles du modèle. Ce second axe vise directement le reproche : si le chiffre dépend de la tournure, le banc le dit.
+
+*Le banc a trouvé un défaut dès sa première exécution.* « Budget hors Tunisie » répondait le total du portefeuille : la machinerie de négation ne savait retourner qu'un filtre DÉJÀ POSÉ par le modèle, et quand celui-ci n'en proposait aucun, le mot d'exclusion était lu puis jeté. Le chiffre affiché était celui de la question opposée. Les valeurs niées sont maintenant cherchées dans la phrase, contre les données réelles.
+
+*La phrase dit le terme, plus la mécanique.* La réponse récitait « statut = Offre remise, En attente du plan de charge, Offre gagnée, Offre signée, Offre perdue, deadline <= 2026-08-31 » — le COMMENT de la traduction, quand l'utilisateur veut le QUOI. Elle dit désormais « offres remises », et les mois en toutes lettres.
+
+*Les finitions.* Deux paliers de largeur, pour que l'application tienne sur un portable de 13 pouces sans que les commandes se chevauchent. Un anneau de focus visible : un seul élément en portait un, tout le reste se parcourait à la tabulation sans repère. Le mode sombre couvre enfin les graphiques, via un second serveur DAC — un thème DAC est figé au lancement du processus, il n'y a rien à basculer dans le fichier — avec repli automatique sur le thème clair si ce serveur n'est pas là, pour qu'un confort ne puisse jamais faire disparaître l'essentiel. L'export intégré, lui, a été écarté après vérification : le tableau de bord est servi par un autre port, donc une iframe d'origine différente, que le navigateur interdit de capturer et imprime en blanc. Un bouton l'ouvre dans son propre onglet, où l'impression et l'enregistrement en PDF fonctionnent nativement.
+
+Suite `pytest` : 489 tests (était 418).
 
 ## 📊 Bilan du Produit
 

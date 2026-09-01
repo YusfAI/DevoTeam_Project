@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  DATA_QUALITY_DASHBOARD_NAME, OVERVIEW_DASHBOARD_NAME, SECTIONS,
+  DAC_DARK_BASE_URL, DATA_QUALITY_DASHBOARD_NAME, OVERVIEW_DASHBOARD_NAME, SECTIONS,
   dacDashboardUrl, estUneSection,
 } from '../dac'
 import { getHealth } from '../api'
@@ -29,14 +29,13 @@ function zoomInitial() {
 }
 
 export default function DashboardPanel({
-  dashboard, dashboardKey, historyOpen, onToggleHistory, onOpenSection,
+  dashboard, dashboardKey, historyOpen, onToggleHistory, onOpenSection, theme,
 }) {
   // UN SEUL tableau de bord affiché. Il montre la vue d'ensemble tant qu'aucune
   // question n'a été posée, puis ce que les questions en ont fait. Il n'y a plus de
   // bascule entre deux pages : le prompt modifie ce tableau de bord, il n'en ouvre
   // pas un second à côté.
   const currentName = dashboard?.dac_dashboard || OVERVIEW_DASHBOARD_NAME
-  const frameUrl = dacDashboardUrl(currentName, dashboard?.dac_filters)
 
   // État du serveur de dashboards. null = vérification en cours ; false = injoignable,
   // auquel cas on affiche une consigne au lieu d'une iframe vide et muette — une
@@ -58,6 +57,14 @@ export default function DashboardPanel({
   }
 
   const [dacStatus, setDacStatus] = useState(null)
+
+  // Le mode sombre du tableau de bord passe par un SECOND serveur DAC : un thème DAC
+  // est figé au lancement du processus, il n'y a rien à basculer dans le fichier.
+  // Tant qu'on ne sait pas s'il tourne, on garde le serveur clair — mieux vaut un
+  // tableau de bord dans le mauvais thème qu'un cadre vide le temps de la sonde.
+  const racineSombre = dacStatus?.sombre_url || null
+  const racine = theme === 'dark' && racineSombre ? racineSombre : undefined
+  const frameUrl = dacDashboardUrl(currentName, dashboard?.dac_filters, racine)
   useEffect(() => {
     let cancelled = false
     getHealth()
@@ -199,12 +206,27 @@ export default function DashboardPanel({
               +
             </button>
           </div>
+          {/* Ouvrir l'analyse dans son propre onglet. C'est ce qui permet de la
+              GARDER : l'imprimer, l'enregistrer en PDF, la joindre à un mail. Un
+              bouton d'export intégré n'était pas possible — le tableau de bord est
+              servi par un autre port, donc une iframe d'origine différente, que le
+              navigateur interdit de capturer et imprime en blanc. Dans son propre
+              onglet, la page est de plein droit : Ctrl+P y fonctionne normalement. */}
+          <a
+            className="quality-link"
+            href={frameUrl}
+            target="_blank"
+            rel="noreferrer"
+            title="Ouvrir dans un onglet — pour imprimer ou enregistrer en PDF"
+          >
+            ⧉ Ouvrir en grand
+          </a>
           {/* Ouvre le tableau de bord de qualité dans un onglet : il répond à une
               question ponctuelle (« sur quoi ce chiffre repose-t-il ? ») et n'a pas
               à remplacer l'analyse en cours dans le cadre. */}
           <a
             className="quality-link"
-            href={dacDashboardUrl(DATA_QUALITY_DASHBOARD_NAME)}
+            href={dacDashboardUrl(DATA_QUALITY_DASHBOARD_NAME, null, racine)}
             target="_blank"
             rel="noreferrer"
             title="Ce que les données contiennent, et ce qui leur manque"

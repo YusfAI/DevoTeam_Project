@@ -7,6 +7,7 @@ from datetime import date
 from typing import Optional
 
 from .business_rules import (
+    ISSUE_DIMENSION,
     HOT_DEAL_MIN_PROBABILITY, SUBMITTED_STATUSES, WON_STATUSES, choose_chart_type,
 )
 from .schema_and_whitelist import VALID_METRICS, VALID_DIMENSIONS, KNOWN_VALUES
@@ -90,6 +91,32 @@ _WON_OFFER_PATTERN = re.compile(
 )
 
 
+# L'ISSUE d'une offre remise : gagnée, perdue, ou encore en attente de décision.
+#
+# « Sur le total des offres remises, combien gagnées, perdues et en attente » est la
+# question que le métier pose le plus souvent — et le chat y répondait par statut
+# BRUT : cinq lignes (Offre remise, En attente du plan de charge, Offre gagnée,
+# Offre signée, Offre perdue) là où trois sont demandées, avec les gagnées coupées en
+# deux et les perdues mélangées au reste.
+#
+# Deux marqueurs sur trois suffisent, et il en faut DEUX : « combien d'offres
+# gagnées » seul est un comptage, pas une répartition — l'exiger évite de transformer
+# toute question sur les gagnées en camembert à trois parts.
+_MARQUEURS_ISSUE = (
+    re.compile(r"\bgagne\w*"),
+    re.compile(r"\bperdu\w*"),
+    re.compile(r"\b(?:en\s+)?attente\b"),
+)
+_ISSUE_EXPLICITE = re.compile(r"\b(?:issue|devenu\w*|aboutis\w*)\b")
+
+
+def _demande_l_issue(q: str) -> bool:
+    """La question demande-t-elle la répartition gagnée / perdue / en attente ?"""
+    if _ISSUE_EXPLICITE.search(q):
+        return True
+    return sum(1 for motif in _MARQUEURS_ISSUE if motif.search(q)) >= 2
+
+
 PRACTICE_MAP = {
     "data management": "Data Management",
     "data": "Data Management",
@@ -170,6 +197,45 @@ def _filtres_nies(q: str, filters: dict) -> dict:
         if rejetees:
             nies[colonne] = rejetees
     return nies
+
+
+def _valeurs_niees_de_la_question(q: str) -> dict:
+    """Les valeurs que la question EXCLUT, lues dans la phrase et non dans l'ébauche.
+
+    `_filtres_nies` ne sait retourner qu'un filtre DÉJÀ POSÉ par le modèle. Quand
+    celui-ci n'en propose aucun — ce qui arrive d'autant plus que la question est
+    courte — « budget hors Tunisie » repartait sans la moindre restriction et
+    répondait le total du portefeuille. Le chiffre affiché était celui de la question
+    OPPOSÉE à celle qu'on venait de poser, sans que rien ne le signale.
+
+    Les valeurs sont cherchées dans les données réelles plutôt que dans une liste
+    figée : les pays et les clients changent avec le Sheet, et une liste recopiée ici
+    finirait par ne plus correspondre à ce qu'il contient.
+    """
+    colonnes = {"country": None, "practice": None, "buyer": None, "partner": None}
+    try:
+        from .data_store import get_dataframe
+        df = get_dataframe()
+    except Exception:  # pragma: no cover - le chat reste utilisable sans données
+        return {}
+    if df is None or df.empty:
+        return {}
+
+    exclusions: dict = {}
+    for colonne in colonnes:
+        if colonne not in df.columns:
+            continue
+        for valeur in df[colonne].dropna().unique().tolist():
+            texte = _norm(str(valeur))
+            # Les valeurs très courtes produiraient des correspondances fortuites.
+            if len(texte) < 4:
+                continue
+            trouve = re.search(r"\b%s\b" % re.escape(texte), q)
+            if trouve and _est_nie(q, trouve.start()):
+                exclusions.setdefault(colonne, [])
+                if valeur not in exclusions[colonne]:
+                    exclusions[colonne].append(valeur)
+    return exclusions
 
 
 def _statuts_de_la_question(q: str) -> tuple[list, list]:
@@ -905,6 +971,79 @@ def try_followup_parse(query: str, previous_intent: dict | None) -> dict | None:
 
 _MONTHS_AGO_PATTERN = re.compile(r"(\d+)\s+derniers?\s+mois")
 
+# Les mois nommés. « Entre novembre 2025 et à date actuelle » ne ressemble à aucune
+# des tournures relatives ci-dessous : la période était donc PUREMENT ET SIMPLEMENT
+# PERDUE, et la question repartait en comptant tout le portefeuille — 167 offres
+# annoncées pour une fenêtre qui en contient bien moins, sans que rien ne signale
+# que la moitié de la question avait été ignorée.
+_MOIS_FR = {
+    "janvier": 1, "fevrier": 2, "mars": 3, "avril": 4, "mai": 5, "juin": 6,
+    "juillet": 7, "aout": 8, "septembre": 9, "octobre": 10, "novembre": 11,
+    "decembre": 12,
+}
+_NOM_DE_MOIS = "(?:" + "|".join(_MOIS_FR) + ")"
+
+# L'année est facultative : « entre mars et juin » vise l'année en cours.
+_MOIS_ANNEE = r"(" + _NOM_DE_MOIS + r")(?:\s+(\d{4}))?"
+
+# « aujourd'hui », « à date actuelle », « maintenant », « à ce jour » : autant de
+# façons de dire la même borne haute, celle du jour où la question est posée.
+_JUSQU_A_AUJOURDHUI = re.compile(
+    r"\b(?:aujourd['’\s]*hui|date\s+actuelle|date\s+du\s+jour|ce\s+jour|maintenant|"
+    r"a\s+ce\s+jour|present)\b"
+)
+
+_ENTRE_MOIS = re.compile(r"\b(?:entre|de|du)\s+" + _MOIS_ANNEE +
+                         r"\s+(?:et|a|au|jusqu\s*a)\s+" + _MOIS_ANNEE)
+_ENTRE_MOIS_ET_AUJOURDHUI = re.compile(
+    r"\b(?:entre|depuis|de|du|a\s+partir\s+de)\s+" + _MOIS_ANNEE +
+    r"\s+(?:et|a|au|jusqu\s*a)?\s*(?:aujourd['’\s]*hui|a\s+date\s+actuelle|"
+    r"la\s+date\s+actuelle|date\s+actuelle|ce\s+jour|maintenant)")
+_DEPUIS_MOIS = re.compile(r"\b(?:depuis|a\s+partir\s+de)\s+" + _MOIS_ANNEE)
+_EN_MOIS = re.compile(r"\b(?:en|au\s+mois\s+de|pour)\s+" + _MOIS_ANNEE)
+
+
+def _mois_nomme(nom: str, annee: str | None, today: date) -> tuple[int, int]:
+    """(année, mois) depuis un nom de mois et une année éventuellement absente."""
+    return (int(annee) if annee else today.year), _MOIS_FR[nom]
+
+
+def _periode_par_mois_nommes(q: str, today: date) -> dict | None:
+    """La période qu'expriment des mois nommés, ou None si la question n'en cite pas.
+
+    Rendue en borne sur `deadline_month` : les deux moteurs la portent déjà, là où
+    une borne sur `deadline` demanderait une conversion de type de chaque côté.
+    """
+    fin_aujourdhui = _ENTRE_MOIS_ET_AUJOURDHUI.search(q)
+    if fin_aujourdhui:
+        sy, sm = _mois_nomme(fin_aujourdhui.group(1), fin_aujourdhui.group(2), today)
+        return {"op": "between",
+                "value": [_format_month(sy, sm), _format_month(today.year, today.month)]}
+
+    entre = _ENTRE_MOIS.search(q)
+    if entre:
+        sy, sm = _mois_nomme(entre.group(1), entre.group(2), today)
+        ey, em = _mois_nomme(entre.group(3), entre.group(4), today)
+        # « de novembre 2025 à mars 2026 » : l'ordre inverse est une faute de saisie
+        # plus probable qu'une demande de période vide.
+        if _month_index(ey, em) < _month_index(sy, sm):
+            (sy, sm), (ey, em) = (ey, em), (sy, sm)
+        return {"op": "between",
+                "value": [_format_month(sy, sm), _format_month(ey, em)]}
+
+    depuis = _DEPUIS_MOIS.search(q)
+    if depuis:
+        sy, sm = _mois_nomme(depuis.group(1), depuis.group(2), today)
+        return {"op": "between",
+                "value": [_format_month(sy, sm), _format_month(today.year, today.month)]}
+
+    seul = _EN_MOIS.search(q)
+    if seul:
+        y, m = _mois_nomme(seul.group(1), seul.group(2), today)
+        return {"op": "=", "value": _format_month(y, m)}
+
+    return None
+
 
 def _month_index(year: int, month: int) -> int:
     return year * 12 + (month - 1)
@@ -937,6 +1076,16 @@ def _apply_relative_period(q: str, intent: dict, today: date) -> None:
         return
 
     today_idx = _month_index(today.year, today.month)
+
+    # Les mois nommés d'abord : ils désignent une période PRÉCISE, que les tournures
+    # relatives ci-dessous ne sauraient qu'approcher.
+    nommee = _periode_par_mois_nommes(q, today)
+    if nommee is not None:
+        if nommee["op"] == "=":
+            filters["deadline_month"] = nommee["value"]
+        else:
+            range_filters["deadline_month"] = nommee
+        return
 
     m_n_months = _MONTHS_AGO_PATTERN.search(q)
     if m_n_months:
@@ -980,6 +1129,33 @@ def _apply_relative_period(q: str, intent: dict, today: date) -> None:
     if "cette annee" in q:
         filters["deadline_year"] = str(today.year)
         return
+
+
+def _borner_aux_offres_deja_remises(intent: dict, today: date) -> None:
+    """Ajoute « échéance passée » au filtre des offres remises.
+
+    Le statut dit qu'une offre EST partie chez le client ; l'échéance dit QUAND. Une
+    échéance encore à venir signifie que l'offre n'est pas encore remise — c'est la
+    règle qu'applique le tableau de bord depuis toujours (`deadline <= CURRENT_DATE`
+    dans REMISES_CTE, voir scripts/generate_accueil.py).
+
+    Le chat, lui, ne regardait que le statut : il annonçait 167 offres remises quand
+    le tableau de bord juste à côté en affichait 147. Deux nombres pour un même terme
+    métier selon l'endroit où on pose la question — exactement ce que ce projet
+    s'interdit.
+
+    La borne porte sur `deadline` et non sur `days_remaining`, qui dirait pourtant la
+    même chose : cette colonne-là porte partout ailleurs la sémantique de l'URGENCE.
+    L'y employer déclenchait deux garde-fous écrits pour elle — la borne « <= 0 »
+    devenait « entre 0 et 0 », et les statuts clos étaient exclus, ce qui vidait de
+    « offres remises » les gagnées et les perdues, précisément celles qu'elle doit
+    compter.
+    """
+    bornes = intent.setdefault("range_filters", {})
+    # Une borne posée par la question elle-même prime : « offres remises en mars »
+    # vise une fenêtre précise, que celle-ci écraserait.
+    if "deadline" not in bornes:
+        bornes["deadline"] = {"op": "<=", "value": today.isoformat()}
 
 
 def refine_intent(query: str, intent: dict, today: Optional[date] = None) -> dict:
@@ -1047,6 +1223,7 @@ def refine_intent(query: str, intent: dict, today: Optional[date] = None) -> dic
     elif _SUBMITTED_OFFER_PATTERN.search(q):
         intent.setdefault("filters", {})
         intent["filters"]["status"] = list(SUBMITTED_STATUSES)
+        _borner_aux_offres_deja_remises(intent, today or date.today())
 
     # « offres gagnées » = toutes celles effectivement remportées, signature comprise.
     # Placé APRÈS les deux règles ci-dessus, plus spécifiques : « offres pondérées »
@@ -1055,7 +1232,8 @@ def refine_intent(query: str, intent: dict, today: Optional[date] = None) -> dic
     # La condition sur la négation évite de retourner « offres NON gagnées » en un
     # filtre positif : cette question-là est traitée quelques lignes plus bas, en
     # exclusion.
-    elif _WON_OFFER_PATTERN.search(q) and not _statuts_de_la_question(q)[1]:
+    elif (_WON_OFFER_PATTERN.search(q) and not _statuts_de_la_question(q)[1]
+            and not _demande_l_issue(q)):
         intent.setdefault("filters", {})
         intent["filters"]["status"] = list(WON_STATUSES)
 
@@ -1086,6 +1264,46 @@ def refine_intent(query: str, intent: dict, today: Optional[date] = None) -> dic
         intent["filters"] = filtres
         exclus = list(intent.get("exclude_statuses") or [])
         intent["exclude_statuses"] = exclus + [s for s in statuts_nies if s not in exclus]
+
+    # L'axe « issue » : trois cas plutôt que les statuts bruts. Il ne se pose qu'ici,
+    # après le traitement des statuts, parce qu'il impose le PÉRIMÈTRE des offres
+    # remises — les trois cas ne veulent rien dire sur une opportunité jamais
+    # déposée, qui n'est ni gagnée, ni perdue, ni « en attente » d'une décision du
+    # client. Une question qui nomme elle-même des statuts garde les siens.
+    if _demande_l_issue(q) and not intent.get("count_distinct"):
+        intent["dimension"] = ISSUE_DIMENSION
+        filtres = intent.setdefault("filters", {})
+        # Le périmètre est imposé SANS condition. « Gagnées » et « perdues »
+        # ressemblent à des noms de statut, et la reconnaissance des statuts les
+        # retenait comme un filtre : la répartition se réduisait alors aux deux
+        # cases nommées, et « en attente » disparaissait de sa propre question.
+        # Ici ces mots décrivent l'AXE, jamais une restriction.
+        filtres["status"] = list(SUBMITTED_STATUSES)
+        _borner_aux_offres_deja_remises(intent, today or date.today())
+        # Une répartition en trois parts se compte ; sommer un budget par issue reste
+        # possible si la question le demande, mais le défaut est le dénombrement.
+        if not intent.get("metric"):
+            intent["metric"] = "nb_opportunities"
+
+    # Une valeur niée dans la PHRASE, que le modèle n'a pas proposée en filtre.
+    # Sans cela, « budget hors Tunisie » repartait sans restriction : la réponse
+    # donnée était celle de la question opposée.
+    for colonne, valeurs in _valeurs_niees_de_la_question(q).items():
+        deja = (intent.get("exclude_filters") or {}).get(colonne) or []
+        deja = list(deja) if isinstance(deja, (list, tuple)) else [deja]
+        manquantes = [v for v in valeurs if v not in deja]
+        if manquantes:
+            intent.setdefault("exclude_filters", {})[colonne] = deja + manquantes
+        # Une valeur exclue ne peut pas être aussi exigée : le modèle l'avait parfois
+        # posée en filtre POSITIF, ce qui rendait la réponse vide.
+        posee = (intent.get("filters") or {}).get(colonne)
+        if posee is not None:
+            restantes = [v for v in (posee if isinstance(posee, (list, tuple)) else [posee])
+                         if v not in valeurs]
+            if restantes:
+                intent["filters"][colonne] = restantes[0] if len(restantes) == 1 else restantes
+            else:
+                intent["filters"].pop(colonne, None)
 
     # Ce que les MOTS de la question demandent. La forme retenue est ensuite validée
     # contre la forme réelle des données par choose_chart_type, en fin de fonction :

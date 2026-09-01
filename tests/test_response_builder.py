@@ -69,9 +69,30 @@ def test_list_valued_filter_is_rendered_readably_not_as_python_repr():
 
 
 def test_between_range_filter_is_rendered_readably():
+    """Les mois se disent en toutes lettres, pas en code ISO.
+
+    « 2026-07 » est la forme que la machine manipule ; personne ne la lit à voix
+    haute. La phrase du chat s'adresse à un commercial, pas à un moteur de requête.
+    """
     intent = {"filters": {}, "range_filters": {"deadline_month": {"op": "between", "value": ["2026-07", "2026-09"]}}}
     desc = _describe_filters(intent)
-    assert "entre 2026-07 et 2026-09" in desc
+    assert "entre juillet 2026 et septembre 2026" in desc
+
+
+def test_un_perimetre_metier_se_nomme_au_lieu_de_s_enumerer():
+    """« Offres remises » vaut mieux que les cinq statuts et la borne qui la codent.
+
+    La phrase disait COMMENT la question avait été traduite — « statut = Offre
+    remise, En attente du plan de charge, Offre gagnée, Offre signée, Offre perdue,
+    deadline <= 2026-08-31 » — quand l'utilisateur veut savoir CE QUI a été compté.
+    """
+    from backend.business_rules import SUBMITTED_STATUSES
+
+    intent = {"filters": {"status": list(SUBMITTED_STATUSES)},
+              "range_filters": {"deadline": {"op": "<=", "value": "2026-08-31"}}}
+    desc = _describe_filters(intent)
+
+    assert desc == " — filtres : offres remises"
 
 
 def test_scatter_message_counts_plottable_rows_not_all_rows():

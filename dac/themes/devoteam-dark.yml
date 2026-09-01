@@ -1,0 +1,59 @@
+# Thème Devoteam SOMBRE pour les dashboards DAC.
+#
+# Il existe parce que le mode sombre ne couvrait que le chat : le tableau de bord,
+# servi en iframe par DAC, restait blanc à côté d'un chat noir. L'écart se voyait au
+# premier coup d'œil, et c'est la moitié droite de l'écran qui éblouissait.
+#
+# Pourquoi un FICHIER de plus, et non une variante dans devoteam.yml : le thème de
+# DAC est une carte de valeurs fixes, appliquée au lancement du serveur. Il n'y a ni
+# média-requête ni second jeu de jetons à y écrire — un thème par processus. Le mode
+# sombre passe donc par un SECOND `dac serve`, sur le port 8322, que le frontend
+# interroge quand le thème sombre est actif. S'il n'est pas démarré, l'application
+# retombe sur le serveur clair : le tableau de bord reste lisible, il ne disparaît
+# jamais.
+#
+# L'inversion CSS de l'iframe, qui aurait évité ce second processus, a été écartée :
+# elle détruit la palette de graphiques, validée pour la vision daltonienne, et un
+# outil où la couleur identifie une série ne peut pas se le permettre.
+#
+# Les valeurs viennent du bloc sombre de frontend/src/styles/tokens.css. Toute
+# modification doit être répercutée des deux côtés.
+#
+# Appliqué au lancement : dac serve --dir . --port 8322 --template themes/devoteam-dark.yml
+name: devoteam-dark
+extends: bruin
+
+tokens:
+  # --- Surfaces et texte : les valeurs sombres du chat ---
+  background: "#0d0d0d"      # --surface-page (sombre)
+  surface: "#1a1a19"         # --surface-card (sombre)
+  surface-hover: "#242423"
+  border: "#2c2c2a"          # --gridline (sombre), opaque pour la même raison
+                              # qu'en clair : un rgba se superpose mal chez DAC
+  text-primary: "#ffffff"
+  text-secondary: "#c3c2b7"
+  text-muted: "#9b9992"
+
+  # --- Corail Devoteam, éclairci : le corail clair perd son contraste sur du noir ---
+  accent: "#ff5f78"          # --brand-primary (sombre)
+  accent-hover: "#ff8296"    # --brand-primary-strong (sombre)
+  accent-subtle: "rgba(255, 95, 120, 0.12)"
+
+  # --- États : les variantes sombres, lisibles sur fond noir ---
+  success: "#5fd35f"
+  warning: "#fab219"
+  error: "#ff8a8a"
+
+  # --- Palette de graphiques ---
+  # Ce sont les huit teintes --series-1..8 du bloc sombre de tokens.css. Elles ne
+  # sont PAS les mêmes qu'en clair : le mode sombre est sélectionné pas à pas sur les
+  # mêmes rampes, jamais obtenu en inversant le clair — une inversion casserait à la
+  # fois le contraste et la séparation en vision daltonienne.
+  chart-1: "#3987e5"
+  chart-2: "#d95926"
+  chart-3: "#199e70"
+  chart-4: "#c98500"
+  chart-5: "#d55181"
+  chart-6: "#008300"
+  chart-7: "#9085e9"
+  chart-8: "#e66767"

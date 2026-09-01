@@ -13,7 +13,8 @@ par les tests (même filtre => même total).
 """
 from .schema_and_whitelist import VALID_DIMENSIONS, VALID_FILTERS, VALID_METRICS
 from .business_rules import (
-    FUNNEL_STAGE_ORDER, LOST_STATUSES, heatmap_secondary_dimension, hot_deal_sql,
+    FUNNEL_STAGE_ORDER, ISSUE_DIMENSION, LOST_STATUSES,
+    heatmap_secondary_dimension, hot_deal_sql, issue_sql,
 )
 
 
@@ -55,8 +56,11 @@ _MOYENNABLES = {"budget", "financial_offer", "weighted_amount"}
 # « probabilité de plus de 80 % »). Elles ne sont pas des filtres d'égalité, d'où
 # leur absence de VALID_FILTERS — mais elles doivent être acceptées ici, sinon la
 # borne est appliquée par pandas et ignorée par le SQL.
+# `deadline` y figure pour « offres remises » (échéance déjà passée) et pour toute
+# question bornée dans le temps. Sa valeur est une date ISO, rendue comme un
+# littéral texte : DuckDB la compare sans conversion explicite.
 _COLONNES_BORNABLES = {"days_remaining", "win_probability", "budget",
-                       "financial_offer", "weighted_amount"}
+                       "financial_offer", "weighted_amount", "deadline"}
 
 # Au-delà, un graphique catégoriel devient illisible. La traîne est regroupée dans
 # « Autres » (voir build_sql) et non supprimée, pour que le total reste vérifiable.
@@ -297,11 +301,16 @@ def build_sql(intent: dict) -> str:
     if not dimension:
         return f"SELECT {expr} AS value\nFROM {TABLE}\nWHERE {where}"
 
+    # « issue » se calcule depuis le statut au lieu de se lire dans une colonne. Le
+    # GROUP BY reprend l'expression ENTIÈRE : DuckDB accepte l'alias en ORDER BY mais
+    # pas en GROUP BY, et s'y fier casse la requête à l'exécution.
+    groupe = issue_sql() if dimension == ISSUE_DIMENSION else dimension
+
     order = f"{dimension} ASC" if dimension == "deadline_month" else f"{metric} DESC"
     sql = (
-        f"SELECT {dimension}, {expr} AS {metric}\n"
+        f"SELECT {groupe} AS {dimension}, {expr} AS {metric}\n"
         f"FROM {TABLE}\nWHERE {where}\n"
-        f"GROUP BY {dimension}\n"
+        f"GROUP BY {groupe}\n"
         f"ORDER BY {order}"
     )
 
@@ -313,6 +322,13 @@ def build_sql(intent: dict) -> str:
     # Une dimension temporelle n'est jamais plafonnée : l'axe est chronologique, en
     # couper la fin amputerait la tendance au lieu de l'alléger.
     if dimension == "deadline_month":
+        return sql
+
+    # L'issue n'a que trois valeurs par construction — gagnée, perdue, en attente.
+    # Il n'y a donc jamais de traîne à regrouper, et passer par le plafond de
+    # lisibilité serait pire qu'inutile : cette branche-là reconstruit sa requête en
+    # citant la colonne, or `issue` n'en est pas une.
+    if dimension == ISSUE_DIMENSION:
         return sql
 
     # Plafond de lisibilité. Le reste est REGROUPÉ dans « Autres » plutôt que jeté :

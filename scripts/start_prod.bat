@@ -21,6 +21,13 @@ REM ===========================================================================
 cd /d "%~dp0.."
 set "PROJECT_ROOT=%CD%"
 
+REM Interpreteur Python. scripts\install.bat cree un environnement isole (.venv)
+REM pour ne pas installer les versions epinglees a l'echelle de la machine. S'il
+REM existe on l'utilise ; sinon on retombe sur le Python du systeme, ce qui garde
+REM ce lanceur compatible avec un poste configure avant l'existence du .venv.
+set "PY=python"
+if exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" set "PY=%PROJECT_ROOT%\.venv\Scripts\python.exe"
+
 REM Meme raison que dans start_dev.bat : dac.exe delegue l'execution du SQL a
 REM "bruin", qu'il cherche dans le PATH, et l'installeur n'ajoute pas
 REM %USERPROFILE%\.local\bin au PATH systeme.
@@ -70,6 +77,20 @@ if "%RUNNING%"=="1" (
     start "DevoTeam DAC" cmd /k "set ""PATH=%PATH%"" && cd /d ""%PROJECT_ROOT%\dac"" && ""%BRUIN_BIN%\dac.exe"" serve --dir . --port 8321 --template themes/devoteam.yml"
 )
 
+REM --- DAC sombre (port 8322) ---------------------------------------------
+REM Un theme DAC est fige au lancement du serveur : il n'existe aucune bascule
+REM dans le fichier de theme. Le mode sombre passe donc par un SECOND serveur,
+REM qui sert les MEMES dashboards avec la palette sombre. Il est facultatif :
+REM s'il ne demarre pas, l'application retombe sur le serveur clair et le
+REM tableau de bord reste lisible.
+call :is_running 8322
+if "%RUNNING%"=="1" (
+    echo [2/3] DAC sombre deja demarre - reutilise.
+) else (
+    echo [2/3] Demarrage de DAC sombre...
+    start "DevoTeam DAC sombre" cmd /k "set ""PATH=%PATH%"" && cd /d ""%PROJECT_ROOT%\dac"" && ""%BRUIN_BIN%\dac.exe"" serve --dir . --port 8322 --template themes/devoteam-dark.yml"
+)
+
 REM --- 3. Backend + interface compilee (http://127.0.0.1:8000) ---------------
 REM UN SEUL worker, volontairement. Le jeu de donnees vit en memoire dans le
 REM processus (backend/data_store.py) et un planificateur y tourne : avec
@@ -82,7 +103,7 @@ if "%RUNNING%"=="1" (
     echo [3/3] Backend deja demarre - reutilise.
 ) else (
     echo [3/3] Demarrage du backend...
-    start "DevoTeam Backend" cmd /k "cd /d ""%PROJECT_ROOT%"" && python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1"
+    start "DevoTeam Backend" cmd /k "cd /d ""%PROJECT_ROOT%"" && ""%PY%"" -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1"
 )
 
 REM --- Ouvrir la page une fois les services prets -----------------------------

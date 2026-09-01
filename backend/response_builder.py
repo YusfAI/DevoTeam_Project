@@ -8,6 +8,7 @@ from .labels import (
     metric_label as libelle_metrique, distinct_label,
 )
 from .business_rules import (
+    SUBMITTED_STATUSES, WON_STATUSES,
     FUNNEL_STAGE_ORDER, HOT_DEAL_MIN_PROBABILITY, HOT_DEAL_STATUSES, LOST_STATUSES,
     cap_heatmap_rows, heatmap_secondary_dimension,
 )
@@ -53,6 +54,41 @@ def extract_metric_value(row: dict, metric: str):
     return val
 
 
+_MOIS_EN_TOUTES_LETTRES = [
+    "janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
+    "septembre", "octobre", "novembre", "décembre",
+]
+
+
+def _mois_lisible(valeur) -> str:
+    """« 2025-11 » -> « novembre 2025 ». Un code ISO ne se lit pas à voix haute."""
+    texte = str(valeur)
+    try:
+        annee, mois = texte.split("-")
+        return "%s %s" % (_MOIS_EN_TOUTES_LETTRES[int(mois) - 1], annee)
+    except (ValueError, IndexError):
+        return texte
+
+
+def _perimetre_metier(intent: dict) -> str | None:
+    """Le NOM du périmètre quand les filtres en composent un connu.
+
+    « Offres remises » se traduit par cinq statuts et une borne d'échéance. Réciter
+    cette mécanique — « statut = Offre remise, En attente du plan de charge, Offre
+    gagnée, Offre signée, Offre perdue, deadline <= 2026-08-31 » — dit à l'utilisateur
+    COMMENT la question a été traduite, quand il veut savoir CE QUI a été compté. Le
+    terme qu'il a employé est la meilleure réponse à cette attente.
+    """
+    statuts = (intent.get("filters") or {}).get("status")
+    if not isinstance(statuts, (list, tuple)):
+        return None
+    if list(statuts) == list(SUBMITTED_STATUSES):
+        return "offres remises"
+    if list(statuts) == list(WON_STATUSES):
+        return "offres gagnées"
+    return None
+
+
 def _describe_filters(intent: dict) -> str:
     parts = []
 
@@ -63,20 +99,36 @@ def _describe_filters(intent: dict) -> str:
     if intent.get("hot_deals"):
         parts.append("affaires chaudes (%s, ou probabilité ≥ %g %%)"
                      % (", ".join(HOT_DEAL_STATUSES), HOT_DEAL_MIN_PROBABILITY * 100))
+    # Un périmètre métier reconnu remplace l'énumération des statuts qui le
+    # composent — et, avec lui, la borne d'échéance qui en fait partie.
+    perimetre = _perimetre_metier(intent)
+    if perimetre:
+        parts.append(perimetre)
+
     for key, value in intent.get("filters", {}).items():
+        if perimetre and key == "status":
+            continue
         label = FILTER_LABELS.get(key, key)
-        if isinstance(value, (list, tuple)):
+        if key == "deadline_month":
+            parts.append(f"{label} = {_mois_lisible(value)}")
+        elif isinstance(value, (list, tuple)):
             parts.append(f"{label} = {', '.join(str(v) for v in value)}")
         else:
             parts.append(f"{label} = {value}")
+
     for key, rule in intent.get("range_filters", {}).items():
+        # La borne « échéance déjà passée » n'est pas une restriction de plus : elle
+        # EST la définition d'une offre remise, déjà nommée ci-dessus.
+        if perimetre == "offres remises" and key == "deadline" and rule.get("op") == "<=":
+            continue
         label = FILTER_LABELS.get(key, key)
         op = rule.get("op", "")
         value = rule.get("value", "")
+        lisible = _mois_lisible if key == "deadline_month" else str
         if op == "between" and isinstance(value, (list, tuple)) and len(value) == 2:
-            parts.append(f"{label} entre {value[0]} et {value[1]}")
+            parts.append(f"{label} entre {lisible(value[0])} et {lisible(value[1])}")
         else:
-            parts.append(f"{label} {op} {value}")
+            parts.append(f"{label} {op} {lisible(value)}")
     # Les statuts EXCLUS font partie du périmètre au même titre que les statuts
     # retenus. Ne pas les dire laissait « budget des offres non gagnées » se lire
     # comme un total sans restriction : le chiffre était juste, la phrase muette sur

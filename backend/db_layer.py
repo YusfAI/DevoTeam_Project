@@ -13,11 +13,16 @@ import datetime
 import pandas as pd
 
 from .business_rules import (
-    LOST_STATUSES, heatmap_secondary_dimension, hot_deal_mask,
+    ISSUE_DIMENSION, LOST_STATUSES, heatmap_secondary_dimension, hot_deal_mask,
+    issue_series,
 )
 from .data_store import get_dataframe
 
 INT_COLS = {"deadline_year", "days_remaining", "id"}
+# `deadline` porte des objets `datetime.date`, jamais du texte : comparer la colonne
+# à une chaîne ISO lève un TypeError au lieu de filtrer. La borne arrive pourtant
+# toujours en ISO, seule forme qui traverse le JSON de l'intention.
+DATE_COLS = {"deadline"}
 FLOAT_COLS = {"budget", "financial_offer", "weighted_amount", "win_probability"}
 VALID_OPS = {"<", ">", "<=", ">=", "=", "between"}
 
@@ -54,6 +59,8 @@ RAW_TABLE_COLUMNS = [
 
 
 def _cast(col: str, val):
+    if col in DATE_COLS and isinstance(val, str):
+        return datetime.date.fromisoformat(val)
     if col in INT_COLS:
         return int(val)
     if col in FLOAT_COLS:
@@ -181,6 +188,14 @@ def build_and_execute_query(intent: dict) -> list:
 
     filtered = _apply_filters(df, filters, range_filters, exclude_statuses,
                               exclude_filters, hot_deals)
+
+    # « issue » n'existe pas dans les données : elle se calcule depuis le statut.
+    # La colonne est ajoutée APRÈS le filtrage — la calculer avant reviendrait à la
+    # faire porter sur des lignes que la question écarte. La définition vient de
+    # business_rules, la même que celle du SQL, pour que les deux moteurs ne puissent
+    # pas ranger une offre dans deux cases différentes.
+    if ISSUE_DIMENSION in (dimension, intent.get("secondary_dimension")):
+        filtered = filtered.assign(**{ISSUE_DIMENSION: issue_series(filtered)})
 
     # « combien de clients différents » : une CARDINALITÉ, pas un volume. Placé avant
     # tout le reste — la question ne demande ni répartition, ni liste, ni graphique.

@@ -5,6 +5,13 @@ title DevoTeam Dashboard - Lanceur
 cd /d "%~dp0.."
 set "PROJECT_ROOT=%CD%"
 
+REM Interpreteur Python. scripts\install.bat cree un environnement isole (.venv)
+REM pour ne pas installer les versions epinglees a l'echelle de la machine. S'il
+REM existe on l'utilise ; sinon on retombe sur le Python du systeme, ce qui garde
+REM ce lanceur compatible avec un poste configure avant l'existence du .venv.
+set "PY=python"
+if exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" set "PY=%PROJECT_ROOT%\.venv\Scripts\python.exe"
+
 REM Les binaires Bruin sont installes dans %USERPROFILE%\.local\bin, que l'installeur
 REM n'ajoute PAS au PATH systeme. C'est indispensable ici : dac.exe delegue l'execution
 REM du SQL a "bruin", qu'il cherche dans le PATH — sans cette ligne, DAC demarre bien
@@ -36,7 +43,7 @@ if "%RUNNING%"=="1" (
     echo [Backend]  deja demarre - reutilise.
 ) else (
     echo [Backend]  demarrage...
-    start "DevoTeam Backend" cmd /k "cd /d ""%PROJECT_ROOT%"" && python -m uvicorn backend.main:app --reload"
+    start "DevoTeam Backend" cmd /k "cd /d ""%PROJECT_ROOT%"" && ""%PY%"" -m uvicorn backend.main:app --reload"
 )
 
 REM --- 2. Dashboards Bruin DAC (http://localhost:8321), affiches en iframe par l'UI ---
@@ -47,6 +54,20 @@ if "%RUNNING%"=="1" (
 ) else (
     echo [DAC]      demarrage...
     start "DevoTeam DAC" cmd /k "set ""PATH=%PATH%"" && cd /d ""%PROJECT_ROOT%\dac"" && ""%BRUIN_BIN%\dac.exe"" serve --dir . --port 8321 --template themes/devoteam.yml"
+)
+
+REM --- DAC sombre (port 8322) ---------------------------------------------
+REM Un theme DAC est fige au lancement du serveur : il n'existe aucune bascule
+REM dans le fichier de theme. Le mode sombre passe donc par un SECOND serveur,
+REM qui sert les MEMES dashboards avec la palette sombre. Il est facultatif :
+REM s'il ne demarre pas, l'application retombe sur le serveur clair et le
+REM tableau de bord reste lisible.
+call :is_running 8322
+if "%RUNNING%"=="1" (
+    echo [DAC-SOMBRE] DAC sombre deja demarre - reutilise.
+) else (
+    echo [DAC-SOMBRE] Demarrage de DAC sombre...
+    start "DevoTeam DAC sombre" cmd /k "set ""PATH=%PATH%"" && cd /d ""%PROJECT_ROOT%\dac"" && ""%BRUIN_BIN%\dac.exe"" serve --dir . --port 8322 --template themes/devoteam-dark.yml"
 )
 
 REM --- 3. Frontend Vite (http://localhost:5173) ---
