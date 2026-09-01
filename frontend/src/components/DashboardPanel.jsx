@@ -63,7 +63,12 @@ export default function DashboardPanel({
   // Tant qu'on ne sait pas s'il tourne, on garde le serveur clair — mieux vaut un
   // tableau de bord dans le mauvais thème qu'un cadre vide le temps de la sonde.
   const racineSombre = dacStatus?.sombre_url || null
-  const racine = theme === 'dark' && racineSombre ? racineSombre : undefined
+  // L'origine des tableaux de bord vient du backend, pas du bundle : derrière un
+  // tunnel ou un reverse proxy, l'adresse à donner au navigateur n'est pas celle que
+  // le serveur emploie pour lui-même. `undefined` laisse dac.js retomber sur la
+  // valeur de compilation, qui reste la bonne en usage local.
+  const racineClaire = dacStatus?.url || undefined
+  const racine = theme === 'dark' && racineSombre ? racineSombre : racineClaire
   const frameUrl = dacDashboardUrl(currentName, dashboard?.dac_filters, racine)
   useEffect(() => {
     let cancelled = false
@@ -87,18 +92,23 @@ export default function DashboardPanel({
   // Les filtres entrent dans le jeton : deux questions peuvent viser la MÊME page
   // avec deux practices différentes, et le cadre doit alors se recharger.
   const token = `${frameUrl}::${dashboardKey}`
-  const [frames, setFrames] = useState(() => [{ token, src: frameUrl }])
+  const [frames, setFrames] = useState([])
   const [ready, setReady] = useState({})
   const timers = useRef([])
 
   useEffect(() => {
+    // Tant que /health n'a pas répondu, on ne sait pas quelle origine employer.
+    // Charger un cadre en attendant viserait, derrière un tunnel, le 127.0.0.1 du
+    // visiteur : une erreur de navigateur bien visible, corrigée une seconde plus
+    // tard — le squelette dit la même chose sans faire peur.
+    if (dacStatus === null) return
     setFrames((prev) => {
       if (prev.some((f) => f.token === token)) return prev
       // Au plus deux : le cadre affiché et le nouveau. Si une troisième demande
       // arrive pendant un chargement, elle remplace celui qui n'est pas encore visible.
-      return [prev[0], { token, src: frameUrl }]
+      return prev.length ? [prev[0], { token, src: frameUrl }] : [{ token, src: frameUrl }]
     })
-  }, [token, frameUrl])
+  }, [token, frameUrl, dacStatus])
 
   useEffect(() => () => timers.current.forEach(window.clearTimeout), [])
 

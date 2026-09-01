@@ -116,7 +116,10 @@ def test_le_serveur_sombre_ne_conditionne_pas_la_sante_generale():
     assert "sombre" not in ligne_ok, ligne_ok
 
     # Et il est bien rapporté, sinon le frontend n'aurait aucun moyen de le choisir.
-    assert '"sombre_url": DAC_DARK_URL if _dac_dark_is_reachable() else None' in source
+    # C'est l'adresse PUBLIQUE qui part : celle que le navigateur doit employer, qui
+    # n'est pas celle que le backend sonde dès que l'application est exposée.
+    assert ('"sombre_url": DAC_DARK_PUBLIC_URL if _dac_dark_is_reachable() else None'
+            in source)
 
 
 # ---------------------------------------------------------------------------

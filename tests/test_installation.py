@@ -255,3 +255,66 @@ def test_toute_dependance_importee_est_declaree():
         "Ces modules sont importés mais absents de requirements.txt : %s. "
         "L'application ne démarrera pas dans un environnement neuf."
         % ", ".join(manquants))
+
+
+# ---------------------------------------------------------------------------
+# L'accès public (tunnel)
+# ---------------------------------------------------------------------------
+
+def test_l_adresse_des_tableaux_de_bord_est_reglable_a_l_execution():
+    """Elle était figée à la compilation du frontend, et ne pouvait pas l'être.
+
+    L'iframe est chargée par le NAVIGATEUR : lui transmettre « 127.0.0.1:8321 »
+    revient à lui faire interroger SA PROPRE machine. Derrière un tunnel, tous les
+    tableaux de bord restent vides et aucune requête n'échoue — la panne est donc
+    difficile à rattacher à sa cause.
+
+    Une URL de tunnel change à chaque session : la régler à l'exécution est la seule
+    forme utilisable.
+    """
+    source = (RACINE / "backend" / "main.py").read_text(encoding="utf-8")
+
+    assert 'DAC_PUBLIC_URL = os.getenv("DAC_PUBLIC_URL") or DAC_URL' in source
+    assert 'DAC_DARK_PUBLIC_URL = os.getenv("DAC_DARK_PUBLIC_URL") or DAC_DARK_URL' in source
+    # C'est bien l'adresse PUBLIQUE qui part au navigateur.
+    assert '"url": DAC_PUBLIC_URL,' in source
+
+
+def test_le_backend_continue_de_sonder_l_adresse_locale():
+    """Les deux adresses ont deux usages, et les confondre casserait les sondes.
+
+    Le backend sonde DAC pour lui-même : il doit continuer d'employer l'adresse
+    locale, même quand le navigateur reçoit celle du tunnel.
+    """
+    source = (RACINE / "backend" / "main.py").read_text(encoding="utf-8")
+
+    # La sonde de présence et celle d'exécution visent DAC_URL / DAC_DARK_URL.
+    assert "urllib.request.urlopen(DAC_DARK_URL" in source
+    assert "racine = racine or DAC_URL" in source
+
+
+def test_le_frontend_prend_l_origine_dans_la_sante():
+    js = (RACINE / "frontend" / "src" / "components"
+          / "DashboardPanel.jsx").read_text(encoding="utf-8")
+
+    assert "const racineClaire = dacStatus?.url || undefined" in js
+    # Et rien ne se charge avant de connaître l'origine : un cadre lancé trop tôt
+    # viserait le 127.0.0.1 du visiteur et échouerait bruyamment.
+    assert "if (dacStatus === null) return" in js
+
+
+def test_le_lanceur_public_ouvre_bien_deux_tunnels():
+    """Un seul tunnel ne suffit pas, et l'erreur est silencieuse.
+
+    DAC ne sait pas servir sous un préfixe de chemin — « dac serve » n'a aucune
+    option de base path et ses ressources sont en chemins absolus. Il lui faut donc
+    sa propre origine.
+    """
+    contenu = (SCRIPTS / "start_public.bat").read_text(encoding="utf-8",
+                                                       errors="surrogateescape")
+
+    assert "ngrok http 8321" in contenu
+    assert "ngrok http 8000" in contenu
+    assert "DAC_PUBLIC_URL" in contenu
+    # L'avertissement de sécurité : l'URL donne accès aux données commerciales.
+    assert "basic_auth" in contenu

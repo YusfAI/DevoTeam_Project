@@ -207,6 +207,69 @@ Il en va de même pour les **practices** et les **types d'opportunité**.
 
 ---
 
+## Rendre l'application accessible à distance (ngrok)
+
+Pour la faire essayer depuis un autre poste sans rien installer chez le testeur.
+
+### Il faut DEUX tunnels, pas un
+
+C'est le point qui surprend, et son échec est silencieux. Le tableau de bord est
+chargé en `<iframe>` **par le navigateur du visiteur**. Lui transmettre
+`127.0.0.1:8321` revient à lui faire interroger *sa propre* machine : le chat
+répondrait normalement et **tous les tableaux de bord resteraient vides**, sans
+qu'une seule requête n'échoue.
+
+Un proxy sous préfixe ne règle rien : `dac serve` n'a aucune option de chemin de
+base et sert ses ressources en chemins absolus. Il lui faut sa propre origine.
+
+### La procédure
+
+```
+scripts\start_public.bat
+```
+
+Il ouvre le tunnel des tableaux de bord, vous demande son URL, redémarre le backend
+en lui transmettant cette adresse, puis ouvre le tunnel de l'application. L'URL à
+partager est celle du port 8000.
+
+À la main, si vous préférez :
+
+```
+ngrok http 8321                          puis relever l'URL sur http://127.0.0.1:4040
+set DAC_PUBLIC_URL=https://xxxx.ngrok-free.app
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1
+ngrok http 8000
+```
+
+`DAC_PUBLIC_URL` est lu à l'**exécution**, pas à la compilation : une URL de tunnel
+change à chaque session, et recompiler l'interface pour cela n'aurait aucun sens.
+
+### Deux choses à savoir
+
+**La page d'avertissement ngrok.** À la première visite, ngrok affiche un
+interstitiel. Dans une iframe, il s'affiche *à la place* du tableau de bord et
+ressemble à une panne. Ouvrez d'abord l'URL de DAC dans un onglet, cliquez
+« Visit Site », puis rechargez l'application.
+
+**L'URL n'est pas secrète.** Elle donne accès aux données commerciales à quiconque
+la possède, et elle est publique sur Internet. Protégez-la, et coupez les tunnels dès
+l'essai terminé :
+
+```yaml
+# ngrok.yml
+tunnels:
+  app:
+    addr: 8000
+    proto: http
+    basic_auth: ["devoteam:un-mot-de-passe-solide"]
+  dac:
+    addr: 8321
+    proto: http
+    basic_auth: ["devoteam:un-mot-de-passe-solide"]
+```
+
+---
+
 ## Pannes fréquentes
 
 | Symptôme | Cause | Geste |
@@ -217,6 +280,8 @@ Il en va de même pour les **practices** et les **types d'opportunité**.
 | Les données ne se rafraîchissent pas | Feuille partagée en Lecteur | Repartager en **Éditeur** |
 | « GOOGLE_SHEET_ID manquant » | `.env` absent ou vide | Refaire l'étape 4 |
 | `python` non reconnu | Case PATH décochée | Réinstaller Python en cochant la case |
+| Tableaux vides derrière une URL ngrok | Un seul tunnel, ou `DAC_PUBLIC_URL` non renseignée | Voir la section « accessible à distance » |
+| Une page « You are about to visit… » à la place des visuels | Interstitiel ngrok dans l'iframe | Ouvrir l'URL de DAC dans un onglet, cliquer « Visit Site » |
 | Le mode sombre reste clair | Second serveur DAC arrêté | Sans effet sur le reste — l'application retombe volontairement sur le thème clair |
 
 ---

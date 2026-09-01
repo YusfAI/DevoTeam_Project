@@ -310,6 +310,20 @@ def _dac_query_failure(racine: str | None = None) -> str | None:
 # SECOND processus plutôt qu'un second jeu de jetons.
 DAC_DARK_URL = os.getenv("DAC_DARK_URL", "http://127.0.0.1:8322")
 
+# L'adresse que le NAVIGATEUR doit employer, distincte de celle que le backend sonde.
+#
+# Les deux coïncident tant que l'application est consultée depuis la machine qui
+# l'héberge. Elles divergent dès qu'on l'expose — tunnel ngrok, reverse proxy, accès
+# depuis un autre poste du réseau : le backend continue de sonder 127.0.0.1, mais un
+# navigateur distant qui reçoit cette adresse interroge SA PROPRE machine. Les
+# tableaux de bord restent vides et aucune requête n'échoue, ce qui rend la panne
+# difficile à rattacher à sa cause.
+#
+# Réglable à l'exécution plutôt qu'à la compilation : une URL de tunnel change à
+# chaque session, et recompiler le frontend pour cela serait absurde.
+DAC_PUBLIC_URL = os.getenv("DAC_PUBLIC_URL") or DAC_URL
+DAC_DARK_PUBLIC_URL = os.getenv("DAC_DARK_PUBLIC_URL") or DAC_DARK_URL
+
 
 def _dac_dark_is_reachable() -> bool:
     """Le serveur sombre répond-il ? Son absence est normale, jamais une panne.
@@ -377,12 +391,13 @@ async def health():
             "ok": dac_ok,
             "repond": dac_repond,
             "requetes_ok": dac_repond and not echec_requetes,
-            "url": DAC_URL,
+            # Celle du navigateur, pas celle des sondes ci-dessus.
+            "url": DAC_PUBLIC_URL,
             "aide": aide,
             # Le second serveur, qui rend les mêmes dashboards avec le thème sombre.
             # Son absence n'est PAS une panne : le frontend retombe simplement sur le
             # serveur clair. C'est pour cela qu'il ne pèse pas sur `ok`.
-            "sombre_url": DAC_DARK_URL if _dac_dark_is_reachable() else None,
+            "sombre_url": DAC_DARK_PUBLIC_URL if _dac_dark_is_reachable() else None,
         },
         "donnees": {
             "ok": df is not None and not df.empty,
