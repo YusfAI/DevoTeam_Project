@@ -41,7 +41,7 @@ L'offre gratuite suffit largement à l'usage.
 Il est dans son URL, entre `/d/` et `/edit` :
 
 ```
-https://docs.google.com/spreadsheets/d/CETTE_PARTIE_EST_L_IDENTIFIANT/edit
+https://docs.google.com/spreadsheets/d/IDENTIFIANT_DE_LA_FEUILLE/edit
 ```
 
 Relever aussi le **nom de l'onglet** qui contient les données.
