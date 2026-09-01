@@ -200,3 +200,58 @@ def test_la_procedure_documente_le_partage_en_editeur():
     assert "Éditeur" in texte
     assert "Add python.exe to PATH" in texte
     assert "getbruin.com/install/dac" in texte
+
+
+# ---------------------------------------------------------------------------
+# Les dépendances déclarées suffisent-elles vraiment ?
+# ---------------------------------------------------------------------------
+
+def test_toute_dependance_importee_est_declaree():
+    """Le défaut qui aurait bloqué l'installation sur un poste neuf.
+
+    `yaml` était importé par backend/dac_composer.py sans figurer dans
+    requirements.txt. Sur la machine de développement il arrivait par ricochet, tiré
+    par un autre paquet ; dans l'environnement isolé créé par install.bat il était
+    absent, et l'application ne démarrait pas du tout — ModuleNotFoundError au tout
+    premier import, avant même la moindre requête.
+
+    Une liste de dépendances ne vaut que si elle est COMPLÈTE. Ce test la compare aux
+    imports réels plutôt qu'à ce qu'on croit y avoir mis.
+    """
+    import ast
+    import sys
+
+    declares = set()
+    for ligne in (RACINE / "requirements.txt").read_text(encoding="utf-8").splitlines():
+        ligne = ligne.strip()
+        if ligne and not ligne.startswith("#"):
+            declares.add(ligne.split("==")[0].strip().lower())
+
+    # Le nom du paquet et celui du module diffèrent parfois : la correspondance ne se
+    # devine pas, elle s'écrit.
+    module_vers_paquet = {
+        "dotenv": "python-dotenv", "yaml": "pyyaml", "google": "google-genai",
+        "apscheduler": "apscheduler",
+    }
+
+    importes = set()
+    for dossier in ("backend", "scripts"):
+        for fichier in (RACINE / dossier).rglob("*.py"):
+            arbre = ast.parse(fichier.read_text(encoding="utf-8"))
+            for noeud in ast.walk(arbre):
+                if isinstance(noeud, ast.Import):
+                    importes.update(a.name.split(".")[0] for a in noeud.names)
+                elif isinstance(noeud, ast.ImportFrom) and noeud.level == 0 and noeud.module:
+                    importes.add(noeud.module.split(".")[0])
+
+    locaux = {"backend", "scripts", "tests"}
+    manquants = sorted(
+        module for module in importes
+        if module not in sys.stdlib_module_names
+        and module not in locaux
+        and module_vers_paquet.get(module, module).lower() not in declares)
+
+    assert not manquants, (
+        "Ces modules sont importés mais absents de requirements.txt : %s. "
+        "L'application ne démarrera pas dans un environnement neuf."
+        % ", ".join(manquants))

@@ -146,7 +146,28 @@ Tant qu'il reste un point bloquant, l'application ne fonctionnera pas correcteme
 Corriger, puis relancer le script — il ne modifie rien et peut être rejoué autant de
 fois que nécessaire.
 
-### Étape 7 — Lancer
+### Étape 7 — Lancer et tester
+
+Double-cliquer sur **« DevoTeam Dashboard (Production) »** sur le Bureau, attendre une
+quinzaine de secondes, puis :
+
+```
+.venv\Scripts\python.exe scripts	est_fonctionnel.py
+```
+
+C'est le test qui répond à la vraie question : **les chiffres sont-ils justes sur les
+données de ce poste ?** Il ne compare rien à des valeurs écrites d'avance — pour
+chaque question, il calcule la réponse attendue depuis la feuille avec pandas, la pose
+à l'application, et vérifie que le nombre annoncé est celui-là. Il fonctionne donc sur
+n'importe quel jeu de données.
+
+Il contrôle les totaux, les termes métier (offres gagnées, remises, affaires
+chaudes), les répartitions, un filtre, les échéances, et que les cinq sections rendent
+bien des chiffres.
+
+Tant qu'il n'affiche pas **« TOUT EST JUSTE »**, ne pas présenter l'application.
+
+### Étape 7 bis — Détail du lancement
 
 Double-cliquer sur **« DevoTeam Dashboard (Production) »** sur le Bureau.
 

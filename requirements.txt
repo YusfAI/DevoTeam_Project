@@ -22,3 +22,9 @@ APScheduler==3.11.3
 gspread==6.2.1
 pandas==3.0.2
 duckdb==1.5.5
+# Lit et ecrit les tableaux de bord DAC (backend/dac_composer.py,
+# scripts/generate_accueil.py). Absent de cette liste jusqu'ici : il arrivait par
+# ricochet sur la machine de developpement, mais l'environnement isole cree par
+# scripts/install.bat ne l'avait pas — l'application ne demarrait donc pas du tout
+# sur un poste neuf, avec un ModuleNotFoundError au tout premier import.
+PyYAML==6.0.3

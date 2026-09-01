@@ -7,6 +7,7 @@ que soit l'outil qui dessine. Les isoler ici a permis de supprimer entièrement 
 module de rendu sans emporter la logique métier avec lui (ce qui est arrivé :
 Vega-Lite puis Vega ont disparu, ces règles non).
 """
+import pandas as pd
 
 # Ordre du pipeline commercial, du premier contact à la signature. Seules les étapes
 # « en cours » en font partie : les sorties (perdu, infructueux, NO GO, hors scope,
@@ -121,12 +122,17 @@ def issue_sql(colonne_statut: str = "status") -> str:
 
 
 def issue_series(df):
-    """La même chose pour pandas : une colonne d'issues, alignée sur df."""
-    import numpy as np
+    """La même chose pour pandas : une colonne d'issues, alignée sur df.
 
-    return np.where(
-        df["status"].isin(WON_STATUSES), ISSUE_WON,
-        np.where(df["status"].isin(ISSUE_LOST_STATUSES), ISSUE_LOST, ISSUE_PENDING))
+    Écrite avec pandas seul, sans numpy. Les deux donnent le même résultat, mais
+    numpy n'arrive ici qu'en dépendance de pandas : l'importer directement ferait
+    reposer l'application sur un paquet que personne ne déclare, et qu'une future
+    version de pandas pourrait cesser d'installer.
+    """
+    issues = pd.Series(ISSUE_PENDING, index=df.index, dtype=object)
+    issues[df["status"].isin(ISSUE_LOST_STATUSES)] = ISSUE_LOST
+    issues[df["status"].isin(WON_STATUSES)] = ISSUE_WON
+    return issues
 
 
 # ---------------------------------------------------------------------------
