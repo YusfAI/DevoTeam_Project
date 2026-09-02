@@ -52,6 +52,27 @@ if "%RUNNING%"=="1" (
     start "DevoTeam Backend" /D "%PROJECT_ROOT%" cmd /s /k ""%PY%" -m uvicorn backend.main:app --reload"
 )
 
+REM --- Preparation du moteur de requetes -------------------------------------
+REM Au tout premier lancement sur un poste neuf, bruin doit installer le pilote
+REM ADBC de DuckDB. L'application demarre aussitot des dizaines de requetes en
+REM parallele, une par widget : sans cette etape, elles tentent TOUTES d'installer
+REM le pilote en meme temps et se marchent dessus —
+REM   "could not create file duckdb.dll: the process cannot access the file"
+REM Resultat : une partie des widgets s'affiche, l'autre non, sans logique visible.
+REM
+REM "dac connections" ouvre la connexion dans un seul processus et installe le
+REM pilote proprement. Mesure : ~11 s a froid, ~1 s ensuite.
+echo [prechauffage] Preparation du moteur de requetes...
+pushd "%PROJECT_ROOT%\dac"
+"%BRUIN_BIN%\dac.exe" connections >NUL 2>&1
+if errorlevel 1 (
+    echo       Impossible de joindre la base — les visuels peuvent rester vides.
+) else (
+    echo       OK
+)
+popd
+echo.
+
 REM --- 2. Dashboards Bruin DAC (http://localhost:8321), affiches en iframe par l'UI ---
 REM Le PATH est repropage explicitement a la fenetre fille (voir commentaire plus haut).
 call :is_running 8321

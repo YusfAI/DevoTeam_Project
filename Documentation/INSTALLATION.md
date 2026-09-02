@@ -277,6 +277,7 @@ tunnels:
 
 | Symptôme | Cause | Geste |
 |---|---|---|
+| **Une partie** des visuels en erreur au 1er lancement (`could not create file duckdb.dll`) | Plusieurs requêtes installaient le pilote DuckDB en même temps | Mettre à jour (`git pull`) : le lanceur l'installe désormais une fois, seul |
 | Tous les visuels en erreur, la page s'affiche | `bruin.exe` absent ou hors du PATH | Refaire l'étape 3, relancer par le raccourci |
 | « Serveur de dashboards injoignable » | DAC pas démarré | Relancer par le raccourci, ne pas fermer les fenêtres |
 | Tableaux de bord vides, aucune erreur | Statuts non reconnus | Voir la section ci-dessus |

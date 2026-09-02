@@ -372,3 +372,51 @@ def test_les_lanceurs_ne_reglent_plus_le_path_dans_la_fenetre_fille(nom):
     for ligne in contenu.splitlines():
         if ligne.strip().startswith('start "DevoTeam'):
             assert "set " not in ligne, ligne
+
+
+# ---------------------------------------------------------------------------
+# Le pilote DuckDB, installé une fois et une seule
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("nom", ["start_dev.bat", "start_prod.bat"])
+def test_le_pilote_est_prechauffe_avant_tout_demarrage(nom):
+    """La panne du premier lancement sur un poste neuf.
+
+    `bruin` installe le pilote ADBC de DuckDB à sa première requête. L'application
+    en lance aussitôt des dizaines en parallèle — une par widget, sur deux serveurs :
+    toutes constatent l'absence du pilote et tentent de l'installer en même temps.
+
+        could not create file duckdb.dll:
+        The process cannot access the file because it is being used by another process
+
+    Le symptôme est trompeur : CERTAINS widgets s'affichent, d'autres non, en clair
+    comme en sombre, sans logique apparente — ce sont ceux qui ont perdu la course.
+
+    `dac connections` ouvre la connexion dans UN SEUL processus et installe le
+    pilote. Reproduit puis vérifié en supprimant %APPDATA%\ADBC\Drivers : sans
+    l'étape, une partie des widgets échoue ; avec elle, les trente-deux passent.
+    """
+    contenu = (SCRIPTS / nom).read_text(encoding="utf-8", errors="surrogateescape")
+
+    assert "dac.exe\" connections" in contenu, nom
+
+    # ET il doit venir AVANT le premier serveur : après, la course a déjà eu lieu.
+    prechauffage = contenu.index('dac.exe" connections')
+    premier_serveur = contenu.index('start "DevoTeam DAC"')
+    assert prechauffage < premier_serveur, (
+        "%s : le préchauffage doit précéder le démarrage des serveurs" % nom)
+
+
+def test_le_prechauffage_ne_bloque_pas_le_lancement():
+    """Un préchauffage en échec ne doit pas empêcher l'application de démarrer.
+
+    La base peut être absente au tout premier lancement — le fichier DuckDB n'est
+    écrit qu'au premier rafraîchissement des données. Refuser de démarrer pour cela
+    empêcherait précisément le rafraîchissement qui le crée.
+    """
+    contenu = (SCRIPTS / "start_prod.bat").read_text(encoding="utf-8",
+                                                     errors="surrogateescape")
+    bloc = contenu[contenu.index("Preparation du moteur"):]
+    bloc = bloc[:bloc.index("popd")]
+
+    assert "exit /b" not in bloc, "le préchauffage ne doit jamais interrompre le lanceur"

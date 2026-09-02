@@ -59,7 +59,7 @@ REM --- 1. Compiler le frontend -----------------------------------------------
 REM AVANT de lancer quoi que ce soit : le backend sert frontend/dist tel qu'il le
 REM trouve. Demarrer sur une compilation ratee ou perimee afficherait l'ancienne
 REM version de l'interface sans le moindre signe que quelque chose a echoue.
-echo [1/3] Compilation du frontend...
+echo [1/4] Compilation du frontend...
 pushd "%PROJECT_ROOT%\frontend"
 call npm run build
 if errorlevel 1 (
@@ -74,12 +74,33 @@ popd
 echo       OK
 echo.
 
+REM --- Preparation du moteur de requetes -------------------------------------
+REM Au tout premier lancement sur un poste neuf, bruin doit installer le pilote
+REM ADBC de DuckDB. L'application demarre aussitot des dizaines de requetes en
+REM parallele, une par widget : sans cette etape, elles tentent TOUTES d'installer
+REM le pilote en meme temps et se marchent dessus —
+REM   "could not create file duckdb.dll: the process cannot access the file"
+REM Resultat : une partie des widgets s'affiche, l'autre non, sans logique visible.
+REM
+REM "dac connections" ouvre la connexion dans un seul processus et installe le
+REM pilote proprement. Mesure : ~11 s a froid, ~1 s ensuite.
+echo [2/4] Preparation du moteur de requetes...
+pushd "%PROJECT_ROOT%\dac"
+"%BRUIN_BIN%\dac.exe" connections >NUL 2>&1
+if errorlevel 1 (
+    echo       Impossible de joindre la base — les visuels peuvent rester vides.
+) else (
+    echo       OK
+)
+popd
+echo.
+
 REM --- 2. Dashboards Bruin DAC (http://localhost:8321) -----------------------
 call :is_running 8321
 if "%RUNNING%"=="1" (
-    echo [2/3] DAC deja demarre - reutilise.
+    echo [3/4] DAC deja demarre - reutilise.
 ) else (
-    echo [2/3] Demarrage de DAC...
+    echo [3/4] Demarrage de DAC...
     start "DevoTeam DAC" /D "%PROJECT_ROOT%\dac" cmd /s /k ""%BRUIN_BIN%\dac.exe" serve --dir . --port 8321 --template themes/devoteam.yml"
 )
 
@@ -91,9 +112,9 @@ REM s'il ne demarre pas, l'application retombe sur le serveur clair et le
 REM tableau de bord reste lisible.
 call :is_running 8322
 if "%RUNNING%"=="1" (
-    echo [2/3] DAC sombre deja demarre - reutilise.
+    echo [3/4] DAC sombre deja demarre - reutilise.
 ) else (
-    echo [2/3] Demarrage de DAC sombre...
+    echo [3/4] Demarrage de DAC sombre...
     start "DevoTeam DAC sombre" /D "%PROJECT_ROOT%\dac" cmd /s /k ""%BRUIN_BIN%\dac.exe" serve --dir . --port 8322 --template themes/devoteam-dark.yml"
 )
 
@@ -106,9 +127,9 @@ REM concurrentes dans le Google Sheet. Le goulot n'est de toute facon pas le
 REM backend (mesure : 0,03 s par question) mais le quota du modele.
 call :is_running 8000
 if "%RUNNING%"=="1" (
-    echo [3/3] Backend deja demarre - reutilise.
+    echo [4/4] Backend deja demarre - reutilise.
 ) else (
-    echo [3/3] Demarrage du backend...
+    echo [4/4] Demarrage du backend...
     start "DevoTeam Backend" /D "%PROJECT_ROOT%" cmd /s /k ""%PY%" -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1"
 )
 
