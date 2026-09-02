@@ -168,7 +168,14 @@ navigateur, pour qui reçoit le dossier sans passer par ce fichier.
 
 ## Installer sur un autre poste
 
-Procédure complète, pensée pour une machine qui n'est pas celle du développeur :
+**Le plus simple : double-cliquer sur `setup\INSTALLER.bat`.**
+
+Un assistant conduit l'installation de bout en bout et ne demande que ce qui ne peut
+pas être deviné — la clé Gemini, le lien de la feuille, le fichier d'identifiants.
+Il installe le reste, attend que la feuille soit partagée, et termine par le
+diagnostic. Voir `setup/README.md`.
+
+La procédure détaillée, à suivre à la main si vous préférez :
 **`Documentation/INSTALLATION.md`**.
 
 ```

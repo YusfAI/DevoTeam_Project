@@ -10,6 +10,10 @@ Compter une heure la première fois, dont l'essentiel est du téléchargement.
 > Pour voir l'application avant de l'installer :
 > [démonstration guidée](https://app.arcade.software/flows/0JEAJAGmgCqMbVXfQo2R/view) (aussi dans `Demo video.url`, à la racine du projet).
 
+> **Plus rapide :** `setup\INSTALLER.bat` fait tout ce qui suit automatiquement et
+> ne vous demande que les trois secrets. Cette page reste la référence si vous
+> préférez procéder à la main, ou pour comprendre ce que l'assistant fait.
+
 ## Avant le jour de l'installation
 
 Trois choses doivent être obtenues **à l'avance**. Ce sont elles qui font échouer une
