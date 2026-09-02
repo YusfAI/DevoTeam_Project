@@ -46,10 +46,17 @@ function Banniere {
     Write-Host '    DevoTeam Dashboard — assistant d''installation' -ForegroundColor Cyan
     Write-Host '  ============================================================' -ForegroundColor Cyan
     Write-Host ''
-    Write-Host '  Cet assistant installe tout et ne vous demande que trois choses :' -ForegroundColor White
-    Write-Host '    1. la cle Gemini' -ForegroundColor White
-    Write-Host '    2. le lien de la feuille Google' -ForegroundColor White
-    Write-Host '    3. le fichier JSON du compte de service' -ForegroundColor White
+    Write-Host '  Cet assistant installe tout. Il vous demandera :' -ForegroundColor White
+    Write-Host ''
+    Write-Host '    1. la cle Gemini                          (obligatoire)' -ForegroundColor White
+    Write-Host '    2. le lien de la feuille Google           (obligatoire)' -ForegroundColor White
+    Write-Host '    3. le nom de l''onglet des donnees         (obligatoire)' -ForegroundColor White
+    Write-Host '    4. l''adresse expeditrice des alertes      (facultatif)' -ForegroundColor White
+    Write-Host '    5. le mot de passe d''application Gmail    (facultatif)' -ForegroundColor White
+    Write-Host '    6. l''adresse destinataire des alertes     (facultatif)' -ForegroundColor White
+    Write-Host ''
+    Write-Host '    puis le fichier JSON du compte de service, par une fenetre' -ForegroundColor White
+    Write-Host '    de selection.' -ForegroundColor White
     Write-Host ''
     Write-Host '  Rien de ce que vous saisirez ne sera affiche ni copie ailleurs' -ForegroundColor DarkGray
     Write-Host '  que dans le fichier .env, exclu du depot Git.' -ForegroundColor DarkGray
@@ -229,42 +236,113 @@ function InstallerDac {
 
 function DemanderConfiguration {
     Titre '2. Configuration'
+    Write-Host '  Six informations. Entree conserve ce qui est deja en place.' -ForegroundColor DarkGray
 
     $config = LireEnv
 
     Write-Host ''
-    $cle = LireSecret 'Cle Gemini  (aistudio.google.com > Get API key)' $config['GOOGLE_API_KEY']
-    if ($cle) { $config['GOOGLE_API_KEY'] = $cle }
+    Write-Host '  [1/6] Cle Gemini' -ForegroundColor Cyan
+    Info 'aistudio.google.com > Get API key — la saisie reste invisible'
+    $valeur = LireSecret 'Collez la cle :' $config['GOOGLE_API_KEY']
+    if ($valeur) { $config['GOOGLE_API_KEY'] = $valeur }
 
     Write-Host ''
-    $lien = LireTexte 'Lien OU identifiant de la feuille Google' $config['GOOGLE_SHEET_ID'] $null
+    Write-Host '  [2/6] Feuille Google' -ForegroundColor Cyan
+    Info "Collez le lien entier depuis le navigateur — l'identifiant en est extrait"
+    $lien = LireTexte 'Lien ou identifiant :' $config['GOOGLE_SHEET_ID'] $null
     $id = IdentifiantDeFeuille $lien
     if ($id) {
         $config['GOOGLE_SHEET_ID'] = $id
-        if ($lien -ne $id) { Info "Identifiant extrait du lien : $id" }
+        if ($lien -ne $id) { Info "Identifiant extrait : $id" }
     }
 
     Write-Host ''
-    $onglet = LireTexte "Nom de l'onglet qui contient les donnees" $config['GOOGLE_SHEET_TAB'] 'opportunities'
+    Write-Host '  [3/6] Onglet des donnees' -ForegroundColor Cyan
+    Info "Le nom de l'onglet, en bas de la feuille, qui contient les opportunites"
+    $onglet = LireTexte 'Nom de l''onglet :' $config['GOOGLE_SHEET_TAB'] 'opportunities'
     if ($onglet) { $config['GOOGLE_SHEET_TAB'] = $onglet }
 
     if (-not $config['GOOGLE_SHEETS_CREDENTIALS_PATH']) {
         $config['GOOGLE_SHEETS_CREDENTIALS_PATH'] = 'credentials/google_service_account.json'
     }
 
+    # --- Les alertes email ------------------------------------------------
+    # Facultatives, mais DEMANDEES. Elles étaient auparavant derrière une question
+    # « o/N » dont le défaut valait non : les enterrer ainsi revenait à ne pas les
+    # proposer, et personne ne configurait les alertes sans le savoir.
     Write-Host ''
-    Write-Host '  Alertes email quotidiennes — facultatif.' -ForegroundColor White
-    Write-Host '  Sans elles, seul le rappel par mail ne part pas.' -ForegroundColor DarkGray
-    $reponse = Read-Host '        Configurer maintenant ? (o/N)'
-    if ($reponse -match '^[oOyY]') {
-        $config['GMAIL_SENDER'] = LireTexte 'Adresse expeditrice' $config['GMAIL_SENDER'] $null
-        $config['GMAIL_APP_PASSWORD'] = LireSecret "Mot de passe d'application Gmail (16 caracteres)" $config['GMAIL_APP_PASSWORD']
-        $config['ALERT_RECIPIENT_EMAIL'] = LireTexte 'Adresse destinataire' $config['ALERT_RECIPIENT_EMAIL'] $config['GMAIL_SENDER']
+    Write-Host '  ---- Alertes email quotidiennes — facultatif ----' -ForegroundColor DarkGray
+    Info 'Un rappel des echeances a 7 jours, envoye chaque matin.'
+    Info "Entree a la question suivante pour s'en passer : rien d'autre ne change."
+
+    Write-Host ''
+    Write-Host '  [4/6] Adresse expeditrice' -ForegroundColor Cyan
+    Info "Le compte Gmail qui ENVOIE le rappel (Entree pour desactiver les alertes)"
+    $expediteur = LireTexte 'Adresse expeditrice :' $config['GMAIL_SENDER'] $null
+
+    if ($expediteur) {
+        $config['GMAIL_SENDER'] = $expediteur
+
+        Write-Host ''
+        Write-Host '  [5/6] Mot de passe d''application Gmail' -ForegroundColor Cyan
+        Info 'myaccount.google.com/apppasswords — 16 caracteres.'
+        Info "PAS le mot de passe du compte : un mot de passe DEDIE, qui exige"
+        Info "que la validation en 2 etapes soit active. Les espaces sont retires."
+        $motdepasse = LireSecret 'Collez le mot de passe :' $config['GMAIL_APP_PASSWORD']
+        if ($motdepasse) { $config['GMAIL_APP_PASSWORD'] = $motdepasse }
+
+        Write-Host ''
+        Write-Host '  [6/6] Adresse destinataire' -ForegroundColor Cyan
+        Info 'Qui RECOIT le rappel — la meme adresse convient tres bien.'
+        $destinataire = LireTexte 'Adresse destinataire :' $config['ALERT_RECIPIENT_EMAIL'] $expediteur
+        if ($destinataire) { $config['ALERT_RECIPIENT_EMAIL'] = $destinataire }
+    } else {
+        Write-Host ''
+        Avertir 'Alertes email desactivees — questions 5 et 6 sans objet.'
+        Info "L'application fonctionne integralement ; seul le rappel ne part pas."
+        $config['GMAIL_SENDER'] = ''
+        $config['GMAIL_APP_PASSWORD'] = ''
+        $config['ALERT_RECIPIENT_EMAIL'] = ''
     }
 
     EcrireEnv $config
+    RecapitulerConfiguration $config
+}
+
+function RecapitulerConfiguration($config) {
+    # Ce que la configuration contient VRAIMENT, avant d'aller plus loin. Une
+    # valeur oubliée ne se voit pas dans un .env qu'on ne rouvre jamais ; elle se
+    # voit ici, pendant qu'on peut encore la corriger d'un simple relancement.
     Write-Host ''
-    Ok '.env ecrit'
+    Titre 'Recapitulatif'
+
+    $lignes = @(
+        @{ Cle = 'GOOGLE_API_KEY';        Nom = 'Cle Gemini';            Secret = $true;  Requis = $true },
+        @{ Cle = 'GOOGLE_SHEET_ID';       Nom = 'Identifiant de feuille'; Secret = $false; Requis = $true },
+        @{ Cle = 'GOOGLE_SHEET_TAB';      Nom = 'Onglet';                 Secret = $false; Requis = $true },
+        @{ Cle = 'GMAIL_SENDER';          Nom = 'Alertes — expediteur';   Secret = $false; Requis = $false },
+        @{ Cle = 'GMAIL_APP_PASSWORD';    Nom = 'Alertes — mot de passe'; Secret = $true;  Requis = $false },
+        @{ Cle = 'ALERT_RECIPIENT_EMAIL'; Nom = 'Alertes — destinataire'; Secret = $false; Requis = $false }
+    )
+
+    foreach ($l in $lignes) {
+        $valeur = $config[$l.Cle]
+        if ($valeur) {
+            # Un secret ne se réaffiche jamais : sa longueur suffit à confirmer
+            # qu'il a bien été saisi, et ne révèle rien.
+            $affiche = if ($l.Secret) { "renseigne ($($valeur.Length) caracteres)" } else { $valeur }
+            Ok ("{0,-26} {1}" -f $l.Nom, $affiche)
+        } elseif ($l.Requis) {
+            Echec ("{0,-26} MANQUANT" -f $l.Nom)
+        } else {
+            Info ("{0,-26} non configure" -f $l.Nom)
+        }
+    }
+
+    Write-Host ''
+    Info 'DAC_PUBLIC_URL et DAC_DARK_PUBLIC_URL restent vides : elles ne servent'
+    Info "qu'a exposer l'application depuis une autre machine (voir la"
+    Info 'documentation, section "accessible a distance").'
 }
 
 function DemanderIdentifiants {

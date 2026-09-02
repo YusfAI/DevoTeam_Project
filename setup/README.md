@@ -11,13 +11,28 @@ pas deviner.
 
 ## Ce qu'il vous demande
 
-| Ce qu'il demande | Où le trouver |
-|---|---|
-| La clé Gemini | [aistudio.google.com](https://aistudio.google.com) → *Get API key* |
-| Le lien de la feuille Google | Copiez l'URL entière depuis votre navigateur — il en extrait l'identifiant tout seul |
-| Le nom de l'onglet | Celui qui contient les données (`opportunities` par défaut) |
-| Le fichier JSON du compte de service | Une fenêtre de sélection s'ouvre — le fichier est copié et renommé correctement |
-| Les alertes email | Facultatif, on peut passer |
+Six informations, posées une par une, puis un fichier à sélectionner.
+
+| # | Information | Où la trouver | |
+|---|---|---|---|
+| 1 | Clé Gemini | [aistudio.google.com](https://aistudio.google.com) → *Get API key* | obligatoire |
+| 2 | Lien de la feuille Google | Copiez l'URL entière depuis le navigateur — l'identifiant en est extrait | obligatoire |
+| 3 | Nom de l'onglet | Celui qui contient les opportunités (`opportunities` par défaut) | obligatoire |
+| 4 | Adresse expéditrice des alertes | Le compte Gmail qui **envoie** le rappel quotidien | facultatif |
+| 5 | Mot de passe d'application Gmail | [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) — 16 caractères | facultatif |
+| 6 | Adresse destinataire des alertes | Qui **reçoit** le rappel | facultatif |
+| — | Fichier JSON du compte de service | Une fenêtre de sélection s'ouvre ; le fichier est copié et renommé | obligatoire |
+
+Les questions 4 à 6 ne concernent que le rappel par email. Entrée à la question 4
+les désactive toutes les trois — l'application fonctionne intégralement sans elles.
+
+Deux variables restent volontairement vides : `DAC_PUBLIC_URL` et
+`DAC_DARK_PUBLIC_URL`, qui ne servent qu'à exposer l'application depuis une autre
+machine. L'assistant le dit à la fin, pour qu'on ne les croie pas oubliées.
+
+À la fin de la saisie, un **récapitulatif** montre ce qui est renseigné et ce qui ne
+l'est pas. Les secrets n'y sont jamais réaffichés : seule leur longueur confirme la
+saisie.
 
 ## Ce qu'il fait sans rien demander
 

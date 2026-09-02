@@ -83,9 +83,18 @@ def test_les_secrets_se_saisissent_en_aveugle():
     s = _assistant()
 
     assert "-AsSecureString" in s
-    # La clé et le mot de passe passent bien par la saisie masquée.
-    assert "LireSecret 'Cle Gemini" in s
-    assert "LireSecret \"Mot de passe d'application" in s
+
+    # Les DEUX secrets passent par la saisie masquée. Vérifié sur la valeur
+    # affectée plutôt que sur le libellé de la question : le texte des questions
+    # a vocation à changer, l'exigence non.
+    for variable in ("GOOGLE_API_KEY", "GMAIL_APP_PASSWORD"):
+        bloc = s[s.index("function DemanderConfiguration"):]
+        bloc = bloc[:bloc.index("function RecapitulerConfiguration")]
+        affectation = [l for l in bloc.splitlines()
+                       if "$config['%s']" % variable in l and "=" in l]
+        assert affectation, variable
+        # La valeur affectée vient d'une variable alimentée par LireSecret.
+        assert "LireSecret" in bloc, variable
 
 
 def test_les_espaces_d_un_mot_de_passe_sont_retires():
@@ -154,3 +163,68 @@ def test_l_assistant_est_rejouable():
     assert "Entree pour la garder" in s
     # Et le fichier d'identifiants déjà en place n'est pas redemandé.
     assert "Test-Path $Identifiants" in s
+
+
+# ---------------------------------------------------------------------------
+# Toutes les valeurs sont demandées, aucune n'est cachée
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("variable", [
+    "GOOGLE_API_KEY", "GOOGLE_SHEET_ID", "GOOGLE_SHEET_TAB",
+    "GMAIL_SENDER", "GMAIL_APP_PASSWORD", "ALERT_RECIPIENT_EMAIL",
+])
+def test_chaque_valeur_du_env_est_demandee(variable):
+    """Aucune variable saisissable ne doit être laissée de côté en silence.
+
+    Les trois variables d'alerte étaient auparavant derrière une question « o/N »
+    dont le défaut valait NON : facultatives, certes, mais les enterrer ainsi
+    revenait à ne pas les proposer du tout.
+    """
+    s = _assistant()
+
+    assert "$config['%s']" % variable in s, variable
+
+
+def test_les_questions_sont_numerotees():
+    """Six questions annoncées, six questions posées.
+
+    Un assistant qui n'annonce pas ce qu'il va demander laisse croire qu'on a fini
+    alors qu'il reste des champs vides.
+    """
+    s = _assistant()
+
+    for i in range(1, 7):
+        assert "[%d/6]" % i in s, i
+
+
+def test_le_recapitulatif_montre_ce_qui_manque():
+    s = _assistant()
+
+    assert "RecapitulerConfiguration" in s
+    assert "MANQUANT" in s
+    # Un secret n'est jamais réaffiché : seule sa longueur confirme la saisie.
+    assert "caracteres)" in s
+    assert "$valeur.Length" in s
+
+
+def test_les_variables_laissees_vides_sont_expliquees():
+    """DAC_PUBLIC_URL vide est un CHOIX, pas un oubli — et ça se dit."""
+    s = _assistant()
+
+    assert "DAC_PUBLIC_URL et DAC_DARK_PUBLIC_URL restent vides" in s
+
+
+def test_toutes_les_variables_du_modele_sont_couvertes():
+    """Le garde-fou de fond : si .env.example gagne une variable, l'assistant doit
+    la demander ou justifier de la laisser vide."""
+    import re
+
+    modele = (RACINE / ".env.example").read_text(encoding="utf-8")
+    variables = set(re.findall(r"^([A-Z_][A-Z0-9_]*)=", modele, re.MULTILINE))
+    s = _assistant()
+
+    non_traitees = [v for v in sorted(variables) if v not in s]
+
+    assert not non_traitees, (
+        "Ces variables de .env.example ne sont ni demandées ni mentionnées par "
+        "l'assistant : %s" % ", ".join(non_traitees))
