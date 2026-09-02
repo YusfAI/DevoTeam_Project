@@ -63,6 +63,45 @@ function Banniere {
 }
 
 # ---------------------------------------------------------------------------
+# Exécution de programmes externes
+# ---------------------------------------------------------------------------
+
+function Executer {
+    <#
+    .SYNOPSIS
+      Lance un programme externe sans que PowerShell prenne sa sortie pour une erreur.
+
+    .DESCRIPTION
+      PowerShell 5.1 emballe chaque ligne écrite sur la sortie d'erreur d'un
+      programme externe dans un ErrorRecord. Avec $ErrorActionPreference = 'Stop',
+      un simple message de progression suffit alors à faire avorter le script.
+
+      C'est exactement ce qui s'est produit avec l'installeur du moteur de tableaux
+      de bord : « checking GitHub for latest tag », message parfaitement normal,
+      interrompait l'assistant alors que l'installation se serait bien terminée.
+
+      La préférence est donc abaissée le temps de l'appel, et le verdict se lit sur
+      le CODE DE RETOUR et sur la présence des fichiers attendus — jamais sur le
+      flux qu'un programme a choisi pour s'exprimer.
+    #>
+    param(
+        [Parameter(Mandatory)][string] $Programme,
+        [string[]] $Arguments = @()
+    )
+
+    $precedent = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $lignes = & $Programme @Arguments 2>&1 | ForEach-Object { "$_" }
+        return [pscustomobject]@{ Code = $LASTEXITCODE; Sortie = $lignes }
+    } catch {
+        return [pscustomobject]@{ Code = 1; Sortie = @("$_") }
+    } finally {
+        $ErrorActionPreference = $precedent
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Saisie
 # ---------------------------------------------------------------------------
 
@@ -181,7 +220,7 @@ function VerifierPrerequis {
         @{ Nom = 'npm';    Etiquette = 'Node.js LTS';  Lien = 'https://nodejs.org/' }
     )) {
         if (Get-Command $outil.Nom -ErrorAction SilentlyContinue) {
-            $version = (& $outil.Nom --version 2>&1 | Select-Object -First 1)
+            $version = (Executer $outil.Nom @('--version')).Sortie | Select-Object -First 1
             Ok "$($outil.Etiquette) — $version"
         } else {
             Echec "$($outil.Etiquette) absent"
@@ -220,7 +259,7 @@ function InstallerDac {
     }
 
     Info 'Telechargement en cours (une minute environ)...'
-    & $bash -lc 'curl -LsSf https://getbruin.com/install/dac | sh' 2>&1 | Out-Null
+    $resultat = Executer $bash @('-lc', 'curl -LsSf https://getbruin.com/install/dac | sh')
 
     if (Test-Path (Join-Path $BruinBin 'dac.exe')) {
         Ok 'Moteur installe'
@@ -399,8 +438,9 @@ function AttendreLePartage($adresse, $python) {
     $sonde = Join-Path $PSScriptRoot 'sonde_feuille.py'
     for ($essai = 1; $essai -le 10; $essai++) {
         Read-Host '        Partage fait ? Appuyez sur Entree pour verifier'
-        $sortie = & $python $sonde 2>&1
-        if ($LASTEXITCODE -eq 0) {
+        $resultat = Executer $python @($sonde)
+        $sortie = $resultat.Sortie
+        if ($resultat.Code -eq 0) {
             Ok 'Feuille accessible en lecture ET en ecriture'
             Info ($sortie | Select-Object -First 1)
             return $true
@@ -424,7 +464,13 @@ function Main {
 
     Titre '5. Installation'
     Info 'Environnement Python, dependances, interface — quelques minutes.'
-    & (Join-Path $Racine 'scripts\install.bat') | Out-Null
+    $resultat = Executer (Join-Path $Racine 'scripts\install.bat')
+    if ($resultat.Code -ne 0) {
+        # Non bloquant : install.bat se termine en erreur tant que la
+        # configuration est incomplète, ce qui est justement l'état dans
+        # lequel l'assistant l'appelle. Le verdict vient du diagnostic.
+        Info "L'installation signale des points a corriger — verdict plus bas."
+    }
 
     $python = Join-Path $Racine '.venv\Scripts\python.exe'
     if (-not (Test-Path $python)) {
@@ -436,8 +482,9 @@ function Main {
     AttendreLePartage $adresse $python | Out-Null
 
     Titre '6. Verification'
-    & $python (Join-Path $Racine 'scripts\verifier_installation.py')
-    $verdict = $LASTEXITCODE
+    $resultat = Executer $python @((Join-Path $Racine 'scripts\verifier_installation.py'))
+    $resultat.Sortie | ForEach-Object { Write-Host $_ }
+    $verdict = $resultat.Code
 
     Write-Host ''
     Write-Host '  ============================================================' -ForegroundColor Cyan

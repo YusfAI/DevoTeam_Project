@@ -228,3 +228,54 @@ def test_toutes_les_variables_du_modele_sont_couvertes():
     assert not non_traitees, (
         "Ces variables de .env.example ne sont ni demandées ni mentionnées par "
         "l'assistant : %s" % ", ".join(non_traitees))
+
+
+# ---------------------------------------------------------------------------
+# Les programmes externes
+# ---------------------------------------------------------------------------
+
+def test_aucun_appel_natif_ne_redirige_stderr_directement():
+    """La panne rencontrée sur le poste de destination.
+
+    PowerShell 5.1 emballe chaque ligne écrite sur la sortie d'erreur d'un
+    programme externe dans un ErrorRecord. Avec $ErrorActionPreference = 'Stop',
+    un simple message de progression fait avorter le script — ce qui est arrivé
+    avec « checking GitHub for latest tag » de l'installeur bruin, alors que
+    l'installation se serait bien terminée.
+
+    Un seul `2>&1` subsiste, à l'intérieur de la fonction Executer, qui abaisse la
+    préférence d'erreur le temps de l'appel.
+    """
+    s = _assistant()
+
+    redirections = [l for l in s.splitlines()
+                    if "2>&1" in l and not l.strip().startswith("#")]
+
+    assert len(redirections) == 1, redirections
+    assert "$Programme @Arguments" in redirections[0]
+
+
+def test_le_verdict_vient_du_code_de_retour():
+    """Pas du flux qu'un programme a choisi pour s'exprimer.
+
+    Écrire sur la sortie d'erreur n'est pas échouer : beaucoup d'outils y mettent
+    leur progression. Seul le code de retour, et la présence des fichiers attendus,
+    disent si l'installation a réussi.
+    """
+    s = _assistant()
+
+    assert "$resultat.Code" in s
+    assert "$LASTEXITCODE" not in s.split("function Executer")[0] + \
+        s.split("# Saisie")[1]
+
+
+def test_la_preference_d_erreur_est_restauree():
+    """Un `finally`, et non une remise à zéro en fin de fonction : une exception
+    laisserait sinon le script entier en mode permissif."""
+    s = _assistant()
+    bloc = s[s.index("function Executer"):]
+    bloc = bloc[:bloc.index("# Saisie")]
+
+    assert "$precedent = $ErrorActionPreference" in bloc
+    assert "} finally {" in bloc
+    assert "$ErrorActionPreference = $precedent" in bloc
