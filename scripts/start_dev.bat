@@ -37,13 +37,19 @@ REM processus en place (le nouveau ne peut pas prendre le port) : on se retrouve
 REM avec un serveur qui repond mais sert du code perime, panne deja rencontree
 REM et particulierement penible a diagnostiquer.
 
+REM Forme des lignes « start » ci-dessous : /D fixe le repertoire, /s rend le
+REM traitement des guillemets par cmd deterministe, et un seul niveau de
+REM guillemets entoure le chemin de l'executable. La forme precedente doublait
+REM les guillemets (""%PY%"") et NE DEMARRAIT RIEN des qu'un dossier du chemin
+REM contenait une espace — constate sur un poste reel, sans le moindre message.
+
 REM --- 1. Backend FastAPI (http://127.0.0.1:8000) ---
 call :is_running 8000
 if "%RUNNING%"=="1" (
     echo [Backend]  deja demarre - reutilise.
 ) else (
     echo [Backend]  demarrage...
-    start "DevoTeam Backend" cmd /k "cd /d ""%PROJECT_ROOT%"" && ""%PY%"" -m uvicorn backend.main:app --reload"
+    start "DevoTeam Backend" /D "%PROJECT_ROOT%" cmd /s /k ""%PY%" -m uvicorn backend.main:app --reload"
 )
 
 REM --- 2. Dashboards Bruin DAC (http://localhost:8321), affiches en iframe par l'UI ---
@@ -53,7 +59,7 @@ if "%RUNNING%"=="1" (
     echo [DAC]      deja demarre - reutilise.
 ) else (
     echo [DAC]      demarrage...
-    start "DevoTeam DAC" cmd /k "set ""PATH=%PATH%"" && cd /d ""%PROJECT_ROOT%\dac"" && ""%BRUIN_BIN%\dac.exe"" serve --dir . --port 8321 --template themes/devoteam.yml"
+    start "DevoTeam DAC" /D "%PROJECT_ROOT%\dac" cmd /s /k ""%BRUIN_BIN%\dac.exe" serve --dir . --port 8321 --template themes/devoteam.yml"
 )
 
 REM --- DAC sombre (port 8322) ---------------------------------------------
@@ -67,7 +73,7 @@ if "%RUNNING%"=="1" (
     echo [DAC-SOMBRE] DAC sombre deja demarre - reutilise.
 ) else (
     echo [DAC-SOMBRE] Demarrage de DAC sombre...
-    start "DevoTeam DAC sombre" cmd /k "set ""PATH=%PATH%"" && cd /d ""%PROJECT_ROOT%\dac"" && ""%BRUIN_BIN%\dac.exe"" serve --dir . --port 8322 --template themes/devoteam-dark.yml"
+    start "DevoTeam DAC sombre" /D "%PROJECT_ROOT%\dac" cmd /s /k ""%BRUIN_BIN%\dac.exe" serve --dir . --port 8322 --template themes/devoteam-dark.yml"
 )
 
 REM --- 3. Frontend Vite (http://localhost:5173) ---
@@ -76,7 +82,7 @@ if "%RUNNING%"=="1" (
     echo [Frontend] deja demarre - reutilise.
 ) else (
     echo [Frontend] demarrage...
-    start "DevoTeam Frontend" cmd /k "cd /d ""%PROJECT_ROOT%\frontend"" && npm run dev"
+    start "DevoTeam Frontend" /D "%PROJECT_ROOT%\frontend" cmd /s /k "npm run dev"
 )
 
 REM --- 4. Ouvrir la page une fois les trois services prets ---

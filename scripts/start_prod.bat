@@ -49,6 +49,12 @@ if not exist "%BRUIN_BIN%\bruin.exe" (
     exit /b 1
 )
 
+REM Forme des lignes « start » ci-dessous : /D fixe le repertoire, /s rend le
+REM traitement des guillemets par cmd deterministe, et un seul niveau de
+REM guillemets entoure le chemin de l'executable. La forme precedente doublait
+REM les guillemets (""%PY%"") et NE DEMARRAIT RIEN des qu'un dossier du chemin
+REM contenait une espace — constate sur un poste reel, sans le moindre message.
+
 REM --- 1. Compiler le frontend -----------------------------------------------
 REM AVANT de lancer quoi que ce soit : le backend sert frontend/dist tel qu'il le
 REM trouve. Demarrer sur une compilation ratee ou perimee afficherait l'ancienne
@@ -74,7 +80,7 @@ if "%RUNNING%"=="1" (
     echo [2/3] DAC deja demarre - reutilise.
 ) else (
     echo [2/3] Demarrage de DAC...
-    start "DevoTeam DAC" cmd /k "set ""PATH=%PATH%"" && cd /d ""%PROJECT_ROOT%\dac"" && ""%BRUIN_BIN%\dac.exe"" serve --dir . --port 8321 --template themes/devoteam.yml"
+    start "DevoTeam DAC" /D "%PROJECT_ROOT%\dac" cmd /s /k ""%BRUIN_BIN%\dac.exe" serve --dir . --port 8321 --template themes/devoteam.yml"
 )
 
 REM --- DAC sombre (port 8322) ---------------------------------------------
@@ -88,7 +94,7 @@ if "%RUNNING%"=="1" (
     echo [2/3] DAC sombre deja demarre - reutilise.
 ) else (
     echo [2/3] Demarrage de DAC sombre...
-    start "DevoTeam DAC sombre" cmd /k "set ""PATH=%PATH%"" && cd /d ""%PROJECT_ROOT%\dac"" && ""%BRUIN_BIN%\dac.exe"" serve --dir . --port 8322 --template themes/devoteam-dark.yml"
+    start "DevoTeam DAC sombre" /D "%PROJECT_ROOT%\dac" cmd /s /k ""%BRUIN_BIN%\dac.exe" serve --dir . --port 8322 --template themes/devoteam-dark.yml"
 )
 
 REM --- 3. Backend + interface compilee (http://127.0.0.1:8000) ---------------
@@ -103,7 +109,7 @@ if "%RUNNING%"=="1" (
     echo [3/3] Backend deja demarre - reutilise.
 ) else (
     echo [3/3] Demarrage du backend...
-    start "DevoTeam Backend" cmd /k "cd /d ""%PROJECT_ROOT%"" && ""%PY%"" -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1"
+    start "DevoTeam Backend" /D "%PROJECT_ROOT%" cmd /s /k ""%PY%" -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1"
 )
 
 REM --- Ouvrir la page une fois les services prets -----------------------------

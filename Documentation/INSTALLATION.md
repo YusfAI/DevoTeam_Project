@@ -282,6 +282,7 @@ tunnels:
 | Tableaux de bord vides, aucune erreur | Statuts non reconnus | Voir la section ci-dessus |
 | Les données ne se rafraîchissent pas | Feuille partagée en Lecteur | Repartager en **Éditeur** |
 | « GOOGLE_SHEET_ID manquant » | `.env` absent ou vide | Refaire l'étape 4 |
+| Les fenêtres s'ouvrent puis se referment, rien ne démarre | Lanceur antérieur à la correction des chemins à espaces | Mettre le projet à jour (`git pull`) |
 | `python` non reconnu | Case PATH décochée | Réinstaller Python en cochant la case |
 | Tableaux vides derrière une URL ngrok | Un seul tunnel, ou `DAC_PUBLIC_URL` non renseignée | Voir la section « accessible à distance » |
 | Une page « You are about to visit… » à la place des visuels | Interstitiel ngrok dans l'iframe | Ouvrir l'URL de DAC dans un onglet, cliquer « Visit Site » |

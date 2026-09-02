@@ -159,7 +159,9 @@ def test_les_lanceurs_preferent_l_environnement_isole(nom):
     contenu = (SCRIPTS / nom).read_text(encoding="utf-8", errors="surrogateescape")
 
     assert r".venv\Scripts\python.exe" in contenu, nom
-    assert '""%PY%"" -m uvicorn' in contenu, nom
+    # Un seul niveau de guillemets autour du chemin : le doublement précédent
+    # empêchait tout démarrage dès qu'un dossier du chemin contenait une espace.
+    assert '""%PY%" -m uvicorn' in contenu, nom
     # Et le repli : un poste configuré avant l'existence du .venv doit continuer
     # de démarrer.
     assert 'set "PY=python"' in contenu, nom
@@ -318,3 +320,55 @@ def test_le_lanceur_public_ouvre_bien_deux_tunnels():
     assert "DAC_PUBLIC_URL" in contenu
     # L'avertissement de sécurité : l'URL donne accès aux données commerciales.
     assert "basic_auth" in contenu
+
+
+# ---------------------------------------------------------------------------
+# Un chemin de projet contenant une espace
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("nom", ["start_dev.bat", "start_prod.bat"])
+def test_les_lanceurs_survivent_a_une_espace_dans_le_chemin(nom):
+    """Le défaut constaté sur un poste réel : rien ne démarrait, rien ne le disait.
+
+    Le projet y vivait dans « D:\...\DevoTeam Project\DevoTeam_Project ». Les
+    fenêtres s'ouvraient et se refermaient aussitôt ; aucun message, aucun journal.
+    Reproduit sur un banc, puis corrigé.
+
+    La forme fautive doublait les guillemets — `cmd /k "cd /d ""%ROOT%"" && ""%PY%""
+    args"`. C'est un usage répandu, mais `cmd /k` ne le résout pas de façon
+    déterministe dès qu'un dossier du chemin contient une espace.
+
+    La forme retenue : `/D` fixe le répertoire de travail, `/s` rend le traitement
+    des guillemets déterministe (cmd retire le premier et le dernier, garde le
+    reste tel quel), et il ne subsiste qu'un seul niveau d'imbrication.
+    """
+    contenu = (SCRIPTS / nom).read_text(encoding="utf-8", errors="surrogateescape")
+
+    lignes = [l for l in contenu.splitlines()
+              if l.strip().startswith('start "DevoTeam')]
+    assert lignes, nom
+
+    for ligne in lignes:
+        # Le doublement de guillemets est précisément ce qui échouait.
+        assert '""' not in ligne.replace('cmd /s /k ""', 'cmd /s /k <<'), ligne
+        assert "cmd /s /k" in ligne or "http" in ligne, ligne
+        assert "/D " in ligne, ligne
+
+
+@pytest.mark.parametrize("nom", ["start_dev.bat", "start_prod.bat"])
+def test_les_lanceurs_ne_reglent_plus_le_path_dans_la_fenetre_fille(nom):
+    """Le PATH s'hérite ; le régler à nouveau dans la commande fille rajoutait un
+    niveau de guillemets là où ils étaient déjà le problème.
+
+    Le lanceur ajoute %BRUIN_BIN% au PATH avant tout `start` : les processus lancés
+    en héritent. Vérifié en exécutant depuis un chemin à espaces — les quinze
+    contrôles du test fonctionnel passent, donc `bruin` est bien trouvé.
+    """
+    contenu = (SCRIPTS / nom).read_text(encoding="utf-8", errors="surrogateescape")
+
+    # Le PATH est bien préparé une fois, en amont.
+    assert 'set "PATH=%PATH%;%BRUIN_BIN%"' in contenu, nom
+    # Et plus jamais à l'intérieur d'une commande lancée.
+    for ligne in contenu.splitlines():
+        if ligne.strip().startswith('start "DevoTeam'):
+            assert "set " not in ligne, ligne
