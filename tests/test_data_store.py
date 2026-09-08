@@ -4,8 +4,8 @@ import pytest
 
 from backend import data_store
 from backend.data_store import (
-    RowError, SHEET_COLUMNS, _normalize_choice, _parse_date, _parse_float,
-    _parse_row, _parse_win_probability, refresh_dataframe, get_dataframe,
+    RowError, SHEET_COLUMNS, _nom_canonique, _normalize_choice, _parse_date,
+    _parse_float, _parse_row, _parse_win_probability, refresh_dataframe, get_dataframe,
 )
 
 
@@ -50,6 +50,140 @@ def test_normalize_choice_case_insensitive():
 def test_normalize_choice_invalid_raises():
     with pytest.raises(RowError, match="Risk Advisory"):
         _normalize_choice("Not A Real Practice", "practice")
+
+
+# ---------------------------------------------------------------------------
+# En-têtes d'une vraie feuille métier — pas les noms internes anglais
+#
+# Le fichier dont ce projet est parti (une feuille déjà en usage réelle) porte ces
+# intitulés français. Les imposer à renommer casserait un outil que d'autres
+# utilisent déjà pour leur travail quotidien ; _nom_canonique() les reconnaît donc
+# en plus des noms internes, sans quoi INTÉGRER LA FEUILLE RÉELLE D'UNE
+# UTILISATRICE serait impossible sans qu'elle modifie ses colonnes.
+# ---------------------------------------------------------------------------
+
+def test_nom_canonique_reconnait_les_entetes_francais_reels():
+    correspondances = {
+        "Pays": "country",
+        "Date de création": "created_date",
+        "Deadline": "deadline",
+        "Practice": "practice",
+        "Description de la prestation": "description",
+        "Lead (Acheteur)": "buyer",
+        "Types": "opp_type",
+        "Statut": "status",
+        "Budget": "budget",
+        "Financement": "funding_source",
+        "Partenaire": "partner",
+        "Offre financière": "financial_offer",
+        "Pondéré à": "win_probability",
+        # Colonnes calculées : jamais lues, seulement tenues à jour si présentes.
+        "Année Deadline": "deadline_year",
+        "Jours Rest.": "days_remaining",
+        "Pondération": "weighted_amount",
+    }
+    for entete, attendu in correspondances.items():
+        assert _nom_canonique(entete) == attendu, entete
+
+
+def test_nom_canonique_insensible_a_la_casse():
+    # "Practice"/"Budget"/"Deadline" coïncident déjà avec le nom interne — seule la
+    # CASSE diffère, et ils ne sont donc pas dans _ALIAS_COLONNES : c'est bien la
+    # normalisation qui doit les faire correspondre, pas une entrée de table dédiée.
+    assert _nom_canonique("COUNTRY") == "country"
+    assert _nom_canonique("Status") == "status"
+    assert _nom_canonique("  Budget  ") == "budget"
+
+
+def test_nom_canonique_ignore_un_entete_inconnu_sans_planter():
+    # Ni un nom interne, ni un alias connu : simplement renvoyé tel quel (en
+    # minuscules) — il ne correspondra à aucune colonne attendue et sera ignoré,
+    # sans faire échouer le chargement pour autant.
+    assert _nom_canonique("Colonne Personnalisée") == "colonne personnalisée"
+
+
+def test_une_feuille_aux_entetes_francais_et_sans_id_se_charge(monkeypatch):
+    """Le cas réel : la feuille dont ce projet est parti n'a jamais eu de colonne
+    "id" — elle n'en a jamais eu besoin pour son propre usage. Sans la rendre
+    facultative AU NIVEAU DE L'EN-TÊTE (pas seulement valeur par valeur), cette
+    feuille aurait été rejetée en bloc avec "Colonnes manquantes : id".
+    """
+    entetes = [
+        "Pays", "Date de création", "Deadline", "Horaires Deadline", "Année Deadline",
+        "Jours Rest.", "Practice", "Description de la prestation", "Lead (Acheteur)",
+        "Types", "Statut", "Budget", "Financement", "Partenaire", "Offre financière",
+        "Pondéré à", "Pondération",
+    ]
+    ligne = ["Bénin", "07/11/2026", "29/12/2026", "15:30", "2026", "154",
+             "Digital Transformation", "Elaboration de la stratégie de données",
+             "ASIN", "AMI", "Lead", "50000", "ENABEL", "-", "49600", "", ""]
+    ws = _FakeWorksheet([entetes, ligne])
+    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws)
+
+    resume = refresh_dataframe()
+
+    assert resume["errors"] == []
+    assert resume["total_rows"] == 1
+    assert resume["new_ids_assigned"] == 1
+
+    df = get_dataframe()
+    assert df.iloc[0]["country"] == "Bénin"
+    assert df.iloc[0]["practice"] == "Digital Transformation"
+    assert df.iloc[0]["buyer"] == "ASIN"
+    assert df.iloc[0]["id"] == 1
+
+    # "Jours Rest." (days_remaining, une colonne CALCULÉE) est bien tenue à jour —
+    # ça reste voulu. Ce qui ne doit JAMAIS apparaître, faute de colonne "id" où
+    # l'écrire, c'est une tentative d'écriture visant l'identifiant.
+    colonnes_ecrites = {col for _, col, _ in ws.update_calls}
+    assert entetes.index("Jours Rest.") + 1 in colonnes_ecrites
+    assert len(ws.update_calls) == 1  # rien d'autre à réécrire sur cette ligne
+
+
+def test_une_feuille_francaise_complete_recalcule_le_pondere_correctement():
+    """Vérifié contre le fichier réel : la ligne Tunisie/Carrefour porte
+    "Offre financière" = 445 400 et "Pondéré à" = 0,8, et sa colonne
+    "Pondération" (déjà calculée à la main dans la feuille source) vaut
+    356 320 — exactement financial_offer × win_probability. Le recalcul de
+    l'application doit retomber sur ce même nombre, preuve que l'alias ne se
+    contente pas de faire disparaître l'erreur mais lit la bonne colonne."""
+    entetes = [
+        "Pays", "Date de création", "Deadline", "Horaires Deadline", "Année Deadline",
+        "Jours Rest.", "Practice", "Description de la prestation", "Lead (Acheteur)",
+        "Types", "Statut", "Budget", "Financement", "Partenaire", "Offre financière",
+        "Pondéré à", "Pondération",
+    ]
+    ligne = ["Tunisie", "11/10/2026", "26/12/2026", "11:00", "2026", "151",
+             "Risk Advisory", "Mise en place d'une PSSI", "Carrefour - UHD",
+             "Prospection", "Offre remise", "500000", "Fonds Propres", "FTHM",
+             "445400", "0.8", "356320"]
+    ws = _FakeWorksheet([entetes, ligne])
+    data_store._get_worksheet = lambda: ws
+    data_store._cached_df = None
+    data_store._last_refresh_summary = {}
+
+    refresh_dataframe()
+
+    df = get_dataframe()
+    assert df.iloc[0]["financial_offer"] == 445400.0
+    assert df.iloc[0]["win_probability"] == 0.8
+    assert df.iloc[0]["weighted_amount"] == 356320.0
+
+
+def test_une_vraie_colonne_manquante_est_toujours_signalee():
+    """L'alias élargit ce qui est RECONNU, il ne rend rien de plus facultatif que
+    "id" : une feuille sans l'équivalent d'aucune des deux (ni "country" ni
+    "Pays") doit continuer à être refusée, comme avant."""
+    entetes_sans_pays = [h for h in SHEET_COLUMNS if h not in ("id", "country")]
+    ws = _FakeWorksheet([entetes_sans_pays])
+    data_store._get_worksheet = lambda: ws
+    data_store._cached_df = None
+    data_store._last_refresh_summary = {}
+
+    resume = refresh_dataframe()
+
+    assert resume["errors"]
+    assert "country" in resume["errors"][0]
 
 
 def _row_values(headers, **kwargs):

@@ -216,6 +216,45 @@ Deux réponses possibles :
 
 Il en va de même pour les **practices** et les **types d'opportunité**.
 
+### Le nom des colonnes, distinct de leur contenu
+
+Un point différent de celui ci-dessus : ce n'est plus la VALEUR d'une cellule qui
+peut différer, mais le nom même d'une colonne. Une feuille métier réelle porte
+souvent ses propres intitulés français — `Pays`, `Statut`, `Lead (Acheteur)`,
+`Deadline` — plutôt que les noms internes anglais que le code cherche par défaut
+(`country`, `status`, `buyer`, `deadline`).
+
+L'application reconnaît déjà les intitulés suivants, en plus des noms internes, et
+**sans distinction de majuscule** :
+
+| Colonne de la feuille | Colonne interne |
+|---|---|
+| Pays | `country` |
+| Date de création | `created_date` |
+| Deadline / Practice / Budget | *(déjà identiques, à la casse près)* |
+| Lead (Acheteur) | `buyer` |
+| Types | `opp_type` |
+| Statut | `status` |
+| Financement | `funding_source` |
+| Partenaire | `partner` |
+| Offre financière | `financial_offer` |
+| Pondéré à | `win_probability` |
+| Description de la prestation | `description` |
+| Année Deadline, Jours Rest., Pondération | colonnes calculées, tenues à jour si présentes — jamais lues |
+
+**La colonne `id` est la seule totalement facultative.** Une feuille métier qui n'en
+a jamais eu n'a besoin d'aucun ajout : l'application attribue un identifiant à
+chaque ligne en mémoire à chaque chargement. Une limite honnête à connaître : sans
+colonne où l'écrire, cet identifiant n'est valable QUE pour le chargement en
+cours — il peut changer d'une actualisation à l'autre. Sans conséquence pour
+l'usage courant (rien dans l'application ne s'appuie sur sa stabilité), mais à
+savoir si vous comptiez vous y référer d'une session à l'autre.
+
+Si la feuille porte un intitulé qui n'est reconnu ni comme nom interne ni comme
+alias, il est simplement ignoré comme une colonne en trop — la liste des alias se
+trouve dans `backend/data_store.py` (`_ALIAS_COLONNES`), à compléter au besoin de
+la même façon que les statuts ci-dessus.
+
 ---
 
 ## Rendre l'application accessible à distance (ngrok)

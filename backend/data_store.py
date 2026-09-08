@@ -34,12 +34,62 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# Colonnes "brutes" attendues dans le Sheet (n'importe quel ordre, en-têtes exacts).
+# Colonnes "brutes" attendues dans le Sheet (n'importe quel ordre, en-têtes exacts
+# UNE FOIS PASSÉS PAR _nom_canonique — voir juste en dessous).
 SHEET_COLUMNS = [
     "id", "country", "created_date", "deadline", "practice", "description",
     "buyer", "opp_type", "status", "budget", "funding_source", "partner",
     "financial_offer", "win_probability",
 ]
+
+# En-têtes français déjà en usage sur une vraie feuille métier (celle dont ce projet
+# est parti), acceptés en plus des noms internes anglais — insensible à la casse.
+#
+# Sans cette table, intégrer la feuille RÉELLE d'une utilisatrice demanderait de
+# renommer les colonnes de son outil de travail pour satisfaire le code, ce qui
+# n'est pas une demande raisonnable à lui faire. Les clés sont déjà en minuscules :
+# _nom_canonique() met l'en-tête reçu en minuscules avant de chercher ici.
+_ALIAS_COLONNES = {
+    "pays": "country",
+    "date de création": "created_date",
+    "date de creation": "created_date",
+    "lead (acheteur)": "buyer",
+    "acheteur": "buyer",
+    "types": "opp_type",
+    "type": "opp_type",
+    "statut": "status",
+    "financement": "funding_source",
+    "partenaire": "partner",
+    "offre financière": "financial_offer",
+    "offre financiere": "financial_offer",
+    "pondéré à": "win_probability",
+    "pondere a": "win_probability",
+    "description de la prestation": "description",
+    # Colonnes CALCULÉES (_DERIVED_SHEET_COLUMNS) : jamais lues, seulement réécrites
+    # après calcul. Les aliaser permet à l'application de tenir à jour les colonnes
+    # que l'utilisatrice a déjà l'habitude de consulter, au lieu de les laisser
+    # devenir obsolètes à côté de colonnes dupliquées portant les noms internes.
+    "année deadline": "deadline_year",
+    "annee deadline": "deadline_year",
+    "jours rest.": "days_remaining",
+    "jours restants": "days_remaining",
+    "pondération": "weighted_amount",
+    "ponderation": "weighted_amount",
+}
+
+
+def _nom_canonique(entete: str) -> str:
+    """Le nom interne correspondant à cet en-tête de colonne du Sheet.
+
+    Insensible à la casse : une feuille réelle porte ses propres intitulés
+    ("Pays", "Statut", "Deadline"...), et seule la CASSE diffère déjà pour les
+    noms qui coïncident par ailleurs avec le nom interne ("Practice" vs
+    "practice"). Un en-tête non reconnu (ni nom interne, ni alias connu) est
+    renvoyé tel quel, en minuscules : il ne correspondra à aucune colonne
+    attendue et sera simplement ignoré, sans faire échouer le chargement.
+    """
+    normalise = entete.strip().lower()
+    return _ALIAS_COLONNES.get(normalise, normalise)
 
 _CHOICE_FIELDS = {
     "practice": KNOWN_VALUES["practice"],
@@ -303,15 +353,22 @@ def _load_from_sheet() -> tuple[list[dict], dict]:
     if not all_values:
         return [], summary
 
-    headers = all_values[0]
-    missing_headers = [c for c in SHEET_COLUMNS if c not in headers]
+    headers = [_nom_canonique(h) for h in all_values[0]]
+    # "id" est la SEULE colonne facultative : une feuille métier réelle n'en a pas
+    # forcément une (elle n'a jamais eu besoin de s'auto-numéroter). Toutes les
+    # autres restent obligatoires — les rendre facultatives masquerait une vraie
+    # feuille mal formée derrière des colonnes silencieusement vides.
+    missing_headers = [c for c in SHEET_COLUMNS if c != "id" and c not in headers]
     if missing_headers:
         msg = f"Colonnes manquantes dans l'en-tête du Sheet : {', '.join(missing_headers)}"
         logger.error("Chargement des données : %s", msg)
         summary["errors"].append(msg)
         return [], summary
 
-    id_col_index = headers.index("id") + 1  # gspread est indexé à partir de 1
+    # gspread est indexé à partir de 1. Sans colonne "id", il n'y a nulle part où
+    # réécrire l'identifiant attribué (voir plus bas) : il reste valable pour CE
+    # chargement, simplement pas stable d'un chargement à l'autre.
+    id_col_index = headers.index("id") + 1 if "id" in headers else None
     derived_col_index = {c: headers.index(c) + 1 for c in _DERIVED_SHEET_COLUMNS if c in headers}
 
     parsed_rows: list[tuple[int, dict]] = []  # (row_number, row)
@@ -368,7 +425,9 @@ def _load_from_sheet() -> tuple[list[dict], dict]:
             row["id"] = next_id
             next_id += 1
             summary["new_ids_assigned"] += 1
-            pending_cells.append(gspread.Cell(row_number, id_col_index, row["id"]))
+            # Rien à réécrire si la feuille n'a pas de colonne "id".
+            if id_col_index is not None:
+                pending_cells.append(gspread.Cell(row_number, id_col_index, row["id"]))
 
         for col_name, col_index in derived_col_index.items():
             value = row[col_name]
