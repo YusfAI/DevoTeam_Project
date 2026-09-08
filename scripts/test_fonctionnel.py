@@ -19,6 +19,7 @@ annoncé est celui-là. Il fonctionne donc sur n'importe quel jeu de données.
 L'application doit tourner (raccourci « DevoTeam Dashboard (Production) »).
 """
 import json
+import os
 import re
 import sys
 import urllib.error
@@ -34,11 +35,17 @@ try:
 except (AttributeError, OSError):
     pass
 
-API = "http://127.0.0.1:8000"
-DAC = "http://127.0.0.1:8321"
+# Réglables par variable d'environnement : depuis l'hôte (installation native,
+# ou Docker vu du navigateur), 127.0.0.1 est la bonne adresse pour les deux. Mais
+# exécuté DEPUIS L'INTÉRIEUR du conteneur backend — ce que fait le lanceur Docker,
+# pour ne plus exiger de Python local — 127.0.0.1 ne désigne alors QUE le
+# conteneur backend lui-même ; DAC vit dans un conteneur séparé, joignable par son
+# nom de service sur le réseau Docker (TEST_DAC_URL=http://dac-light:8321).
+API = os.environ.get("TEST_API_URL", "http://127.0.0.1:8000")
+DAC = os.environ.get("TEST_DAC_URL", "http://127.0.0.1:8321")
 DELAI = 120
 
-_COULEUR = sys.platform != "win32" or __import__("os").environ.get("WT_SESSION")
+_COULEUR = sys.platform != "win32" or os.environ.get("WT_SESSION")
 VERT = "\033[32m" if _COULEUR else ""
 ROUGE = "\033[31m" if _COULEUR else ""
 JAUNE = "\033[33m" if _COULEUR else ""
@@ -72,10 +79,17 @@ def controler(libelle, question, attendu, unite=""):
     """Pose la question et vérifie que le nombre attendu figure dans la réponse."""
     try:
         reponse = _appeler(question)
-    except urllib.error.URLError as e:
-        _echoues.append((libelle, "application injoignable : %s" % e))
+    except (urllib.error.URLError, TimeoutError) as e:
+        # TimeoutError à part de URLError : une requête ACCEPTÉE puis trop lente
+        # à répondre (LLM lent au tout premier appel après un démarrage à froid,
+        # par exemple) lève un TimeoutError nu, jamais enveloppé dans URLError —
+        # sans ce second cas, une seule question lente faisait planter le script
+        # ENTIER avec une trace Python, perdant le résultat des questions déjà
+        # passées et sautant la section des tableaux de bord qui suit.
+        _echoues.append((libelle, "pas de réponse à temps : %s" % e))
         print("  %sECHEC%s %s" % (ROUGE, FIN, libelle))
-        print("        l'application ne répond pas — est-elle lancée ?")
+        print("        l'application n'a pas répondu à temps — est-elle lancée, "
+              "ou le premier appel au modèle a-t-il pris plus de %ds ?" % DELAI)
         return
 
     message = reponse.get("ai_message") or ""

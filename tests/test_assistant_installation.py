@@ -22,7 +22,7 @@ def _assistant():
 # Le dossier
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("nom", ["INSTALLER.bat", "assistant.ps1",
+@pytest.mark.parametrize("nom", ["INSTALLER_NATIF.bat", "assistant.ps1",
                                  "sonde_feuille.py", "README.md"])
 def test_le_dossier_est_complet(nom):
     assert (SETUP / nom).exists(), nom
@@ -45,7 +45,7 @@ def test_le_lanceur_ne_modifie_pas_les_reglages_de_la_machine():
     Set-ExecutionPolicy, lui, modifierait durablement le poste — inacceptable sur
     une machine qui n'est pas la nôtre et qu'on doit rendre telle qu'on l'a trouvée.
     """
-    contenu = (SETUP / "INSTALLER.bat").read_text(encoding="utf-8",
+    contenu = (SETUP / "INSTALLER_NATIF.bat").read_text(encoding="utf-8",
                                                   errors="surrogateescape")
 
     assert "-ExecutionPolicy Bypass" in contenu

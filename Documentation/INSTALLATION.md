@@ -10,7 +10,7 @@ Compter une heure la première fois, dont l'essentiel est du téléchargement.
 > Pour voir l'application avant de l'installer :
 > [démonstration guidée](https://app.arcade.software/flows/0JEAJAGmgCqMbVXfQo2R/view) (aussi dans `Demo video.url`, à la racine du projet).
 
-> **Plus rapide :** `setup\INSTALLER.bat` fait tout ce qui suit automatiquement et
+> **Plus rapide :** `setup\INSTALLER_NATIF.bat` fait tout ce qui suit automatiquement et
 > ne vous demande que les trois secrets. Cette page reste la référence si vous
 > préférez procéder à la main, ou pour comprendre ce que l'assistant fait.
 >
@@ -166,7 +166,7 @@ Double-cliquer sur **« DevoTeam Dashboard (Production) »** sur le Bureau, atte
 quinzaine de secondes, puis :
 
 ```
-.venv\Scripts\python.exe scripts	est_fonctionnel.py
+.venv\Scripts\python.exe scripts\test_fonctionnel.py
 ```
 
 C'est le test qui répond à la vraie question : **les chiffres sont-ils justes sur les

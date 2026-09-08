@@ -352,7 +352,7 @@ def verifier_dac():
                 else:
                     dire(KO, "Serveur clair (port 8321) injoignable",
                          "ni binaires locaux, ni serveur démarré",
-                         "Installer via setup\\INSTALLER.bat, ou lancer "
+                         "Installer via setup\\INSTALLER_NATIF.bat, ou lancer "
                          "« docker compose up -d --build »")
             else:
                 dire(AVERTIR, "Serveur sombre (port 8322) éteint",

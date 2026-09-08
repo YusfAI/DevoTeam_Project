@@ -4,7 +4,7 @@ Pour installer l'application sur un poste neuf sans rien connaître du projet.
 
 ## Utilisation
 
-Double-cliquez sur **`INSTALLER.bat`**.
+Double-cliquez sur **`INSTALLER_NATIF.bat`**.
 
 C'est tout. L'assistant s'occupe du reste et ne vous demande que ce qu'il ne peut
 pas deviner.
@@ -67,7 +67,7 @@ rien n'est défait.
 ## Si quelque chose bloque
 
 L'assistant nomme le point bloquant et le geste à faire. Après correction,
-relancez `INSTALLER.bat`.
+relancez `INSTALLER_NATIF.bat`.
 
 Pour vérifier seul, sans rien modifier :
 
@@ -96,7 +96,7 @@ Tant qu'il n'affiche pas **« TOUT EST JUSTE »**, ne présentez pas l'applicati
 
 | Fichier | Rôle |
 |---|---|
-| `INSTALLER.bat` | Le fichier à double-cliquer |
+| `INSTALLER_NATIF.bat` | Le fichier à double-cliquer |
 | `assistant.ps1` | L'assistant lui-même |
 | `sonde_feuille.py` | Teste l'accès à la feuille en lecture **et** en écriture |
 

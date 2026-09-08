@@ -168,47 +168,56 @@ navigateur, pour qui reçoit le dossier sans passer par ce fichier.
 
 ## Installer sur un autre poste
 
-Deux façons d'installer, au choix.
+**Recommandé — double-cliquer sur `INSTALLER.bat`, à la racine du projet.**
 
-**Installation native — le plus simple : double-cliquer sur `setup\INSTALLER.bat`.**
-
-Un assistant conduit l'installation de bout en bout et ne demande que ce qui ne peut
-pas être deviné — la clé Gemini, le lien de la feuille, le fichier d'identifiants.
-Il installe le reste (Python, Node, le moteur de tableaux de bord), attend que la
-feuille soit partagée, et termine par le diagnostic. Voir `setup/README.md`.
-
-La procédure détaillée, à suivre à la main si vous préférez :
-**`Documentation/INSTALLATION.md`**.
-
-```
-scripts\install.bat                    installe tout, puis vérifie
-scripts\verifier_installation.py       vérifie seul, sans rien modifier
-```
-
-**Installation Docker — évite d'installer Python/Node/le moteur de tableaux de
-bord directement sur la machine**, en les faisant tourner dans des conteneurs à la
-place. Élimine toute une classe de pannes propres à Windows (chemins avec espaces,
-`PATH` de `bruin`, PowerShell qui prend un message de progression pour une erreur).
-Procédure complète : **`Documentation/INSTALLATION_DOCKER.md`**.
+Un seul fichier, un seul clic. Il ne demande que ce qu'il ne peut pas deviner à
+votre place — le fichier `.env` et le fichier d'identifiants Google
+(`credentials\google_service_account.json`) — et automatise tout le reste :
+vérifie Docker, construit l'image, démarre les trois services, crée le raccourci
+du Bureau, puis **prouve que les chiffres affichés sont justes** en exécutant
+`scripts/test_fonctionnel.py` directement à l'intérieur du conteneur — aucune
+installation Python locale n'est nécessaire pour cette vérification. Testé de
+bout en bout sur ce dépôt : voir `Documentation/INSTALLATION_DOCKER.md`.
 
 ```
-docker compose up -d --build           construit les images et démarre tout
+INSTALLER.bat                          installe tout, puis vérifie — un clic
+docker compose up -d                   les lancements suivants (ou le raccourci Bureau)
 ```
 
-Le script de vérification contrôle chaque maillon séparément — clé, feuille (lecture
-ET écriture), colonnes, valeurs inconnues, `bruin`, interface compilée — parce qu'une
-installation ratée ne se signale pas : l'application démarre, la page s'ouvre, et les
-tableaux de bord restent vides.
+En faisant tourner Python, Node et le moteur de tableaux de bord dans des
+conteneurs plutôt que directement sur la machine, cette méthode élimine toute une
+classe de pannes propres à Windows rencontrées avec l'installation native
+(chemins avec espaces, `PATH` de `bruin`, PowerShell qui prend un message de
+progression pour une erreur) — chacune développeur-visible, aucune utilisateur-visible.
+
+**Alternative native**, si Docker ne peut pas être installé sur le poste :
+double-cliquer sur `setup\INSTALLER_NATIF.bat`. Un assistant conduit
+l'installation de bout en bout, installe Python/Node/le moteur de tableaux de bord
+directement sur la machine. Voir `setup/README.md` et
+`Documentation/INSTALLATION.md` pour la procédure détaillée et manuelle.
+
+Dans les deux cas, le script de vérification contrôle chaque maillon séparément —
+clé, feuille (lecture ET écriture), colonnes, valeurs inconnues, interface compilée
+— parce qu'une installation ratée ne se signale pas : l'application démarre, la
+page s'ouvre, et les tableaux de bord restent vides.
 
 ## Prérequis
 
-- Python 3.11+
-- Node.js 18+ / npm
+Dans les deux méthodes, obligatoires :
 - Une clé API [Google AI Studio](https://aistudio.google.com/apikey)
 - Un compte de service Google avec accès au Sheet source (voir "Google Sheets"
-  ci-dessous — obligatoire, l'application ne fonctionne pas sans données)
+  ci-dessous — l'application ne fonctionne pas sans données)
 - (Optionnel, pour les alertes email) un compte Gmail avec un
   [mot de passe d'application](https://myaccount.google.com/apppasswords)
+
+Fiche avec les liens exacts pour obtenir ces trois éléments :
+`Documentation/OBTENIR_LES_ACCES.md`.
+
+Logiciel à installer, selon la méthode :
+- **Installation Docker (recommandée)** : uniquement
+  [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+- **Installation native** : Python 3.11+, Node.js 18+ / npm, et le moteur de
+  tableaux de bord (voir `Documentation/INSTALLATION.md`).
 
 ## Installation
 

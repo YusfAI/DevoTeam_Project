@@ -284,3 +284,102 @@ def test_creation_de_raccourcis_propose_desormais_trois_raccourcis():
     assert "start_prod.bat" in contenu
     assert "start_docker.bat" in contenu
     assert contenu.count("Nom = 'DevoTeam Dashboard") == 3
+
+
+# ---------------------------------------------------------------------------
+# L'installateur en un clic (INSTALLER.bat, à la racine)
+#
+# Testé de bout en bout sur cette machine — trois exécutions réelles, la
+# dernière propre : Docker vérifié, .env et les identifiants déjà en place
+# détectés sans redemander, image construite, conteneurs démarrés, raccourci
+# créé, puis les 15 contrôles de scripts/test_fonctionnel.py exécutés À
+# L'INTÉRIEUR du conteneur backend — 15/15, sans Python local.
+#
+# Deux pannes trouvées PENDANT ces essais, toutes deux corrigées :
+#   - une attente fixe (timeout /t 15) ne suffisait pas toujours après une
+#     reconstruction complète ; remplacée par un sondage actif de /health ;
+#   - timeout /t échoue silencieusement dès que l'entrée standard n'est pas un
+#     vrai clavier (avéré y compris hors de ce projet — comportement documenté
+#     de timeout.exe) ; ping -n, qui ne partage pas cette exigence, l'a
+#     remplacé comme mécanisme d'attente dans les boucles de sondage.
+# ---------------------------------------------------------------------------
+
+def _installer_racine():
+    return (RACINE / "INSTALLER.bat").read_bytes()
+
+
+def test_l_installateur_racine_existe_et_porte_des_fins_de_ligne_windows():
+    """Même panne que start_docker.bat, même garde-fou : un .bat écrit en LF
+    échoue en silence sous cmd.exe — aucune sortie, aucune erreur, juste rien."""
+    contenu = _installer_racine()
+
+    assert b"\r\n" in contenu
+    assert contenu.count(b"\n") == contenu.count(b"\r\n")
+
+
+def test_l_installateur_racine_ne_demande_que_env_et_json():
+    """La promesse faite à l'utilisateur : tout le reste est automatique."""
+    contenu = _installer_racine().decode("utf-8")
+
+    assert ".env" in contenu
+    assert "google_service_account.json" in contenu
+    assert "notepad" in contenu.lower()
+
+
+def test_l_installateur_racine_verifie_docker_avant_tout():
+    contenu = _installer_racine().decode("utf-8")
+
+    assert "where docker" in contenu
+    # Pas seulement présent : DÉMARRÉ. "docker" sur le PATH ne veut pas dire
+    # que Docker Desktop est lancé — l'erreur la plus fréquente d'un premier
+    # essai.
+    assert "docker info" in contenu
+
+
+def test_l_installateur_racine_construit_puis_demarre():
+    contenu = _installer_racine().decode("utf-8")
+
+    assert "docker compose up -d --build" in contenu
+
+
+def test_l_installateur_racine_cree_le_raccourci_bureau():
+    contenu = _installer_racine().decode("utf-8")
+
+    assert "create_shortcut.ps1" in contenu
+
+
+def test_l_installateur_racine_attend_activement_au_lieu_d_un_delai_fixe():
+    """Panne trouvée en testant : un délai fixe de 15 s ne suffit pas toujours
+    après une reconstruction complète de l'image. Remplacé par un sondage
+    réel de /health, qui ne lance la vérification finale que lorsque
+    l'application répond vraiment."""
+    contenu = _installer_racine().decode("utf-8")
+
+    assert "/health" in contenu
+    assert "curl" in contenu
+    assert "timeout /t 15" not in contenu
+
+
+def test_l_installateur_racine_n_utilise_jamais_timeout_slash_t_pour_patienter():
+    """Panne trouvée en testant : timeout.exe échoue immédiatement dès que
+    l'entrée standard n'est pas un vrai clavier — un comportement documenté de
+    l'outil, pas une particularité de ce projet. ping -n, qui n'a pas cette
+    exigence, sert d'attente dans les boucles de sondage à la place."""
+    contenu = _installer_racine().decode("utf-8")
+
+    assert "timeout /t" not in contenu
+    assert "ping -n" in contenu
+
+
+def test_l_installateur_racine_verifie_sans_exiger_de_python_local():
+    """C'est ce qui rend l'installateur VRAIMENT en un clic : la vérification
+    finale tourne à l'intérieur du conteneur backend, qui a déjà tout —
+    aucune installation Python supplémentaire n'est nécessaire sur le poste
+    de destination pour prouver que les chiffres affichés sont justes."""
+    contenu = _installer_racine().decode("utf-8")
+
+    assert "docker compose exec" in contenu
+    assert "test_fonctionnel.py" in contenu
+    # DAC vit dans un conteneur séparé : depuis l'intérieur du conteneur
+    # backend, 127.0.0.1 ne le joindrait pas — il faut son nom de service.
+    assert "TEST_DAC_URL=http://dac-light:8321" in contenu

@@ -46,6 +46,9 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 39 — Synchro Sheets 2,5× plus rapide (seules les cellules modifiées repartent), composition faite une fois
 - [x] Phase 40 — Tableau de bord principal découpé en cinq sections navigables, aiguillage des questions déjà traitées, et le terme « offres gagnées » tranché par le code
 - [x] Phase 41 — Un banc de trente questions, l'issue des offres remises, les périodes en mois nommés, et les finitions demandées par la direction
+- [x] Phase 42 — Déploiement Docker : trois services, un seul montage du dépôt, le pilote DuckDB préinstallé à la construction
+- [x] Phase 43 — Les intitulés d'une vraie feuille métier française reconnus sans renommage, et plusieurs destinataires pour l'alerte email
+- [x] Phase 44 — Un installateur en un clic : Docker vérifié, construit, démarré, vérifié — sans Python local
 
 ## 📝 Journaux
 
@@ -377,14 +380,118 @@ Suite `pytest` : 418 tests. `dac validate` : 22 dashboards.
 
 Suite `pytest` : 489 tests (était 418).
 
+**Phase 42** : Terminée. Le déploiement natif accumulait les pannes propres à
+Windows — chemins avec espaces cassant les lanceurs `.bat`, `PATH` de `bruin`
+introuvable, PowerShell prenant un message de progression pour une erreur
+fatale. Décision : faire tourner l'application dans Docker plutôt que
+directement sur la machine, pour éliminer toute cette classe de défauts d'un
+coup plutôt que de les corriger un par un.
+
+*Un seul montage, pas un par dossier.* `backend/dac_composer.py` écrit chaque
+dashboard généré par le chat de façon atomique — fichier temporaire puis
+`os.replace()` vers `dac/dashboards/`, atomique seulement à l'intérieur d'un
+même système de fichiers. Vérifié sur cette machine : deux montages Docker
+séparés vers deux dossiers pourtant frères sur le même disque échouent quand
+même en `EXDEV`, chaque `-v` créant son propre point de montage aux yeux du
+conteneur. Un seul montage couvrant tout `/app` supprime le problème à la
+racine, et signifie au passage que le CODE vient du dépôt hôte et non de
+l'image — `git pull` suffit à mettre à jour, comme en natif.
+
+*La course au pilote, rejouée à l'identique dans un conteneur Linux.* Le
+premier lancement d'un poste neuf installe le pilote ADBC de DuckDB à la
+première requête ; l'application en lance aussitôt des dizaines en parallèle,
+qui tentent toutes de l'installer en même temps. Réglé en le préchauffant UNE
+fois à la CONSTRUCTION de l'image plutôt qu'au premier démarrage — les deux
+serveurs de tableaux de bord, construits depuis la même image, en héritent
+sans jamais se marcher dessus au runtime.
+
+*Deux adresses pour DAC, pas une.* À l'intérieur du réseau Docker, le backend
+sonde DAC par son NOM DE SERVICE (`http://dac-light:8321`) ; mais le
+navigateur, qui tourne sur la machine hôte, doit recevoir l'adresse publiée
+(`127.0.0.1:8321`), qu'il ne saurait jamais résoudre autrement. La distinction
+`DAC_URL` / `DAC_PUBLIC_URL`, construite plus tôt pour l'accès par tunnel,
+sert ici exactement pour la même raison.
+
+*Une échéance illisible cassait tous les tableaux de bord, sur une vraie
+feuille.* Sur le poste de l'utilisatrice, chaque ligne de sa colonne
+« deadline » échouait à sa lecture (un format non reconnu), laissant la
+colonne entièrement à `None`. DuckDB, n'ayant rien à examiner, retombait sur
+`INTEGER` au lieu de `DATE` — chaque requête comparant `deadline` à une date
+échouait alors avec `Binder Error: Cannot compare values of type INTEGER and
+type DATE`, quand pandas, source de vérité pour le chat, n'avait jamais eu de
+problème. Corrigé en forçant le type temporel des colonnes de date à
+l'export, y compris quand toutes leurs valeurs sont `None`.
+
+Vérifié en conditions réelles : image construite, les trois services démarrés,
+`/health` répondant avec les vraies données du Sheet, une question posée au
+chat composant un tableau de bord, et ce même tableau de bord rendu par un
+conteneur SÉPARÉ du backend qui l'a écrit.
+
+**Phase 43** : Terminée. Le fichier dont ce projet est parti porte les
+intitulés d'une feuille déjà en usage réelle — « Pays », « Statut »,
+« Lead (Acheteur) » — jamais les noms internes anglais que le code cherchait.
+Sans les reconnaître, intégrer la feuille RÉELLE d'une utilisatrice aurait
+exigé qu'elle renomme les colonnes de son outil de travail quotidien.
+`_nom_canonique()` traduit un en-tête vers son nom interne — insensible à la
+casse pour les noms qui coïncident déjà, une table d'alias explicite pour les
+autres, construite sur le fichier réel plutôt que devinée. Un second défaut
+trouvé en vérifiant : la colonne « id » était obligatoire À L'EN-TÊTE, pas
+seulement facultative valeur par valeur — une feuille qui n'en a jamais eue
+aurait été rejetée en bloc. Vérifié de bout en bout avec les en-têtes et de
+vraies lignes du fichier source : le montant pondéré recalculé retombe
+exactement sur la valeur déjà présente dans la feuille.
+
+Au passage, `ALERT_RECIPIENT_EMAIL` accepte désormais plusieurs adresses
+séparées par une virgule ou un point-virgule — une alerte adressée à une
+équipe ne demande plus de créer un groupe de diffusion Google.
+
+**Phase 44** : Terminée. `INSTALLER.bat`, un seul fichier à la racine, ne
+demande plus que ce qu'il ne peut pas deviner — `.env` et le fichier
+d'identifiants — et automatise tout le reste : Docker vérifié PUIS attendu
+démarré (pas la même chose : la panne la plus fréquente d'un premier essai),
+construction, démarrage, raccourci Bureau, et une vérification finale qui
+exécute `scripts/test_fonctionnel.py` DEPUIS L'INTÉRIEUR du conteneur
+backend — plus aucun Python local nécessaire pour prouver que les chiffres
+affichés sont justes.
+
+*Trois pannes trouvées en le faisant tourner pour de vrai, aucune supposée.*
+Le fichier, écrit avec des fins de ligne Unix, échouait EN SILENCE sous
+`cmd.exe` — aucune sortie, aucune erreur, juste rien ; comparé aux autres
+`.bat` du projet, c'était la seule différence. Une attente fixe de 15 s ne
+suffisait pas toujours après une reconstruction complète ; remplacée par un
+sondage actif de `/health`. Et `timeout.exe` échoue immédiatement dès que
+l'entrée standard n'est pas un vrai clavier — comportement documenté de
+l'outil, pas une particularité du projet — remplacé par `ping -n` dans les
+boucles d'attente, qui n'a pas cette exigence.
+
+*Un token Windows réservé, corrompu en traversant Git Bash.* En corrigeant le
+point précédent, l'argument `>NUL` passé à un `python -c` s'est retrouvé
+converti en `>/dev/null` par la traduction de chemins de MSYS — un piège
+propre à l'invocation depuis Git Bash, découvert en comparant l'octet écrit
+au fichier avec celui voulu plutôt qu'en supposant le remplacement réussi.
+
+*Un TimeoutError nu faisait planter tout le script de vérification.* Une
+question dont la première réponse du modèle est lente après un démarrage à
+froid levait un `TimeoutError` que `controler()` ne rattrapait pas —
+perdant le résultat des questions déjà passées avec succès et sautant la
+section des tableaux de bord qui suit. Élargi pour rapporter un simple ÉCHEC
+et continuer, comme le fait déjà toute autre cause d'échec du script.
+
+Le dossier du projet a été nettoyé au passage — doublons, artefacts de test,
+et le fichier `setup\INSTALLER.bat` (natif) renommé `INSTALLER_NATIF.bat`
+pour ne plus porter le même nom que le nouvel installateur Docker à la
+racine, désormais recommandé.
+
+Trois exécutions réelles et complètes de `INSTALLER.bat`, la dernière propre :
+15 contrôles sur 15, « TOUT EST JUSTE ». 606 tests.
+
 ## 📊 Bilan du Produit
 
-L'application est **complète et fonctionnelle, exécutable de bout-en-bout**, hébergée localement, **sans aucune base de données à installer**. Trois processus en développement : `uvicorn backend.main:app --reload` (API), `dac serve --dir . --port 8321` dans `dac/` (dashboards), et `npm run dev` dans `frontend/` (UI). `scripts/start_dev.bat` lance les trois d'un coup sous Windows. Voir `README.md` pour le détail.
+L'application est **complète et fonctionnelle, exécutable de bout-en-bout**, hébergée localement, **sans aucune base de données à installer**. En développement, trois processus : `uvicorn backend.main:app --reload` (API), `dac serve --dir . --port 8321` dans `dac/` (dashboards), et `npm run dev` dans `frontend/` (UI) — `scripts/start_dev.bat` les lance d'un coup sous Windows. Pour déployer sur un autre poste, deux méthodes au choix : `INSTALLER.bat` (Docker, recommandé — un seul clic, aucun Python/Node à poser sur la machine) ou `setup\INSTALLER_NATIF.bat` (installation directe, si Docker n'est pas envisageable). Voir `README.md` pour le détail.
 
 ### Limites connues
 - Le LLM reste volontairement rigide sur les demandes ambiguës : une métrique/dimension/valeur de filtre non reconnue déclenche désormais systématiquement une demande de clarification explicite plutôt qu'un résultat deviné — c'est un choix délibéré (anti-hallucination), pas un bug, mais ça veut dire que certaines formulations très informelles échoueront là où un système plus permissif aurait deviné (parfois correctement, parfois non).
 - **Trois processus à lancer** au lieu d'un : l'API, le serveur DAC (port 8321) et le frontend. `scripts/start_dev.bat` les démarre ensemble, mais un dashboard vide dans l'iframe signifie presque toujours que `dac serve` n'est pas lancé.
-- **Le mode sombre ne s'applique pas à la zone dashboard.** L'identité Devoteam, elle, y est désormais appliquée via un thème DAC (`dac/themes/devoteam.yml`, couleurs et palette de graphiques reprises de l'application) — mais ce thème est un paramètre du serveur DAC, fixé à son lancement : il ne peut donc pas suivre le bouton clair/sombre du navigateur, qui ne concerne que le chat.
 - **Latence au premier affichage** : la toute première requête d'un widget DAC prend ~12 s (démarrage à froid de `bruin query`), puis ~400 ms. Sensible seulement au tout premier chargement après démarrage.
 - L'historique de conversation persistant (Phase 15) est par navigateur/appareil (localStorage), pas partagé entre postes — un vrai compte utilisateur serait nécessaire pour ça.
 - Le chargement des données retraite chaque ligne du Sheet à chaque passage (pas de détection de changement) — sans impact réel à ~360 lignes toutes les 15 minutes, mais à reconsidérer si le Sheet grossissait beaucoup.

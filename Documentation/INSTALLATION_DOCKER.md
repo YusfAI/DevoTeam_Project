@@ -1,13 +1,36 @@
 # Installer avec Docker
 
-Une alternative à `setup\INSTALLER.bat` : au lieu d'installer Python, Node.js et
-le moteur de tableaux de bord directement sur la machine, un seul outil (Docker
-Desktop) fait tourner les trois services dans des conteneurs isolés. Ça élimine
-toute une classe de pannes propres à Windows rencontrées avec l'installation
-native — chemins avec espaces, `PATH` de `bruin` introuvable, PowerShell qui
-prend un message de progression pour une erreur.
+**La méthode recommandée.** Au lieu d'installer Python, Node.js et le moteur de
+tableaux de bord directement sur la machine, un seul outil (Docker Desktop) fait
+tourner les trois services dans des conteneurs isolés. Ça élimine toute une
+classe de pannes propres à Windows rencontrées avec l'installation native —
+chemins avec espaces, `PATH` de `bruin` introuvable, PowerShell qui prend un
+message de progression pour une erreur. (Alternative si Docker ne peut pas être
+installé sur le poste : `setup\INSTALLER_NATIF.bat`.)
 
 Compter 5 à 10 minutes la première fois (téléchargement des images).
+
+---
+
+## En un clic : `INSTALLER.bat`
+
+Après avoir installé Docker Desktop (étape 1 ci-dessous) et récupéré le projet
+(étape 2), **double-cliquer sur `INSTALLER.bat`, à la racine**, fait tout le
+reste : vérifie que Docker est bien démarré, ouvre le Bloc-notes sur `.env` et le
+dossier `credentials\` le temps que vous les complétiez, construit l'image,
+démarre les trois services, crée le raccourci du Bureau, puis **exécute
+`scripts/test_fonctionnel.py` directement à l'intérieur du conteneur** — la
+preuve que les chiffres affichés sont justes, sans qu'aucun Python ne soit
+installé sur ce poste.
+
+Testé de bout en bout sur ce dépôt : trois exécutions réelles, la dernière
+propre — 15 contrôles sur 15, « TOUT EST JUSTE ».
+
+Les étapes 1 à 5 ci-dessous détaillent ce que ce fichier fait automatiquement —
+utile pour comprendre ou dépanner, pas nécessaire à suivre à la main si
+`INSTALLER.bat` s'est bien déroulé.
+
+---
 
 ---
 
@@ -107,24 +130,33 @@ fenêtre ; `docker compose down` les arrête.
 Ouvrir **http://127.0.0.1:8000** dans un navigateur.
 
 Puis, pour prouver que les CHIFFRES affichés sont justes — pas seulement que la
-page s'ouvre — depuis un Python local (voir la remarque plus bas si vous n'en
-avez pas) :
+page s'ouvre — **sans avoir besoin d'un Python local** : le script calcule sa
+propre vérité depuis la feuille avec pandas, donc il tourne à l'intérieur du
+conteneur `backend`, qui a déjà tout ce qu'il lui faut.
 
 ```
-python scripts/verifier_installation.py
-python scripts/test_fonctionnel.py
+docker compose exec -e TEST_DAC_URL=http://dac-light:8321 backend python scripts/test_fonctionnel.py
 ```
 
-Tant que le second n'affiche pas **« TOUT EST JUSTE »**, ne pas présenter
+`INSTALLER.bat` lance déjà cette commande tout seul à la fin de l'installation —
+elle n'est utile à taper à la main que pour revérifier plus tard, ou après une
+mise à jour.
+
+Tant que la sortie n'affiche pas **« TOUT EST JUSTE »**, ne pas présenter
 l'application.
 
-> **Pourquoi un Python local, si le but est d'éviter d'installer des choses ?**
-> Ces deux scripts calculent eux-mêmes la réponse attendue depuis la feuille
-> (avec pandas) pour la comparer à ce que l'application répond — ils ont donc
-> besoin des mêmes dépendances que l'application. Rien d'autre n'en a besoin :
-> ni le moteur de tableaux de bord, ni Node.js, qui restent entièrement dans les
-> conteneurs. Sans Python disponible, il reste la vérification manuelle : ouvrir
-> la page, poser quelques questions, comparer à la feuille de calcul à l'œil.
+> **Pourquoi `TEST_DAC_URL` ?** Vu de l'intérieur du conteneur `backend`,
+> `127.0.0.1` désigne ce conteneur lui-même — jamais celui des tableaux de bord
+> (`dac-light`), qui vit à part et n'est joignable que par son nom de service
+> sur le réseau Docker. Sans ce réglage, la moitié des contrôles échouerait en
+> disant l'application injoignable, alors qu'elle tourne très bien.
+>
+> **Avec un Python local**, les deux formes se valent — depuis l'hôte,
+> `127.0.0.1` atteint correctement les ports publiés par Docker :
+> ```
+> python scripts/verifier_installation.py
+> python scripts/test_fonctionnel.py
+> ```
 
 ---
 

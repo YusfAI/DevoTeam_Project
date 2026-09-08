@@ -464,7 +464,7 @@ def test_dac_est_ko_sans_binaires_ni_serveur_demarre(monkeypatch, capsys):
     sortie = capsys.readouterr().out
     assert verif._echecs
     assert "docker compose" in sortie.lower()
-    assert "INSTALLER.bat" in sortie
+    assert "INSTALLER_NATIF.bat" in sortie
 
 
 def test_dac_est_ko_si_le_port_repond_mais_les_requetes_echouent(monkeypatch, capsys):

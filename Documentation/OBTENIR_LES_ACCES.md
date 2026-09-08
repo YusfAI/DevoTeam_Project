@@ -101,6 +101,6 @@ une virgule dans `ALERT_RECIPIENT_EMAIL` (ex.
 | 4 | La feuille déjà partagée en Éditeur | *(rien à coller — juste à avoir fait)* |
 | 5 *(optionnel)* | Mot de passe d'application Gmail | `.env` → `GMAIL_APP_PASSWORD` |
 
-Une fois sur place, `setup\INSTALLER.bat` (ou la procédure Docker) vous
-redemandera ces mêmes valeurs, dans le même ordre — vous n'aurez plus qu'à les
-coller.
+Une fois sur place, `INSTALLER.bat` (à la racine — recommandé, via Docker) ou
+`setup\INSTALLER_NATIF.bat` (alternative sans Docker) vous demandera ces mêmes
+valeurs — vous n'aurez plus qu'à les coller.
