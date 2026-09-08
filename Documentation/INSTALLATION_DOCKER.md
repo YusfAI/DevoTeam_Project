@@ -13,7 +13,8 @@ Compter 5 à 10 minutes la première fois (téléchargement des images).
 
 ## Avant de commencer
 
-Les mêmes trois choses que pour l'installation native — rien ne change ici :
+Les mêmes trois choses que pour l'installation native — rien ne change ici. Fiche
+détaillée avec les liens exacts : [`OBTENIR_LES_ACCES.md`](OBTENIR_LES_ACCES.md).
 
 1. Un **compte de service Google**, dont la feuille de calcul est **partagée en
    Éditeur** avec son adresse `client_email`.

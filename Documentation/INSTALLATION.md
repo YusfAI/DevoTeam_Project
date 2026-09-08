@@ -23,6 +23,9 @@ Compter une heure la première fois, dont l'essentiel est du téléchargement.
 Trois choses doivent être obtenues **à l'avance**. Ce sont elles qui font échouer une
 installation faite dans l'urgence, parce qu'aucune ne dépend de vous seul.
 
+> Fiche à garder, avec les liens exacts et le détail de chaque étape :
+> [`OBTENIR_LES_ACCES.md`](OBTENIR_LES_ACCES.md).
+
 ### 1. Un compte de service Google, et le partage de la feuille
 
 L'application ne se connecte pas avec un compte humain : elle utilise un **compte de
