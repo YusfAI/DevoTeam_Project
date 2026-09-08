@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import duckdb
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +31,43 @@ _MAX_ATTEMPTS = 5
 _RETRY_DELAY_SECONDS = 1.0
 
 
+# Colonnes dont le type doit rester temporel MÊME quand aucune ligne n'a de valeur.
+#
+# DuckDB devine le type d'une colonne pandas depuis les valeurs qu'elle contient.
+# Une colonne entièrement à None (aucune date n'a pu être lue sur le Sheet — un
+# format inattendu, par exemple) ne lui laisse rien à examiner, et il retombe sur
+# INTEGER. Chaque requête qui compare ensuite la colonne à une date échoue :
+#   Binder Error: Cannot compare values of type INTEGER and type DATE
+# alors que le DataFrame pandas, lui, n'a jamais eu de problème — `deadline` y vaut
+# simplement None, une valeur que pandas comme le reste de l'application savent déjà
+# traiter. Le défaut n'existe que dans cette projection, jamais dans la source.
+_COLONNES_TOUJOURS_DATE = ("deadline", "created_date")
+
+
+def _typer_les_dates(df):
+    """Copie de `df` où les colonnes de `_COLONNES_TOUJOURS_DATE` sont forcées en
+    type date, y compris si toutes leurs valeurs sont None.
+
+    Une copie, jamais une modification en place : `df` est le DataFrame PARTAGÉ que
+    `db_layer.py` continue d'interroger pendant l'export — le muter ici serait un
+    effet de bord sur la vraie source de vérité pour un besoin qui n'appartient qu'à
+    cette projection DuckDB.
+    """
+    df = df.copy()
+    for colonne in _COLONNES_TOUJOURS_DATE:
+        if colonne in df.columns:
+            df[colonne] = pd.to_datetime(df[colonne]).dt.date
+    return df
+
+
 def export_dataframe(df) -> bool:
     """Réécrit la table opportunities dans le fichier DuckDB. Renvoie True si
     l'export a réussi, False si le verrou n'a jamais pu être obtenu (non bloquant
     pour l'application : seuls les dashboards DAC en dépendent)."""
     if df is None:
         return False
+
+    df = _typer_les_dates(df)
 
     DUCKDB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
