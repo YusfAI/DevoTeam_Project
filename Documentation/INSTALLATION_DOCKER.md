@@ -88,6 +88,20 @@ La première fois, cette commande :
 Les fois suivantes, elle est presque instantanée : Docker ne reconstruit que ce
 qui a changé.
 
+### Un raccourci Bureau pour ne plus taper cette commande
+
+`docker compose up -d --build` n'a besoin d'être tapé qu'une fois. Pour les
+lancements suivants, un raccourci évite d'ouvrir un terminal à chaque fois :
+
+```
+powershell -ExecutionPolicy Bypass -File scripts\create_shortcut.ps1
+```
+
+Crée **« DevoTeam Dashboard (Docker) »** sur le Bureau — un double-clic démarre
+les conteneurs (sans reconstruire l'image) et ouvre l'application dans le
+navigateur. Les conteneurs continuent de tourner après la fermeture de la
+fenêtre ; `docker compose down` les arrête.
+
 ## Étape 5 — Vérifier
 
 Ouvrir **http://127.0.0.1:8000** dans un navigateur.

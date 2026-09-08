@@ -8,6 +8,11 @@
 #
 # Le raccourci lance scripts\start_dev.bat, qui démarre le backend FastAPI, les
 # dashboards Bruin DAC et le frontend Vite, puis ouvre http://localhost:5173.
+#
+# Un TROISIÈME raccourci est créé pour l'installation Docker
+# (Documentation/INSTALLATION_DOCKER.md) — sans lui, utiliser Docker demanderait
+# d'ouvrir un terminal et de taper "docker compose up -d" à chaque lancement,
+# ce qui n'est pas un geste raisonnable à demander à quelqu'un qui ne code pas.
 
 $ErrorActionPreference = 'Stop'
 
@@ -29,6 +34,11 @@ $raccourcis = @(
         Nom = 'DevoTeam Dashboard (Production).lnk'
         Cible = Join-Path $racine 'scripts\start_prod.bat'
         Description = 'Mode production : frontend compilé et servi par le backend, ouvre http://127.0.0.1:8000'
+    },
+    @{
+        Nom = 'DevoTeam Dashboard (Docker).lnk'
+        Cible = Join-Path $racine 'scripts\start_docker.bat'
+        Description = 'Demarre les conteneurs Docker (docker compose up -d), ouvre http://127.0.0.1:8000'
     }
 )
 

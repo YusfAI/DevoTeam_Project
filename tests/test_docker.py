@@ -223,3 +223,64 @@ def test_dockerignore_exclut_les_secrets_et_l_etat_local():
 
     for motif in (".env", "credentials/", ".git/", "dac/data/"):
         assert motif in contenu, motif
+
+
+# ---------------------------------------------------------------------------
+# Le raccourci Bureau (scripts/start_docker.bat)
+#
+# Sans lui, utiliser Docker demandait d'ouvrir un terminal et de taper
+# "docker compose up -d" à chaque lancement — pas un geste raisonnable à
+# demander à quelqu'un qui ne code pas. Testé en conditions réelles sur ce
+# poste : `docker compose up -d` s'exécute, les trois conteneurs démarrent.
+# ---------------------------------------------------------------------------
+
+def _start_docker_bat():
+    return (RACINE / "scripts" / "start_docker.bat").read_bytes()
+
+
+def test_le_lanceur_docker_existe_et_porte_des_fins_de_ligne_windows():
+    """Panne réellement rencontrée : écrit avec des fins de ligne LF (Unix) au
+    lieu de CRLF, ce fichier échouait EN SILENCE sous cmd.exe — aucune sortie,
+    aucun message d'erreur, juste rien. Tous les autres .bat du projet ont déjà
+    des CRLF ; celui-ci doit les avoir aussi, sans quoi le défaut peut revenir
+    à la moindre réécriture du fichier."""
+    contenu = _start_docker_bat()
+
+    assert b"\r\n" in contenu
+    # Aucun LF qui ne soit pas précédé d'un CR — un mélange serait le signe
+    # qu'une seule ligne a été rééditée sans respecter le reste du fichier.
+    assert contenu.count(b"\n") == contenu.count(b"\r\n")
+
+
+def test_le_lanceur_docker_ne_reconstruit_pas_l_image():
+    """"docker compose up -d", jamais "--build" : l'image existe déjà après
+    l'installation initiale. Reconstruire à chaque lancement ferait perdre
+    plusieurs minutes pour rien à chaque double-clic.
+
+    Le commentaire du fichier, lui, a le droit d'EXPLIQUER pourquoi --build
+    n'y est pas — seule la ligne de COMMANDE réelle est concernée ici.
+    """
+    lignes_commande = [l for l in _start_docker_bat().decode("utf-8").splitlines()
+                       if not l.strip().upper().startswith("REM")]
+    contenu = "\n".join(lignes_commande)
+
+    assert "docker compose up -d" in contenu
+    assert "--build" not in contenu
+
+
+def test_le_lanceur_docker_verifie_docker_avant_de_s_en_servir():
+    contenu = _start_docker_bat().decode("utf-8")
+
+    assert "where docker" in contenu
+
+
+def test_creation_de_raccourcis_propose_desormais_trois_raccourcis():
+    """Le troisième, pour Docker, ne doit pas remplacer les deux premiers — les
+    trois méthodes d'installation restent utilisables côte à côte sur la même
+    machine, chacune avec son propre raccourci."""
+    contenu = (RACINE / "scripts" / "create_shortcut.ps1").read_text(encoding="utf-8")
+
+    assert "start_dev.bat" in contenu
+    assert "start_prod.bat" in contenu
+    assert "start_docker.bat" in contenu
+    assert contenu.count("Nom = 'DevoTeam Dashboard") == 3
