@@ -1,0 +1,105 @@
+# Trois services applicatifs, une image partagée, et un montage unique du dépôt.
+#
+# POURQUOI UN SEUL MONTAGE (`.:/app`) POUR TOUT, ET PAS UN PAR DOSSIER
+# ---------------------------------------------------------------------------
+# `backend/dac_composer.py` écrit chaque dashboard généré par le chat de façon
+# atomique : fichier temporaire (`.dac_tmp/`) puis `os.replace()` vers
+# `dac/dashboards/`. `os.replace()` n'est atomique qu'À L'INTÉRIEUR D'UN MÊME
+# SYSTÈME DE FICHIERS. Vérifié sur cette machine : deux montages Docker séparés
+# vers deux dossiers pourtant frères sur le MÊME disque échouent quand même en
+# EXDEV (« Invalid cross-device link »), malgré un `st_dev` identique des deux
+# côtés — chaque `-v` crée son propre point de montage aux yeux du conteneur.
+# Un seul montage couvrant tout `/app` supprime le problème à la racine : il
+# n'existe alors qu'un seul système de fichiers, quel que soit le sous-dossier
+# visé.
+#
+# Cela signifie aussi que le CODE (backend/, scripts/, dac/) vient du dépôt
+# hôte, pas de l'image — l'image (voir Dockerfile) ne fournit que le runtime :
+# Python + dépendances + bruin/dac avec son pilote déjà installé. Mettre à jour
+# l'application, c'est `git pull` puis relancer ces services ; reconstruire
+# l'image ne sert qu'à faire évoluer le RUNTIME lui-même (nouvelle dépendance,
+# nouvelle version de bruin).
+#
+# LES DEUX ADRESSES DAC_*_URL / DAC_*_PUBLIC_URL
+# ---------------------------------------------------------------------------
+# Le backend sonde DAC pour lui-même (santé, exécution des requêtes) : à
+# l'intérieur du réseau Docker, ça se fait par NOM DE SERVICE
+# (`http://dac-light:8321`), jamais par 127.0.0.1 — qui, dans un conteneur,
+# désigne le conteneur lui-même. Mais le NAVIGATEUR qui charge le tableau de
+# bord en iframe tourne sur la machine hôte, pas dans Docker : il doit recevoir
+# l'adresse PUBLIÉE sur l'hôte (127.0.0.1:8321), pas le nom de service Docker,
+# qu'il ne saurait jamais résoudre. D'où la distinction déjà prévue dans
+# backend/main.py (DAC_URL sonde interne, DAC_PUBLIC_URL adresse du navigateur)
+# — construite à l'origine pour l'accès par tunnel, elle sert ici exactement
+# pour la même raison : deux points de vue différents sur « où est DAC ».
+
+services:
+  # Compile l'interface à chaque lancement, puis s'arrête. `backend` attend
+  # qu'il ait réussi avant de démarrer — servir une interface absente ferait
+  # échouer FastAPI au tout premier chargement (StaticFiles refuse un dossier
+  # qui n'existe pas).
+  #
+  # Toujours recompilé, jamais conditionnellement : c'est déjà le comportement
+  # du lanceur bare-metal (scripts/start_prod.bat exécute `npm run build` à
+  # CHAQUE démarrage, sans détection de changement). Une heuristique basée sur
+  # les dates de fichiers serait de toute façon peu fiable ici — un `git pull`
+  # remet à peu près toutes les dates à la même heure, ce qui la rendrait
+  # aveugle à un vrai changement de code juste après une mise à jour.
+  frontend-build:
+    image: node:20-slim
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    entrypoint: ["sh", "-c"]
+    command:
+      - "npm ci && npm run build"
+
+  backend:
+    build: .
+    image: devoteam-dashboard:local
+    working_dir: /app
+    command: ["python", "-m", "uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    env_file: .env
+    environment:
+      # Sonde interne (le backend vers DAC, à l'intérieur du réseau Docker).
+      DAC_URL: http://dac-light:8321
+      DAC_DARK_URL: http://dac-dark:8322
+      # Adresse donnée au navigateur (voir la note en tête de fichier).
+      DAC_PUBLIC_URL: http://127.0.0.1:8321
+      DAC_DARK_PUBLIC_URL: http://127.0.0.1:8322
+    volumes:
+      - .:/app
+    ports:
+      # Publié sur 127.0.0.1 seulement, comme le lanceur bare-metal
+      # (--host 127.0.0.1) : l'application reste jointe à cette seule machine.
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      frontend-build:
+        condition: service_completed_successfully
+      dac-light:
+        condition: service_started
+      dac-dark:
+        condition: service_started
+    restart: unless-stopped
+
+  dac-light:
+    build: .
+    image: devoteam-dashboard:local
+    working_dir: /app/dac
+    command: ["dac", "serve", "--dir", ".", "--host", "0.0.0.0", "--port", "8321", "--template", "themes/devoteam.yml"]
+    volumes:
+      - .:/app
+    ports:
+      - "127.0.0.1:8321:8321"
+    restart: unless-stopped
+
+  dac-dark:
+    build: .
+    image: devoteam-dashboard:local
+    working_dir: /app/dac
+    command: ["dac", "serve", "--dir", ".", "--host", "0.0.0.0", "--port", "8322", "--template", "themes/devoteam-dark.yml"]
+    volumes:
+      - .:/app
+    ports:
+      - "127.0.0.1:8322:8322"
+    restart: unless-stopped

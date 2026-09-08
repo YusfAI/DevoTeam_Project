@@ -420,3 +420,67 @@ def test_le_prechauffage_ne_bloque_pas_le_lancement():
     bloc = bloc[:bloc.index("popd")]
 
     assert "exit /b" not in bloc, "le préchauffage ne doit jamais interrompre le lanceur"
+
+
+# ---------------------------------------------------------------------------
+# Le moteur de tableaux de bord : natif OU en conteneur, jamais l'un imposé
+# ---------------------------------------------------------------------------
+
+def test_dac_est_ok_sans_binaires_locaux_si_le_port_repond_et_execute(monkeypatch):
+    """Le cas Docker : bruin/dac vivent dans l'image, jamais sur cette machine.
+
+    Chercher les binaires à un chemin Windows natif échouerait toujours sous
+    Docker, sur une installation par ailleurs parfaitement saine. Ce qui compte
+    est que le serveur RÉPONDE et EXÉCUTE ses requêtes — vrai quelle que soit la
+    façon dont l'application a été installée.
+    """
+    verif._echecs.clear()
+    verif._avertissements.clear()
+
+    monkeypatch.setattr(verif.Path, "exists", lambda self: False)
+    monkeypatch.setattr(verif, "_port_ecoute", lambda port: True)
+    monkeypatch.setattr("backend.main._dac_query_failure", lambda racine=None: None)
+
+    verif.verifier_dac()
+
+    assert not verif._echecs
+
+
+def test_dac_est_ko_sans_binaires_ni_serveur_demarre(monkeypatch, capsys):
+    """Ni installation native, ni conteneur démarré : rien n'est disponible.
+
+    Le message doit orienter vers LES DEUX chemins d'installation possibles,
+    pas seulement le natif — sinon un utilisateur Docker lirait un conseil qui
+    ne le concerne pas.
+    """
+    verif._echecs.clear()
+    verif._avertissements.clear()
+
+    monkeypatch.setattr(verif.Path, "exists", lambda self: False)
+    monkeypatch.setattr(verif, "_port_ecoute", lambda port: False)
+
+    verif.verifier_dac()
+
+    sortie = capsys.readouterr().out
+    assert verif._echecs
+    assert "docker compose" in sortie.lower()
+    assert "INSTALLER.bat" in sortie
+
+
+def test_dac_est_ko_si_le_port_repond_mais_les_requetes_echouent(monkeypatch, capsys):
+    """Le cas déjà rencontré : le serveur répond, mais `bruin` échoue derrière —
+    et le geste proposé doit être celui qui correspond au déploiement réel
+    (les journaux du conteneur), pas une piste Windows sans rapport."""
+    verif._echecs.clear()
+    verif._avertissements.clear()
+
+    monkeypatch.setattr(verif.Path, "exists", lambda self: False)
+    monkeypatch.setattr(verif, "_port_ecoute", lambda port: True)
+    monkeypatch.setattr("backend.main._dac_query_failure",
+                        lambda racine=None: "bruin query failed: exit status 1")
+
+    verif.verifier_dac()
+
+    sortie = capsys.readouterr().out
+    assert verif._echecs
+    assert "docker compose logs dac-light" in sortie

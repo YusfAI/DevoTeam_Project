@@ -13,6 +13,10 @@ Compter une heure la première fois, dont l'essentiel est du téléchargement.
 > **Plus rapide :** `setup\INSTALLER.bat` fait tout ce qui suit automatiquement et
 > ne vous demande que les trois secrets. Cette page reste la référence si vous
 > préférez procéder à la main, ou pour comprendre ce que l'assistant fait.
+>
+> **Sans rien installer sur la machine que Docker Desktop** (pas de Python, Node,
+> ni moteur de tableaux de bord à poser directement sur le poste) :
+> `Documentation/INSTALLATION_DOCKER.md`.
 
 ## Avant le jour de l'installation
 

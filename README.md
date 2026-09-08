@@ -168,19 +168,31 @@ navigateur, pour qui reçoit le dossier sans passer par ce fichier.
 
 ## Installer sur un autre poste
 
-**Le plus simple : double-cliquer sur `setup\INSTALLER.bat`.**
+Deux façons d'installer, au choix.
+
+**Installation native — le plus simple : double-cliquer sur `setup\INSTALLER.bat`.**
 
 Un assistant conduit l'installation de bout en bout et ne demande que ce qui ne peut
 pas être deviné — la clé Gemini, le lien de la feuille, le fichier d'identifiants.
-Il installe le reste, attend que la feuille soit partagée, et termine par le
-diagnostic. Voir `setup/README.md`.
+Il installe le reste (Python, Node, le moteur de tableaux de bord), attend que la
+feuille soit partagée, et termine par le diagnostic. Voir `setup/README.md`.
 
 La procédure détaillée, à suivre à la main si vous préférez :
 **`Documentation/INSTALLATION.md`**.
 
 ```
 scripts\install.bat                    installe tout, puis vérifie
-scriptserifier_installation.py       vérifie seul, sans rien modifier
+scripts\verifier_installation.py       vérifie seul, sans rien modifier
+```
+
+**Installation Docker — évite d'installer Python/Node/le moteur de tableaux de
+bord directement sur la machine**, en les faisant tourner dans des conteneurs à la
+place. Élimine toute une classe de pannes propres à Windows (chemins avec espaces,
+`PATH` de `bruin`, PowerShell qui prend un message de progression pour une erreur).
+Procédure complète : **`Documentation/INSTALLATION_DOCKER.md`**.
+
+```
+docker compose up -d --build           construit les images et démarre tout
 ```
 
 Le script de vérification contrôle chaque maillon séparément — clé, feuille (lecture

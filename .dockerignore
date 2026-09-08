@@ -1,0 +1,24 @@
+# Ce qui ne doit jamais entrer dans le CONTEXTE de build (envoyé au démon Docker
+# à chaque `docker compose build`, même si le Dockerfile ne le COPY pas).
+#
+# Le code applicatif n'est de toute façon jamais copié dans l'image — il arrive
+# par le montage `.:/app` (voir docker-compose.yml) — donc cette liste sert
+# surtout à garder le contexte de build petit et rapide à transférer, et à ne
+# jamais risquer d'envoyer un secret au démon par mégarde.
+
+.git/
+.venv/
+node_modules/
+frontend/dist/
+frontend/node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+.dac_tmp/
+dac/data/
+dac/dashboards/_analyse_*.yml
+dac/dashboards/_principal.yml
+data/scheduler_state.json
+logs/
+.env
+credentials/

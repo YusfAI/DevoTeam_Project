@@ -319,27 +319,53 @@ def _port_ecoute(port):
 
 
 def verifier_dac():
+    """Le moteur de tableaux de bord — natif (bruin.exe local) ou en conteneur.
+
+    Sous Docker, `bruin`/`dac` vivent DANS l'image, jamais sur cette machine : les
+    chercher à un chemin Windows natif échouerait toujours, sur une installation
+    par ailleurs parfaitement saine. Ce qui compte réellement n'est pas OÙ vivent
+    ces binaires, mais si le serveur RÉPOND et EXÉCUTE ses requêtes — ce test-là
+    est vrai quelle que soit la manière dont l'application a été installée, et
+    c'est donc lui qui décide du verdict. La présence locale des binaires reste
+    vérifiée, mais seulement à titre indicatif.
+    """
     titre("6. Moteur de tableaux de bord (Bruin DAC)")
 
     dossier = Path(os.environ.get("USERPROFILE", Path.home())) / ".local" / "bin"
-    for binaire, role in [("dac.exe", "sert les tableaux de bord"),
-                          ("bruin.exe", "exécute leurs requêtes")]:
-        if (dossier / binaire).exists():
-            dire(OK, binaire, role)
-        else:
-            dire(KO, "%s introuvable" % binaire, str(dossier / binaire),
-                 "Dans Git Bash : curl -LsSf https://getbruin.com/install/dac | sh")
+    binaires_locaux = all((dossier / b).exists() for b in ("dac.exe", "bruin.exe"))
+    if binaires_locaux:
+        dire(OK, "dac.exe et bruin.exe", "installation native, %s" % dossier)
 
-    for port, nom in [(8321, "clair"), (8322, "sombre")]:
-        if _port_ecoute(port):
-            dire(OK, "Serveur %s (port %d) démarré" % (nom, port))
-        elif port == 8321:
-            dire(AVERTIR, "Serveur clair (port 8321) éteint",
-                 "normal si l'application n'est pas lancée",
-                 "Il démarre avec le raccourci du Bureau")
+    try:
+        from backend.main import _dac_query_failure
+    except Exception:
+        _dac_query_failure = None
+
+    for port, nom, service_docker in [(8321, "clair", "dac-light"), (8322, "sombre", "dac-dark")]:
+        racine = "http://127.0.0.1:%d" % port
+        if not _port_ecoute(port):
+            if port == 8321:
+                if binaires_locaux:
+                    dire(AVERTIR, "Serveur clair (port 8321) éteint",
+                         "normal si l'application n'est pas lancée",
+                         "Il démarre avec le raccourci du Bureau")
+                else:
+                    dire(KO, "Serveur clair (port 8321) injoignable",
+                         "ni binaires locaux, ni serveur démarré",
+                         "Installer via setup\\INSTALLER.bat, ou lancer "
+                         "« docker compose up -d --build »")
+            else:
+                dire(AVERTIR, "Serveur sombre (port 8322) éteint",
+                     "facultatif — sans lui, le tableau de bord reste en clair")
+            continue
+
+        erreur = _dac_query_failure(racine) if _dac_query_failure else None
+        if erreur is None:
+            dire(OK, "Serveur %s (port %d)" % (nom, port), "répond et exécute ses requêtes")
         else:
-            dire(AVERTIR, "Serveur sombre (port 8322) éteint",
-                 "facultatif — sans lui, le tableau de bord reste en clair")
+            dire(KO, "Serveur %s (port %d) répond mais échoue sur ses requêtes" % (nom, port),
+                 erreur[:160],
+                 "Voir les journaux du conteneur : docker compose logs %s" % service_docker)
 
 
 def verifier_frontend():
