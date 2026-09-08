@@ -71,12 +71,27 @@ def _build_email_body(opportunities: list) -> str:
     return "\n".join(lines)
 
 
+def _destinataires(brut: str) -> list[str]:
+    """ALERT_RECIPIENT_EMAIL accepte une adresse ou plusieurs, séparées par une
+    virgule ou un point-virgule (les deux se voient sur un vrai clavier de
+    messagerie, autant accepter les deux plutôt que de faire échouer l'envoi sur
+    une ponctuation).
+
+    Les espaces autour de chaque adresse et les virgules superflues (une liste
+    qui se termine par une virgule, par exemple) sont tolérés — sans quoi une
+    adresse vide se retrouverait dans le "À :", ce que certains serveurs SMTP
+    refusent purement et simplement.
+    """
+    brut = (brut or "").replace(";", ",")
+    return [a.strip() for a in brut.split(",") if a.strip()]
+
+
 def send_alert_email(opportunities: list) -> None:
     sender = os.getenv("GMAIL_SENDER")
     app_password = os.getenv("GMAIL_APP_PASSWORD")
-    recipient = os.getenv("ALERT_RECIPIENT_EMAIL")
+    destinataires = _destinataires(os.getenv("ALERT_RECIPIENT_EMAIL"))
 
-    if not sender or not app_password or not recipient:
+    if not sender or not app_password or not destinataires:
         logger.warning(
             "Alertes deadline : configuration email incomplète "
             "(GMAIL_SENDER / GMAIL_APP_PASSWORD / ALERT_RECIPIENT_EMAIL) — email non envoyé."
@@ -85,7 +100,10 @@ def send_alert_email(opportunities: list) -> None:
 
     message = MIMEMultipart()
     message["From"] = sender
-    message["To"] = recipient
+    # Toutes les adresses se voient dans l'en-tête "À :" — une alerte adressée à
+    # une équipe doit rester visiblement collective, pas ressembler à des copies
+    # cachées les unes des autres.
+    message["To"] = ", ".join(destinataires)
     message["Subject"] = (
         f"[DevoTeam Dashboard] {len(opportunities)} opportunité(s) à échéance "
         f"≤ {ALERT_WINDOW_DAYS} jours"
@@ -95,7 +113,7 @@ def send_alert_email(opportunities: list) -> None:
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
         server.starttls()
         server.login(sender, app_password)
-        server.sendmail(sender, [recipient], message.as_string())
+        server.sendmail(sender, destinataires, message.as_string())
 
 
 def run_daily_alert_check() -> int:

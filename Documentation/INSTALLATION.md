@@ -122,7 +122,7 @@ GOOGLE_SHEET_TAB=          le nom de l'onglet
 # Facultatif — l'email de rappel quotidien
 GMAIL_SENDER=
 GMAIL_APP_PASSWORD=
-ALERT_RECIPIENT_EMAIL=
+ALERT_RECIPIENT_EMAIL=     une adresse, ou plusieurs séparées par une virgule
 ```
 
 **Enregistrer**, puis fermer le Bloc-notes pour que l'installation reprenne.

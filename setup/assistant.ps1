@@ -333,6 +333,7 @@ function DemanderConfiguration {
         Write-Host ''
         Write-Host '  [6/6] Adresse destinataire' -ForegroundColor Cyan
         Info 'Qui RECOIT le rappel — la meme adresse convient tres bien.'
+        Info 'Plusieurs adresses : separez-les par une virgule.'
         $destinataire = LireTexte 'Adresse destinataire :' $config['ALERT_RECIPIENT_EMAIL'] $expediteur
         if ($destinataire) { $config['ALERT_RECIPIENT_EMAIL'] = $destinataire }
     } else {

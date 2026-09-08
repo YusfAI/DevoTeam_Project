@@ -139,6 +139,70 @@ def test_send_alert_email_uses_gmail_smtp_with_starttls_and_app_password(monkeyp
     assert "Maroc" in body
 
 
+# ---------------------------------------------------------------------------
+# Plusieurs destinataires
+#
+# ALERT_RECIPIENT_EMAIL portait une seule adresse. Une alerte adressée à une
+# équipe entière (la direction ET la personne qui suit les deadlines, par
+# exemple) doit pouvoir en porter plusieurs sans qu'il faille créer une adresse
+# de diffusion Google Groups juste pour ça.
+# ---------------------------------------------------------------------------
+
+def test_plusieurs_destinataires_separes_par_une_virgule(monkeypatch):
+    monkeypatch.setenv("GMAIL_SENDER", "sender@gmail.com")
+    monkeypatch.setenv("GMAIL_APP_PASSWORD", "abcdefghijklmnop")
+    monkeypatch.setenv("ALERT_RECIPIENT_EMAIL", "a@exemple.com,b@exemple.com")
+    _FakeSMTP.instances = []
+    monkeypatch.setattr(alerts.smtplib, "SMTP", _FakeSMTP)
+
+    alerts.send_alert_email([{
+        "id": 1, "country": "Maroc", "practice": "Risk Advisory", "buyer": "ACME",
+        "status": "Offre remise", "deadline": "2026-08-10", "budget": 50000, "days_left": 3,
+    }])
+
+    smtp = _FakeSMTP.instances[0]
+    _, recipients, raw_message = smtp.sent
+    assert recipients == ["a@exemple.com", "b@exemple.com"]
+    # Les deux adresses restent visibles dans l'en-tête "À :" — une alerte
+    # collective ne doit pas ressembler à des copies cachées les unes des autres.
+    parsed = message_from_string(raw_message)
+    assert parsed["To"] == "a@exemple.com, b@exemple.com"
+
+
+def test_les_espaces_et_le_point_virgule_sont_tolerees(monkeypatch):
+    # Une liste collée depuis un tableur ou dictée par téléphone porte rarement
+    # une ponctuation parfaitement propre — les espaces autour de chaque adresse
+    # et le point-virgule (courant sur un vrai client de messagerie) ne doivent
+    # pas faire échouer l'envoi.
+    monkeypatch.setenv("GMAIL_SENDER", "sender@gmail.com")
+    monkeypatch.setenv("GMAIL_APP_PASSWORD", "abcdefghijklmnop")
+    monkeypatch.setenv("ALERT_RECIPIENT_EMAIL", " a@exemple.com ; b@exemple.com ;")
+    _FakeSMTP.instances = []
+    monkeypatch.setattr(alerts.smtplib, "SMTP", _FakeSMTP)
+
+    alerts.send_alert_email([{
+        "id": 1, "country": "Maroc", "practice": "Risk Advisory", "buyer": "ACME",
+        "status": "Offre remise", "deadline": "2026-08-10", "budget": 50000, "days_left": 3,
+    }])
+
+    _, recipients, _ = _FakeSMTP.instances[0].sent
+    assert recipients == ["a@exemple.com", "b@exemple.com"]
+
+
+def test_une_liste_vide_apres_nettoyage_n_envoie_rien(monkeypatch):
+    # Des virgules seules, ou des espaces : aucune vraie adresse dedans. Le même
+    # garde-fou que pour une valeur totalement absente — pas d'envoi à personne.
+    monkeypatch.setenv("GMAIL_SENDER", "sender@gmail.com")
+    monkeypatch.setenv("GMAIL_APP_PASSWORD", "abcdefghijklmnop")
+    monkeypatch.setenv("ALERT_RECIPIENT_EMAIL", " , , ")
+    _FakeSMTP.instances = []
+    monkeypatch.setattr(alerts.smtplib, "SMTP", _FakeSMTP)
+
+    alerts.send_alert_email([{"id": 1}])
+
+    assert _FakeSMTP.instances == []
+
+
 def test_excluded_statuses_cover_won_lost_and_dropped_deals():
     # A regression here would silently start emailing about closed deals every day.
     for status in ("Offre gagnée", "Offre perdue", "Offre signée", "Infructueux",

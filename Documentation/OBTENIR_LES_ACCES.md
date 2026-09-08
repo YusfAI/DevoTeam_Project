@@ -85,6 +85,10 @@ Nécessite que la validation en 2 étapes soit activée sur ce compte Gmail —
 sinon la page n'existe pas. Donnez un nom au mot de passe (ex.
 *DevoTeam Dashboard*), copiez les 16 caractères affichés **sans les espaces**.
 
+Le rappel peut être envoyé à **plusieurs personnes** : séparez les adresses par
+une virgule dans `ALERT_RECIPIENT_EMAIL` (ex.
+`direction@exemple.com,suivi@exemple.com`).
+
 ---
 
 ## Récapitulatif — ce que vous devez avoir en main avant de partir

@@ -20,7 +20,7 @@ Six informations, posées une par une, puis un fichier à sélectionner.
 | 3 | Nom de l'onglet | Celui qui contient les opportunités (`opportunities` par défaut) | obligatoire |
 | 4 | Adresse expéditrice des alertes | Le compte Gmail qui **envoie** le rappel quotidien | facultatif |
 | 5 | Mot de passe d'application Gmail | [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) — 16 caractères | facultatif |
-| 6 | Adresse destinataire des alertes | Qui **reçoit** le rappel | facultatif |
+| 6 | Adresse destinataire des alertes | Qui **reçoit** le rappel — plusieurs adresses possibles, séparées par une virgule | facultatif |
 | — | Fichier JSON du compte de service | Une fenêtre de sélection s'ouvre ; le fichier est copié et renommé | obligatoire |
 
 Les questions 4 à 6 ne concernent que le rappel par email. Entrée à la question 4
