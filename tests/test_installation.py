@@ -484,3 +484,38 @@ def test_dac_est_ko_si_le_port_repond_mais_les_requetes_echouent(monkeypatch, ca
     sortie = capsys.readouterr().out
     assert verif._echecs
     assert "docker compose logs dac-light" in sortie
+
+
+# ---------------------------------------------------------------------------
+# Le repli silencieux sur le Python du système
+#
+# Panne réellement rencontrée sur un poste de test : sans .venv, les lanceurs
+# retombent sur le Python du PATH — un repli délibéré, pour rester compatibles
+# avec un poste configuré avant l'existence de .venv. Mais CE Python-là n'a
+# aucune garantie de contenir les dépendances du projet. Le symptôme observé
+# était une trace Python confuse, plusieurs couches plus bas (le processus de
+# rechargement d'uvicorn) : "ModuleNotFoundError: apscheduler", loin de sa
+# cause réelle — l'absence de .venv, pas un vrai bug du code.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("nom", ["start_dev.bat", "start_prod.bat"])
+def test_un_repli_sur_le_python_systeme_est_signale_et_verifie(nom):
+    """Le repli reste autorisé (compatibilité avec un poste préexistant), mais
+    il doit désormais s'annoncer ET vérifier que les dépendances du projet y
+    sont bien présentes AVANT de lancer quoi que ce soit."""
+    contenu = (SCRIPTS / nom).read_text(encoding="utf-8", errors="surrogateescape")
+
+    assert "[ATTENTION] Environnement isole introuvable" in contenu
+    assert "import fastapi, uvicorn, pandas, duckdb, gspread, apscheduler, dotenv" in contenu
+    assert "[ARRET] Des dependances Python manquent" in contenu
+
+
+@pytest.mark.parametrize("nom", ["start_dev.bat", "start_prod.bat"])
+def test_la_verification_des_dependances_precede_le_demarrage_du_backend(nom):
+    """Sans cet ordre, le backend démarrerait quand même, pour planter plus
+    loin avec une trace bien moins lisible que le message ci-dessus."""
+    contenu = (SCRIPTS / nom).read_text(encoding="utf-8", errors="surrogateescape")
+
+    verification = contenu.index("import fastapi, uvicorn, pandas")
+    demarrage_backend = contenu.index('start "DevoTeam Backend"')
+    assert verification < demarrage_backend, nom

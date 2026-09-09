@@ -24,9 +24,37 @@ set "PROJECT_ROOT=%CD%"
 REM Interpreteur Python. scripts\install.bat cree un environnement isole (.venv)
 REM pour ne pas installer les versions epinglees a l'echelle de la machine. S'il
 REM existe on l'utilise ; sinon on retombe sur le Python du systeme, ce qui garde
-REM ce lanceur compatible avec un poste configure avant l'existence du .venv.
+REM ce lanceur compatible avec un poste configure avant l'existence du .venv —
+REM mais ce Python-la n'a aucune garantie de contenir les dependances du projet,
+REM d'ou l'avertissement et la verification qui suivent.
 set "PY=python"
-if exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" set "PY=%PROJECT_ROOT%\.venv\Scripts\python.exe"
+if exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
+    set "PY=%PROJECT_ROOT%\.venv\Scripts\python.exe"
+) else (
+    echo.
+    echo   [ATTENTION] Environnement isole introuvable (.venv).
+    echo               Utilisation du Python du systeme a la place. Si les
+    echo               dependances du projet n'y sont pas installees, le
+    echo               backend plantera au demarrage.
+    echo               Pour corriger : lancer scripts\install.bat une fois,
+    echo               puis relancer ce fichier.
+    echo.
+)
+
+REM Verifie que l'interpreteur choisi a bien les dependances du projet, AVANT
+REM de lancer quoi que ce soit — plutot qu'une trace Python confuse plusieurs
+REM couches plus bas quand l'une d'elles manque.
+"%PY%" -c "import fastapi, uvicorn, pandas, duckdb, gspread, apscheduler, dotenv" >NUL 2>&1
+if errorlevel 1 (
+    echo.
+    echo   [ARRET] Des dependances Python manquent pour :
+    echo           %PY%
+    echo           Lancer scripts\install.bat (ou setup\INSTALLER_NATIF.bat),
+    echo           puis relancer ce fichier.
+    echo.
+    pause
+    exit /b 1
+)
 
 REM Meme raison que dans start_dev.bat : dac.exe delegue l'execution du SQL a
 REM "bruin", qu'il cherche dans le PATH, et l'installeur n'ajoute pas

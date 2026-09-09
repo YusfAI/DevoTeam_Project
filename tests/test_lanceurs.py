@@ -62,8 +62,12 @@ def test_le_developpement_recharge_bien_a_chaud():
 def test_la_production_compile_le_frontend_avant_de_demarrer():
     prod = _commandes(PROD)
     position_build = prod.find("npm run build")
-    position_uvicorn = prod.find("uvicorn")
+    # Le LANCEMENT précisément, pas la première mention du mot "uvicorn" : la
+    # vérification des dépendances (ajoutée depuis) l'importe aussi, dans un
+    # simple test d'import qui n'a rien à voir avec l'ordre de démarrage.
+    position_uvicorn = prod.find("-m uvicorn backend.main:app")
     assert position_build != -1, "le frontend n'est jamais compilé"
+    assert position_uvicorn != -1, "le backend n'est jamais démarré"
     assert position_build < position_uvicorn, (
         "le backend démarrerait sur une compilation périmée, et servirait l'ancienne "
         "interface sans le signaler"
