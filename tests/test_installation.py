@@ -519,3 +519,63 @@ def test_la_verification_des_dependances_precede_le_demarrage_du_backend(nom):
     verification = contenu.index("import fastapi, uvicorn, pandas")
     demarrage_backend = contenu.index('start "DevoTeam Backend"')
     assert verification < demarrage_backend, nom
+
+
+# ---------------------------------------------------------------------------
+# node_modules incomplet — même classe de panne que le repli Python, côté
+# interface cette fois
+#
+# Panne réellement rencontrée ET reproduite sur cette machine : un
+# node_modules présent mais dont le paquet vite n'a pas correctement posé son
+# exécutable (installation précédente interrompue, ou copié depuis un autre
+# poste) passait le test "if not exist node_modules" — le dossier existe bien
+# — et laissait "npm run build"/"npm run dev" échouer avec :
+#   'vite' is not recognized as an internal or external command
+# sans rien pour dire que la vraie cause est un `npm install` à refaire.
+# ---------------------------------------------------------------------------
+
+def test_l_installeur_reinstalle_npm_a_chaque_fois():
+    """Comme pip quelques lignes plus haut dans le même fichier : npm install
+    doit se relancer À CHAQUE exécution, pas seulement quand node_modules est
+    entièrement absent. npm ne réinstalle que ce qui manque ou a changé — le
+    coût d'un appel redondant est de quelques secondes, pas une réinstallation
+    complète."""
+    contenu = (SCRIPTS / "install.bat").read_text(encoding="utf-8",
+                                                  errors="surrogateescape")
+
+    assert "call npm install --silent" in contenu
+    # L'ancienne garde, qui laissait passer un node_modules incomplet.
+    assert 'if not exist "node_modules" (' not in contenu
+
+
+@pytest.mark.parametrize("nom", ["start_dev.bat", "start_prod.bat"])
+def test_les_lanceurs_verifient_vite_avant_de_s_en_servir(nom):
+    """vite.cmd est le fichier précis que node_modules perd quand
+    l'installation a été interrompue — vérifié en le reproduisant sur un vrai
+    poste : un `npm install` propre le recrée, un `node_modules` bancal ne
+    l'a pas."""
+    contenu = (SCRIPTS / nom).read_text(encoding="utf-8", errors="surrogateescape")
+
+    assert r"node_modules\.bin\vite.cmd" in contenu
+    assert r"Lancer scripts\install.bat" in contenu
+
+
+def test_start_dev_verifie_vite_avant_d_ouvrir_la_fenetre_frontend():
+    """L'erreur devait apparaître ICI, pas dans la fenêtre séparée qu'ouvre
+    ensuite `npm run dev` — sans quoi elle serait facile à manquer, ou prise
+    pour une fenêtre qui a juste mis du temps à s'afficher."""
+    contenu = (SCRIPTS / "start_dev.bat").read_text(encoding="utf-8",
+                                                     errors="surrogateescape")
+
+    verification = contenu.index(r"node_modules\.bin\vite.cmd")
+    ouverture_fenetre = contenu.index('start "DevoTeam Frontend"')
+    assert verification < ouverture_fenetre
+
+
+def test_start_prod_verifie_vite_avant_de_compiler():
+    contenu = (SCRIPTS / "start_prod.bat").read_text(encoding="utf-8",
+                                                      errors="surrogateescape")
+
+    verification = contenu.index(r"node_modules\.bin\vite.cmd")
+    compilation = contenu.index("call npm run build")
+    assert verification < compilation

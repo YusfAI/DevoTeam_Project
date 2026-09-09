@@ -89,6 +89,21 @@ REM trouve. Demarrer sur une compilation ratee ou perimee afficherait l'ancienne
 REM version de l'interface sans le moindre signe que quelque chose a echoue.
 echo [1/4] Compilation du frontend...
 pushd "%PROJECT_ROOT%\frontend"
+
+REM Verifie que les paquets Node sont bien la AVANT de compiler, plutot qu'une
+REM erreur "'vite' is not recognized" sans rien pour l'expliquer — panne
+REM reellement rencontree avec un node_modules incomplet (installation
+REM precedente interrompue, ou copie depuis un autre poste).
+if not exist "node_modules\.bin\vite.cmd" (
+    popd
+    echo.
+    echo [ARRET] Paquets de l'interface introuvables ou incomplets :
+    echo         frontend\node_modules
+    echo         Lancer scripts\install.bat, puis relancer ce fichier.
+    pause
+    exit /b 1
+)
+
 call npm run build
 if errorlevel 1 (
     popd

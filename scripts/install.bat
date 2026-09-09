@@ -83,17 +83,22 @@ if errorlevel 1 (
 echo         OK - dependances installees
 
 REM --- 4. Interface ----------------------------------------------------------
+REM npm install s'execute a CHAQUE fois, meme si node_modules existe deja — comme
+REM pip quelques lignes plus haut. Panne reellement rencontree sans ca : un
+REM node_modules present mais INCOMPLET (installation precedente interrompue, ou
+REM copiee depuis un autre poste) passait le test "if not exist" et sautait tout
+REM droit a "npm run build", qui echouait avec "'vite' is not recognized" — une
+REM erreur qui ne dit rien de sa vraie cause. npm ne reinstalle que ce qui manque
+REM ou a change, donc relancer ne coute que quelques secondes quand tout y est deja.
 echo   [4/7] Compilation de l'interface...
 pushd "%RACINE%\frontend"
-if not exist "node_modules" (
-    echo         installation des paquets ^(quelques minutes^)...
-    call npm install --silent
-    if errorlevel 1 (
-        popd
-        echo         ECHEC de npm install.
-        set "BLOQUANT=1"
-        goto :fin
-    )
+echo         installation des paquets...
+call npm install --silent
+if errorlevel 1 (
+    popd
+    echo         ECHEC de npm install.
+    set "BLOQUANT=1"
+    goto :fin
 )
 call npm run build
 if errorlevel 1 (

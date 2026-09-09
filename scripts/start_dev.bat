@@ -134,6 +134,18 @@ call :is_running 5173
 if "%RUNNING%"=="1" (
     echo [Frontend] deja demarre - reutilise.
 ) else (
+    REM Verifie que les paquets Node sont bien la AVANT d'ouvrir la fenetre, plutot
+    REM qu'une erreur "'vite' is not recognized" dedans sans rien pour l'expliquer —
+    REM panne reellement rencontree avec un node_modules incomplet.
+    if not exist "%PROJECT_ROOT%\frontend\node_modules\.bin\vite.cmd" (
+        echo.
+        echo   [ARRET] Paquets de l'interface introuvables ou incomplets :
+        echo           frontend\node_modules
+        echo           Lancer scripts\install.bat, puis relancer ce fichier.
+        echo.
+        pause
+        exit /b 1
+    )
     echo [Frontend] demarrage...
     start "DevoTeam Frontend" /D "%PROJECT_ROOT%\frontend" cmd /s /k "npm run dev"
 )
