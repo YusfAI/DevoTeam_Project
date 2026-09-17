@@ -4,13 +4,16 @@ lue en direct, mise en cache, rafraîchie périodiquement. Le reste de l'applica
 (chat, graphiques, alertes) lit exclusivement via get_dataframe(), jamais le Sheet
 directement.
 
-Champs calculés à chaque chargement (jamais LUS depuis le Sheet, même s'ils y
-figurent en colonne, toujours recalculés depuis les colonnes "brutes" pour ne
-jamais en diverger) : deadline_month, deadline_year, days_remaining,
-weighted_amount. Comme il n'y a plus de second store où "insérer" une ligne, la
-distinction insert/update d'avant disparaît : une ligne sans id reçoit simplement
-un id (max existant + 1), réécrit dans le Sheet pour rester stable d'un
-chargement à l'autre.
+Lecture SEULE, via une clé API Google Sheets (aucun fichier de compte de service,
+aucun OAuth) : le Sheet doit être partagé en « Lecteur — toute personne disposant
+du lien ». Champs calculés à chaque chargement (jamais LUS depuis le Sheet, même
+s'ils y figurent en colonne, toujours recalculés depuis les colonnes "brutes" pour
+ne jamais en diverger) : deadline_month, deadline_year, days_remaining,
+weighted_amount — affichés dans les tableaux de bord, jamais réécrits dans le
+Sheet (une clé API seule ne permet de toute façon pas l'écriture). Une ligne sans
+id en reçoit un (max existant + 1) pour la durée de CE chargement ; sans colonne
+"id" dans le Sheet, cet id n'est stable d'un chargement à l'autre que si l'ordre
+des lignes ne change pas.
 
 Volontairement PAS de suppression : une ligne retirée du Sheet disparaît du
 prochain chargement, ce qui est le comportement naturel d'une lecture en direct
@@ -20,9 +23,10 @@ import logging
 import os
 import threading
 from datetime import date, datetime
+from urllib.parse import quote
 
-import gspread
 import pandas as pd
+import requests
 from dotenv import load_dotenv
 
 from .schema_and_whitelist import KNOWN_VALUES
@@ -65,16 +69,6 @@ _ALIAS_COLONNES = {
     "pondéré à": "win_probability",
     "pondere a": "win_probability",
     "description de la prestation": "description",
-    # Colonnes CALCULÉES (_DERIVED_SHEET_COLUMNS) : jamais lues, seulement réécrites
-    # après calcul. Les aliaser permet à l'application de tenir à jour les colonnes
-    # que l'utilisatrice a déjà l'habitude de consulter, au lieu de les laisser
-    # devenir obsolètes à côté de colonnes dupliquées portant les noms internes.
-    "année deadline": "deadline_year",
-    "annee deadline": "deadline_year",
-    "jours rest.": "days_remaining",
-    "jours restants": "days_remaining",
-    "pondération": "weighted_amount",
-    "ponderation": "weighted_amount",
 }
 
 
@@ -105,42 +99,47 @@ DATA_COLUMNS = (
     "weighted_amount",
 )
 
-# Réécrites dans le Sheet après chaque chargement (si la colonne existe dans
-# l'en-tête — elle n'est pas obligatoire, voir SHEET_COLUMNS) pour que l'utilisateur
-# voie le résultat du calcul sans consulter les données brutes ; jamais LUES depuis
-# le Sheet (_parse_row les recalcule toujours depuis les colonnes brutes).
-_DERIVED_SHEET_COLUMNS = ("deadline_month", "deadline_year", "days_remaining", "weighted_amount")
-
-_client = None
-_worksheet = None
 _cache_lock = threading.Lock()
 _cached_df: "pd.DataFrame | None" = None
 _last_refresh_summary: dict = {}
 
-
-def _get_client():
-    global _client
-    if _client is None:
-        creds_path = os.getenv("GOOGLE_SHEETS_CREDENTIALS_PATH", "credentials/google_service_account.json")
-        _client = gspread.service_account(filename=creds_path)
-    return _client
+_SHEETS_API_TIMEOUT_SECONDS = 20
 
 
-def _get_worksheet():
-    # open_by_key() + worksheet() sont chacun un aller-retour réseau vers l'API
-    # Sheets — le sheet_id/nom d'onglet sont fixes pour la durée du process, donc
-    # pas besoin de les refaire à chaque chargement (toutes les 15 min, indéfiniment).
-    # Seul get_all_values()/update_cells() doivent rester des appels frais à chaque
-    # fois (données à jour).
-    global _worksheet
-    if _worksheet is None:
-        sheet_id = os.getenv("GOOGLE_SHEET_ID")
-        tab_name = os.getenv("GOOGLE_SHEET_TAB", "opportunities")
-        if not sheet_id:
-            raise ValueError("GOOGLE_SHEET_ID manquant dans .env")
-        sh = _get_client().open_by_key(sheet_id)
-        _worksheet = sh.worksheet(tab_name)
-    return _worksheet
+def fetch_sheet_values() -> list[list[str]]:
+    """Lit toutes les valeurs de l'onglet configuré via l'API Sheets v4 + clé API.
+
+    Lecture seule, sans fichier de compte de service ni OAuth : le Sheet doit être
+    partagé en « Lecteur — toute personne disposant du lien », sans quoi l'API
+    répond 403 quelle que soit la clé fournie.
+    """
+    api_key = os.getenv("GOOGLE_SHEETS_API_KEY")
+    sheet_id = os.getenv("GOOGLE_SHEET_ID")
+    tab_name = os.getenv("GOOGLE_SHEET_TAB", "opportunities")
+    if not api_key:
+        raise ValueError("GOOGLE_SHEETS_API_KEY manquant dans .env")
+    if not sheet_id:
+        raise ValueError("GOOGLE_SHEET_ID manquant dans .env")
+
+    url = f"https://sheets.googleapis.com/v4/spreadsheets/{sheet_id}/values/{quote(tab_name)}"
+    resp = requests.get(url, params={"key": api_key}, timeout=_SHEETS_API_TIMEOUT_SECONDS)
+    if resp.status_code == 403:
+        raise ValueError(
+            "Accès refusé (403) — le Sheet doit être partagé en « Lecteur, toute "
+            "personne disposant du lien » pour être lisible avec une simple clé API."
+        )
+    if resp.status_code == 404:
+        raise ValueError(
+            "Sheet ou onglet introuvable (404) — vérifier GOOGLE_SHEET_ID et "
+            "GOOGLE_SHEET_TAB dans .env."
+        )
+    if resp.status_code == 400:
+        raise ValueError(
+            "Requête refusée (400) — vérifier que GOOGLE_SHEETS_API_KEY est une clé "
+            "API valide avec l'API Google Sheets activée."
+        )
+    resp.raise_for_status()
+    return resp.json().get("values", [])
 
 
 class RowError(ValueError):
@@ -255,26 +254,6 @@ def _probability_or_none(raw: str, repairs: list):
         return None
 
 
-def _valeur_identique(brut: str, valeur) -> bool:
-    """La cellule du Sheet porte-t-elle déjà cette valeur ?
-
-    Comparaison NUMÉRIQUE quand les deux côtés sont des nombres : le Sheet rend
-    « 72000 » là où Python écrit « 72000.0 », et une comparaison de texte conclurait
-    à tort qu'il faut réécrire. En cas de doute, on renvoie False — réécrire une
-    cellule déjà juste ne coûte qu'un peu de réseau, la laisser périmée fausserait
-    ce que l'utilisateur lit dans son Sheet.
-    """
-    brut = (brut or "").strip()
-    attendu = "" if valeur is None else str(valeur).strip()
-    if brut == attendu:
-        return True
-    if not brut or not attendu:
-        return False
-    try:
-        return abs(float(brut.replace(",", ".")) - float(attendu)) < 0.005
-    except ValueError:
-        return False
-
 
 def _parse_row(headers: list, values: list) -> tuple[dict, list]:
     """Transforme une ligne brute du Sheet en dict, champs dérivés déjà calculés.
@@ -340,16 +319,15 @@ def _parse_row(headers: list, values: list) -> tuple[dict, list]:
 
 
 def _load_from_sheet() -> tuple[list[dict], dict]:
-    """Lit le Sheet, valide chaque ligne, attribue un id aux nouvelles lignes et
-    réécrit id + colonnes calculées dans le Sheet. Renvoie (lignes valides, résumé)."""
+    """Lit le Sheet (lecture seule, clé API) et valide chaque ligne, en attribuant
+    un id aux lignes qui n'en ont pas. Renvoie (lignes valides, résumé)."""
     # "errors" reste la liste lisible affichee a l'utilisateur ; "issues" en est la
     # version structuree, exploitee par backend/data_quality.py pour regrouper les
     # rejets par cause plutot que de reanalyser des phrases deja formatees.
     summary = {"total_rows": 0, "skipped": 0, "new_ids_assigned": 0, "errors": [],
                "issues": [], "repairs": []}
 
-    ws = _get_worksheet()
-    all_values = ws.get_all_values()
+    all_values = fetch_sheet_values()
     if not all_values:
         return [], summary
 
@@ -365,16 +343,7 @@ def _load_from_sheet() -> tuple[list[dict], dict]:
         summary["errors"].append(msg)
         return [], summary
 
-    # gspread est indexé à partir de 1. Sans colonne "id", il n'y a nulle part où
-    # réécrire l'identifiant attribué (voir plus bas) : il reste valable pour CE
-    # chargement, simplement pas stable d'un chargement à l'autre.
-    id_col_index = headers.index("id") + 1 if "id" in headers else None
-    derived_col_index = {c: headers.index(c) + 1 for c in _DERIVED_SHEET_COLUMNS if c in headers}
-
-    parsed_rows: list[tuple[int, dict]] = []  # (row_number, row)
-    # Texte BRUT des colonnes calculées, tel qu'il est actuellement dans le Sheet.
-    # Sert à ne renvoyer que les cellules qui changent réellement (voir plus bas).
-    brut_par_ligne: dict[int, dict] = {}
+    parsed_rows: list[dict] = []
     for offset, values in enumerate(all_values[1:], start=1):
         row_number = offset + 1  # +1 pour la ligne d'en-tête
         if not any(v.strip() for v in values):
@@ -403,64 +372,27 @@ def _load_from_sheet() -> tuple[list[dict], dict]:
                 ", ".join(r["field"] for r in repairs),
             )
 
-        cellules = dict(zip(headers, values))
-        brut_par_ligne[row_number] = {c: cellules.get(c, "") for c in _DERIVED_SHEET_COLUMNS}
-        parsed_rows.append((row_number, row))
+        parsed_rows.append(row)
 
     # Un id existant a priorité ; une ligne sans id en reçoit un nouveau (max + 1),
-    # attribué dans l'ordre d'apparition — remplace l'AUTO_INCREMENT MySQL d'avant,
-    # simplement pour donner une référence stable à une opportunité d'un chargement
-    # à l'autre (plus de risque de doublon : il n'y a plus de second store à
-    # dédupliquer, on relit tout depuis zéro à chaque fois).
-    existing_ids = [int(r["id"]) for _, r in parsed_rows if r["id"].strip().isdigit()]
+    # attribué dans l'ordre d'apparition. Lecture seule (clé API) : jamais réécrit
+    # dans le Sheet — stable pour la durée de CE chargement, et d'un chargement à
+    # l'autre seulement si le Sheet a sa propre colonne "id" ou si l'ordre des
+    # lignes ne change pas.
+    existing_ids = [int(r["id"]) for r in parsed_rows if r["id"].strip().isdigit()]
     next_id = (max(existing_ids) + 1) if existing_ids else 1
 
-    pending_cells = []
     valid_rows: list[dict] = []
-
-    for row_number, row in parsed_rows:
+    for row in parsed_rows:
         if row["id"].strip().isdigit():
             row["id"] = int(row["id"])
         else:
             row["id"] = next_id
             next_id += 1
             summary["new_ids_assigned"] += 1
-            # Rien à réécrire si la feuille n'a pas de colonne "id".
-            if id_col_index is not None:
-                pending_cells.append(gspread.Cell(row_number, id_col_index, row["id"]))
-
-        for col_name, col_index in derived_col_index.items():
-            value = row[col_name]
-            if value is None:
-                value = ""
-            elif col_name == "weighted_amount":
-                value = round(value, 2)  # cosmétique seulement — la valeur exacte reste dans les données
-            # Seules les cellules qui CHANGENT sont renvoyées. Auparavant les quatre
-            # colonnes calculées de chaque ligne repartaient à chaque chargement —
-            # près de 1 500 cellules toutes les quinze minutes, pour un contenu le
-            # plus souvent identique. Les valeurs brutes sont déjà en mémoire, la
-            # comparaison ne coûte rien et supprime l'aller-retour réseau.
-            if not _valeur_identique(brut_par_ligne.get(row_number, {}).get(col_name), value):
-                pending_cells.append(gspread.Cell(row_number, col_index, value))
-
         valid_rows.append(row)
 
     summary["total_rows"] = len(valid_rows)
-
-    if pending_cells:
-        try:
-            ws.update_cells(pending_cells, value_input_option="RAW")
-        except Exception:
-            # Les ids déjà attribués en mémoire restent valides pour ce chargement ;
-            # seule leur réécriture dans le Sheet a échoué (cosmétique — ils seront
-            # réattribués de façon cohérente au prochain chargement).
-            logger.exception(
-                "Chargement des données : échec de l'écriture retour de %d cellule(s) dans le Sheet.",
-                len(pending_cells),
-            )
-            summary["errors"].append(
-                "Id/valeurs calculées non réécrits dans le Sheet (le chargement en mémoire reste correct) — voir les logs."
-            )
 
     logger.info(
         "Chargement des données : %d ligne(s) chargée(s), %d ignorée(s), %d cellule(s) réparée(s), "

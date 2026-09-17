@@ -31,16 +31,19 @@ _MAX_ATTEMPTS = 5
 _RETRY_DELAY_SECONDS = 1.0
 
 
-# Colonnes dont le type doit rester temporel MÊME quand aucune ligne n'a de valeur.
+# Colonnes dont le type doit rester temporel MÊME quand aucune ligne n'a de valeur,
+# voire quand il n'y a AUCUNE ligne du tout (Sheet injoignable, clé API absente...).
 #
 # DuckDB devine le type d'une colonne pandas depuis les valeurs qu'elle contient.
-# Une colonne entièrement à None (aucune date n'a pu être lue sur le Sheet — un
-# format inattendu, par exemple) ne lui laisse rien à examiner, et il retombe sur
-# INTEGER. Chaque requête qui compare ensuite la colonne à une date échoue :
+# Une colonne sans la moindre valeur à examiner (toutes à None, ou le DataFrame
+# lui-même vide) ne lui laisse rien à échantillonner, et il retombe sur INTEGER.
+# Chaque requête qui compare ensuite la colonne à une date échoue :
 #   Binder Error: Cannot compare values of type INTEGER and type DATE
 # alors que le DataFrame pandas, lui, n'a jamais eu de problème — `deadline` y vaut
-# simplement None, une valeur que pandas comme le reste de l'application savent déjà
-# traiter. Le défaut n'existe que dans cette projection, jamais dans la source.
+# simplement None (ou la colonne est vide), une situation que pandas comme le reste
+# de l'application savent déjà traiter. Le défaut n'existe que dans cette
+# projection ; `_forcer_le_type_date` (plus bas) l'élimine après coup par un ALTER
+# TABLE explicite, qui ne dépend d'aucune inférence.
 _COLONNES_TOUJOURS_DATE = ("deadline", "created_date")
 
 
@@ -58,6 +61,17 @@ def _typer_les_dates(df):
         if colonne in df.columns:
             df[colonne] = pd.to_datetime(df[colonne]).dt.date
     return df
+
+
+def _forcer_le_type_date(con, df) -> None:
+    """Impose le type DATE aux colonnes de `_COLONNES_TOUJOURS_DATE`, quelle que
+    soit celle que DuckDB vient d'inférer (voir le commentaire ci-dessus). Après
+    coup plutôt qu'en amont, sur pandas : DuckDB devine depuis les VALEURS,
+    `_typer_les_dates` ne peut rien garantir quand il n'y en a aucune à donner à
+    examiner (colonne entièrement vide, pas seulement entièrement None)."""
+    for colonne in _COLONNES_TOUJOURS_DATE:
+        if colonne in df.columns:
+            con.execute(f"ALTER TABLE {TABLE_NAME} ALTER COLUMN {colonne} TYPE DATE")
 
 
 def export_dataframe(df) -> bool:
@@ -79,6 +93,7 @@ def export_dataframe(df) -> bool:
                 # vue d'un lecteur, et reprend automatiquement le schéma du DataFrame
                 # (pas de définition de colonnes à maintenir en double ici).
                 con.execute(f"CREATE OR REPLACE TABLE {TABLE_NAME} AS SELECT * FROM df")
+                _forcer_le_type_date(con, df)
 
                 # Le rapport de qualité voyage avec les données : écrit dans la même
                 # transaction, il décrit forcément le chargement qu'on vient de faire

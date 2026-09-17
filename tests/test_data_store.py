@@ -77,10 +77,6 @@ def test_nom_canonique_reconnait_les_entetes_francais_reels():
         "Partenaire": "partner",
         "Offre financière": "financial_offer",
         "Pondéré à": "win_probability",
-        # Colonnes calculées : jamais lues, seulement tenues à jour si présentes.
-        "Année Deadline": "deadline_year",
-        "Jours Rest.": "days_remaining",
-        "Pondération": "weighted_amount",
     }
     for entete, attendu in correspondances.items():
         assert _nom_canonique(entete) == attendu, entete
@@ -98,8 +94,11 @@ def test_nom_canonique_insensible_a_la_casse():
 def test_nom_canonique_ignore_un_entete_inconnu_sans_planter():
     # Ni un nom interne, ni un alias connu : simplement renvoyé tel quel (en
     # minuscules) — il ne correspondra à aucune colonne attendue et sera ignoré,
-    # sans faire échouer le chargement pour autant.
+    # sans faire échouer le chargement pour autant. C'est aussi le sort réservé aux
+    # colonnes CALCULÉES d'une vraie feuille ("Année Deadline"…) : jamais lues (elles
+    # sont toujours recalculées), donc jamais aliasées non plus.
     assert _nom_canonique("Colonne Personnalisée") == "colonne personnalisée"
+    assert _nom_canonique("Année Deadline") == "année deadline"
 
 
 def test_une_feuille_aux_entetes_francais_et_sans_id_se_charge(monkeypatch):
@@ -117,8 +116,7 @@ def test_une_feuille_aux_entetes_francais_et_sans_id_se_charge(monkeypatch):
     ligne = ["Bénin", "07/11/2026", "29/12/2026", "15:30", "2026", "154",
              "Digital Transformation", "Elaboration de la stratégie de données",
              "ASIN", "AMI", "Lead", "50000", "ENABEL", "-", "49600", "", ""]
-    ws = _FakeWorksheet([entetes, ligne])
-    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws)
+    monkeypatch.setattr(data_store, "fetch_sheet_values", lambda: [entetes, ligne])
 
     resume = refresh_dataframe()
 
@@ -132,21 +130,12 @@ def test_une_feuille_aux_entetes_francais_et_sans_id_se_charge(monkeypatch):
     assert df.iloc[0]["buyer"] == "ASIN"
     assert df.iloc[0]["id"] == 1
 
-    # "Jours Rest." (days_remaining, une colonne CALCULÉE) est bien tenue à jour —
-    # ça reste voulu. Ce qui ne doit JAMAIS apparaître, faute de colonne "id" où
-    # l'écrire, c'est une tentative d'écriture visant l'identifiant.
-    colonnes_ecrites = {col for _, col, _ in ws.update_calls}
-    assert entetes.index("Jours Rest.") + 1 in colonnes_ecrites
-    assert len(ws.update_calls) == 1  # rien d'autre à réécrire sur cette ligne
 
-
-def test_une_feuille_francaise_complete_recalcule_le_pondere_correctement():
+def test_une_feuille_francaise_complete_recalcule_le_pondere_correctement(monkeypatch):
     """Vérifié contre le fichier réel : la ligne Tunisie/Carrefour porte
-    "Offre financière" = 445 400 et "Pondéré à" = 0,8, et sa colonne
-    "Pondération" (déjà calculée à la main dans la feuille source) vaut
-    356 320 — exactement financial_offer × win_probability. Le recalcul de
-    l'application doit retomber sur ce même nombre, preuve que l'alias ne se
-    contente pas de faire disparaître l'erreur mais lit la bonne colonne."""
+    "Offre financière" = 445 400 et "Pondéré à" = 0,8. weighted_amount, RECALCULÉ
+    par l'application (jamais lu depuis la colonne "Pondération" du Sheet, même
+    présente), doit retomber sur financial_offer × win_probability = 356 320."""
     entetes = [
         "Pays", "Date de création", "Deadline", "Horaires Deadline", "Année Deadline",
         "Jours Rest.", "Practice", "Description de la prestation", "Lead (Acheteur)",
@@ -157,10 +146,7 @@ def test_une_feuille_francaise_complete_recalcule_le_pondere_correctement():
              "Risk Advisory", "Mise en place d'une PSSI", "Carrefour - UHD",
              "Prospection", "Offre remise", "500000", "Fonds Propres", "FTHM",
              "445400", "0.8", "356320"]
-    ws = _FakeWorksheet([entetes, ligne])
-    data_store._get_worksheet = lambda: ws
-    data_store._cached_df = None
-    data_store._last_refresh_summary = {}
+    monkeypatch.setattr(data_store, "fetch_sheet_values", lambda: [entetes, ligne])
 
     refresh_dataframe()
 
@@ -170,15 +156,12 @@ def test_une_feuille_francaise_complete_recalcule_le_pondere_correctement():
     assert df.iloc[0]["weighted_amount"] == 356320.0
 
 
-def test_une_vraie_colonne_manquante_est_toujours_signalee():
+def test_une_vraie_colonne_manquante_est_toujours_signalee(monkeypatch):
     """L'alias élargit ce qui est RECONNU, il ne rend rien de plus facultatif que
     "id" : une feuille sans l'équivalent d'aucune des deux (ni "country" ni
     "Pays") doit continuer à être refusée, comme avant."""
     entetes_sans_pays = [h for h in SHEET_COLUMNS if h not in ("id", "country")]
-    ws = _FakeWorksheet([entetes_sans_pays])
-    data_store._get_worksheet = lambda: ws
-    data_store._cached_df = None
-    data_store._last_refresh_summary = {}
+    monkeypatch.setattr(data_store, "fetch_sheet_values", lambda: [entetes_sans_pays])
 
     resume = refresh_dataframe()
 
@@ -255,24 +238,8 @@ def test_every_repair_is_recorded():
 
 
 # ---------------------------------------------------------------------------
-# refresh_dataframe() / get_dataframe() — Sheet simulé
+# refresh_dataframe() / get_dataframe() — Sheet simulé (lecture seule, clé API)
 # ---------------------------------------------------------------------------
-
-class _FakeWorksheet:
-    def __init__(self, values):
-        self._values = values
-        self.update_calls = []
-        self.fail_update = False
-
-    def get_all_values(self):
-        return self._values
-
-    def update_cells(self, cell_list, value_input_option=None):
-        if self.fail_update:
-            raise RuntimeError("network error")
-        for cell in cell_list:
-            self.update_calls.append((cell.row, cell.col, cell.value))
-
 
 @pytest.fixture(autouse=True)
 def _reset_cache(monkeypatch):
@@ -280,32 +247,28 @@ def _reset_cache(monkeypatch):
     monkeypatch.setattr(data_store, "_last_refresh_summary", {})
 
 
-def test_refresh_assigns_id_to_a_new_row_and_writes_it_back(monkeypatch):
-    ws = _FakeWorksheet([SHEET_COLUMNS, _row_values(SHEET_COLUMNS, **_valid_row_kwargs(id=""))])
-    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws)
+def test_refresh_assigns_id_to_a_new_row(monkeypatch):
+    monkeypatch.setattr(data_store, "fetch_sheet_values",
+                         lambda: [SHEET_COLUMNS, _row_values(SHEET_COLUMNS, **_valid_row_kwargs(id=""))])
 
     summary = refresh_dataframe()
 
     assert summary["total_rows"] == 1
     assert summary["new_ids_assigned"] == 1
     assert summary["skipped"] == 0
-    id_col = SHEET_COLUMNS.index("id") + 1
-    written_id = next(v for r, c, v in ws.update_calls if c == id_col)
     df = get_dataframe()
-    assert df.iloc[0]["id"] == written_id
+    assert df.iloc[0]["id"] == 1
 
 
 def test_refresh_keeps_an_existing_id_unchanged(monkeypatch):
-    ws = _FakeWorksheet([SHEET_COLUMNS, _row_values(SHEET_COLUMNS, **_valid_row_kwargs(id="42"))])
-    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws)
+    monkeypatch.setattr(data_store, "fetch_sheet_values",
+                         lambda: [SHEET_COLUMNS, _row_values(SHEET_COLUMNS, **_valid_row_kwargs(id="42"))])
 
     summary = refresh_dataframe()
 
     assert summary["new_ids_assigned"] == 0
     df = get_dataframe()
     assert df.iloc[0]["id"] == 42
-    id_col = SHEET_COLUMNS.index("id") + 1
-    assert all(c != id_col for _, c, _ in ws.update_calls)  # jamais réécrit, déjà présent
 
 
 def test_new_id_is_max_existing_plus_one(monkeypatch):
@@ -313,8 +276,7 @@ def test_new_id_is_max_existing_plus_one(monkeypatch):
         _row_values(SHEET_COLUMNS, **_valid_row_kwargs(id="5")),
         _row_values(SHEET_COLUMNS, **_valid_row_kwargs(id="")),
     ]
-    ws = _FakeWorksheet([SHEET_COLUMNS, *rows])
-    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws)
+    monkeypatch.setattr(data_store, "fetch_sheet_values", lambda: [SHEET_COLUMNS, *rows])
 
     refresh_dataframe()
 
@@ -325,8 +287,7 @@ def test_new_id_is_max_existing_plus_one(monkeypatch):
 def test_a_row_with_a_bad_cell_is_repaired_not_dropped(monkeypatch):
     bad_row = _row_values(SHEET_COLUMNS, **_valid_row_kwargs(status="Statut Bidon"))
     good_row = _row_values(SHEET_COLUMNS, **_valid_row_kwargs(id="1"))
-    ws = _FakeWorksheet([SHEET_COLUMNS, bad_row, good_row])
-    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws)
+    monkeypatch.setattr(data_store, "fetch_sheet_values", lambda: [SHEET_COLUMNS, bad_row, good_row])
 
     summary = refresh_dataframe()
 
@@ -340,8 +301,7 @@ def test_a_row_with_a_bad_cell_is_repaired_not_dropped(monkeypatch):
 
 def test_missing_required_header_aborts_cleanly(monkeypatch):
     incomplete_headers = [h for h in SHEET_COLUMNS if h != "budget"]
-    ws = _FakeWorksheet([incomplete_headers])
-    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws)
+    monkeypatch.setattr(data_store, "fetch_sheet_values", lambda: [incomplete_headers])
 
     summary = refresh_dataframe()
 
@@ -351,8 +311,7 @@ def test_missing_required_header_aborts_cleanly(monkeypatch):
 
 
 def test_empty_sheet_is_a_noop(monkeypatch):
-    ws = _FakeWorksheet([])
-    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws)
+    monkeypatch.setattr(data_store, "fetch_sheet_values", lambda: [])
 
     summary = refresh_dataframe()
 
@@ -368,8 +327,7 @@ def test_empty_sheet_is_a_noop(monkeypatch):
 
 def test_completely_blank_row_is_silently_skipped(monkeypatch):
     blank_row = ["" for _ in SHEET_COLUMNS]
-    ws = _FakeWorksheet([SHEET_COLUMNS, blank_row])
-    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws)
+    monkeypatch.setattr(data_store, "fetch_sheet_values", lambda: [SHEET_COLUMNS, blank_row])
 
     summary = refresh_dataframe()
 
@@ -381,26 +339,11 @@ def test_completely_blank_row_is_silently_skipped(monkeypatch):
     assert summary["errors"] == []
 
 
-def test_id_writeback_failure_keeps_the_row_loaded_in_memory(monkeypatch):
-    # L'id est déjà attribué en mémoire au moment où l'écriture Sheet échoue — les
-    # données restent correctes pour ce chargement, seule la réécriture est perdue.
-    ws = _FakeWorksheet([SHEET_COLUMNS, _row_values(SHEET_COLUMNS, **_valid_row_kwargs(id=""))])
-    ws.fail_update = True
-    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws)
-
-    summary = refresh_dataframe()
-
-    assert summary["total_rows"] == 1
-    assert summary["errors"]
-    df = get_dataframe()
-    assert len(df) == 1
-
-
 def test_sheet_read_failure_returns_an_error_without_crashing(monkeypatch):
     def _boom():
         raise RuntimeError("network down")
 
-    monkeypatch.setattr(data_store, "_get_worksheet", _boom)
+    monkeypatch.setattr(data_store, "fetch_sheet_values", _boom)
 
     summary = refresh_dataframe()
 
@@ -408,83 +351,23 @@ def test_sheet_read_failure_returns_an_error_without_crashing(monkeypatch):
     assert summary["total_rows"] == 0
 
 
-def test_derived_columns_written_back_when_present_in_header(monkeypatch):
-    headers = SHEET_COLUMNS + ["deadline_month", "deadline_year", "days_remaining", "weighted_amount"]
-    ws = _FakeWorksheet([headers, _row_values(headers, **_valid_row_kwargs(id="1"))])
-    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws)
-
-    refresh_dataframe()
-
-    written_cols = {c for _, c, _ in ws.update_calls}
-    dm_col = headers.index("deadline_month") + 1
-    assert dm_col in written_cols
-
-
-def test_derived_columns_not_written_when_absent_from_header(monkeypatch):
-    ws = _FakeWorksheet([SHEET_COLUMNS, _row_values(SHEET_COLUMNS, **_valid_row_kwargs(id="1"))])
-    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws)
-
-    refresh_dataframe()
-
-    assert ws.update_calls == []  # rien à réécrire : id déjà présent, pas de colonnes calculées dans l'en-tête
-
-
 def test_get_dataframe_lazily_loads_on_first_call(monkeypatch):
-    ws = _FakeWorksheet([SHEET_COLUMNS, _row_values(SHEET_COLUMNS, **_valid_row_kwargs(id="1"))])
-    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws)
+    monkeypatch.setattr(data_store, "fetch_sheet_values",
+                         lambda: [SHEET_COLUMNS, _row_values(SHEET_COLUMNS, **_valid_row_kwargs(id="1"))])
 
     df = get_dataframe()  # jamais appelé refresh_dataframe() explicitement avant
 
     assert len(df) == 1
 
 
-# ---------------------------------------------------------------------------
-# Écriture retour : seules les cellules qui changent repartent
-# ---------------------------------------------------------------------------
-
-def test_unchanged_derived_columns_are_not_rewritten(monkeypatch):
-    """Renvoyer 1 500 cellules identiques à chaque chargement coûtait un aller-retour
-    réseau pour rien — mesuré : la synchro passe de ~1 100 ms à ~450 ms."""
-    kwargs = _valid_row_kwargs(id="1")
-    entetes = SHEET_COLUMNS + list(data_store._DERIVED_SHEET_COLUMNS)
-
-    # Premier passage : les colonnes calculées sont vides, tout doit être écrit.
-    ws = _FakeWorksheet([entetes, _row_values(entetes, **kwargs)])
-    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws)
-    refresh_dataframe()
-    ecrites = {c for _, c, _ in ws.update_calls}
-    assert ecrites, "les colonnes calculées doivent être écrites la première fois"
-
-    # Second passage : le Sheet porte déjà ce qui vient d'être calculé.
-    ligne = dict(kwargs)
-    for nom, _, valeur in ws.update_calls:
-        ligne[entetes[_ - 1]] = valeur
-    ws2 = _FakeWorksheet([entetes, _row_values(entetes, **ligne)])
-    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws2)
-    refresh_dataframe()
-
-    assert ws2.update_calls == [], "aucune cellule ne devait repartir"
+def test_fetch_sheet_values_requires_an_api_key(monkeypatch):
+    monkeypatch.delenv("GOOGLE_SHEETS_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="GOOGLE_SHEETS_API_KEY"):
+        data_store.fetch_sheet_values()
 
 
-def test_a_derived_value_that_really_changed_is_still_written(monkeypatch):
-    # Le garde-fou de l'autre côté : sauter une écriture nécessaire laisserait une
-    # valeur périmée dans le Sheet de l'utilisateur.
-    entetes = SHEET_COLUMNS + list(data_store._DERIVED_SHEET_COLUMNS)
-    ligne = _valid_row_kwargs(id="1")
-    ligne["deadline_month"] = "1999-01"  # volontairement faux
-
-    ws = _FakeWorksheet([entetes, _row_values(entetes, **ligne)])
-    monkeypatch.setattr(data_store, "_get_worksheet", lambda: ws)
-    refresh_dataframe()
-
-    colonne = entetes.index("deadline_month") + 1
-    assert any(c == colonne for _, c, _ in ws.update_calls)
-
-
-def test_a_number_written_differently_is_not_rewritten():
-    # Le Sheet rend « 72000 » là où Python écrit « 72000.0 » : une comparaison de
-    # texte conclurait à tort qu'il faut réécrire, à chaque chargement.
-    assert data_store._valeur_identique("72000", 72000.0)
-    assert data_store._valeur_identique("", None)
-    assert not data_store._valeur_identique("72000", 72001.0)
-    assert not data_store._valeur_identique("", 5)
+def test_fetch_sheet_values_requires_a_sheet_id(monkeypatch):
+    monkeypatch.setenv("GOOGLE_SHEETS_API_KEY", "une-cle")
+    monkeypatch.delenv("GOOGLE_SHEET_ID", raising=False)
+    with pytest.raises(ValueError, match="GOOGLE_SHEET_ID"):
+        data_store.fetch_sheet_values()

@@ -17,9 +17,37 @@ le reste de l'application savent déjà traiter. Le défaut n'existait que dans 
 projection.
 """
 import duckdb
+import pandas as pd
 
 from backend import duckdb_export
+from backend.data_store import DATA_COLUMNS
 from tests.test_hot_deals import _df
+
+
+def test_un_dataframe_sans_la_moindre_ligne_reste_comparable_a_une_date(
+        tmp_path, monkeypatch):
+    """Le cas qui échappait à `test_une_colonne_deadline_entierement_vide...` :
+    pas seulement une colonne où CHAQUE ligne vaut None, mais un DataFrame qui n'a
+    AUCUNE ligne du tout — celui que `data_store.get_dataframe()` renvoie quand le
+    Sheet est injoignable (clé API absente, réseau coupé...). DuckDB n'a alors
+    littéralement rien à échantillonner et retombe sur INTEGER, exactement la même
+    Binder Error que le cas déjà couvert, pour une raison légèrement différente."""
+    monkeypatch.setattr(duckdb_export, "DUCKDB_PATH", tmp_path / "test.db")
+
+    df = pd.DataFrame(columns=list(DATA_COLUMNS))
+    assert len(df) == 0
+    assert duckdb_export.export_dataframe(df)
+
+    con = duckdb.connect(str(tmp_path / "test.db"), read_only=True)
+    type_deadline = [t for nom, t, *_ in con.execute("DESCRIBE opportunities").fetchall()
+                     if nom == "deadline"][0]
+    assert type_deadline not in ("INTEGER", "BIGINT"), (
+        "« deadline » a perdu son type temporel sur un DataFrame vide : toute "
+        "comparaison à une date échouerait avec une Binder Error.")
+
+    assert con.execute(
+        "SELECT COUNT(*) FROM opportunities WHERE deadline <= CURRENT_DATE"
+    ).fetchall() == [(0,)]
 
 
 def test_une_colonne_deadline_entierement_vide_reste_comparable_a_une_date(
