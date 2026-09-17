@@ -4,12 +4,11 @@ import logging
 import difflib
 import re
 import time
+from dataclasses import dataclass
 from datetime import date
 from typing import Optional, Union
 
-from google import genai
-from google.genai import types as genai_types
-from google.genai.errors import APIError, ClientError, ServerError
+import requests
 from .schema_and_whitelist import (
     VALID_METRICS, VALID_DIMENSIONS, VALID_CHART_TYPES, VALID_FILTERS, KNOWN_VALUES
 )
@@ -88,23 +87,96 @@ class DashboardIntent(BaseModel):
         return v
 
 
-# "-latest" plutôt qu'une version épinglée (ex: gemini-2.5-flash) : Google déprécie et
-# retire des modèles sans préavis particulier (déjà vécu avec Groq/llama-3.3-70b-versatile,
-# retiré du service entre deux sessions) — un alias "-latest" reste pointé vers un modèle
-# valide même si Google fait tourner sa gamme, au prix de ne pas figer le comportement.
-#
-# "flash-lite" plutôt que "flash" : mesuré empiriquement sur le quota gratuit — la variante
-# "flash" (gemini-flash-latest, alias vers gemini-3.7-flash au moment du test) est plafonnée
-# à 5 requêtes/minute, beaucoup trop bas pour un chat interactif (quelques messages suffisent
-# à l'épuiser) ; "flash-lite" tient ~16 requêtes/minute sur le même compte gratuit, largement
-# suffisant ici puisque c'est le schéma + la validation Pydantic qui garantissent la précision,
-# pas la taille du modèle (qualité d'extraction vérifiée équivalente sur les mêmes requêtes).
-GEMINI_MODEL = "gemini-flash-lite-latest"
+# Modèle local servi par Ollama (aucune clé API, aucun quota, aucun réseau externe) :
+# Qwen2.5-Instruct est celui des modèles ouverts <10B le plus fiable pour produire un
+# JSON respectant un schéma strict — c'est le schéma + la validation Pydantic qui
+# garantissent la précision, pas la taille du modèle, mais un modèle qui "sort" un JSON
+# propre du premier coup évite de gaspiller les retries sur du JSON mal formé.
+# Quantification Q4_K_M : tient dans 16 Go de RAM avec de la marge pour le reste de
+# l'application (FastAPI, DuckDB, frontend), sans carte graphique dédiée nécessaire.
+# `or` plutôt que le défaut positionnel de getenv : le .env généré par
+# setup/assistant.ps1 écrit TOUJOURS la clé, y compris vide (valeur volontairement
+# laissée de côté) — getenv(clé, défaut) ne retombe sur le défaut que si la clé est
+# ABSENTE, jamais si elle vaut "".
+OLLAMA_HOST = (os.getenv("OLLAMA_HOST") or "http://localhost:11434").rstrip("/")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL") or "qwen2.5:7b-instruct-q4_K_M"
 
-_GEMINI_MAX_ATTEMPTS = 3  # 1 essai + 2 retries sur surcharge transitoire (503)
-_GEMINI_RETRY_DELAY_SECONDS = 1.5
+_OLLAMA_MAX_ATTEMPTS = 3  # 1 essai + 2 retries sur lenteur transitoire (CPU chargé)
+_OLLAMA_RETRY_DELAY_SECONDS = 1.5
+_OLLAMA_TIMEOUT_SECONDS = 120  # généreux : CPU seul, sans GPU, sur un i5
 
-client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+
+@dataclass
+class GenerateContentConfig:
+    """Remplace google.genai.types.GenerateContentConfig — mêmes champs, sans la
+    dépendance réseau/SDK Google. Ollama consomme system/format/temperature séparément."""
+    system_instruction: str
+    response_mime_type: str = "application/json"
+    temperature: float = 0.0
+
+
+class OllamaError(RuntimeError):
+    """Erreur de communication avec le serveur Ollama local (arrêté, modèle absent, trop lent)."""
+
+
+class _OllamaResponse:
+    def __init__(self, content: str):
+        self.text = content
+
+
+class _OllamaModels:
+    def generate_content(self, *, model: str, contents: str, config: GenerateContentConfig) -> _OllamaResponse:
+        payload = {
+            "model": model,
+            "prompt": contents,
+            "system": config.system_instruction,
+            "format": "json",
+            "stream": False,
+            "options": {"temperature": config.temperature},
+        }
+        last_exc: Optional[Exception] = None
+        for attempt in range(_OLLAMA_MAX_ATTEMPTS):
+            try:
+                resp = requests.post(
+                    f"{OLLAMA_HOST}/api/generate", json=payload, timeout=_OLLAMA_TIMEOUT_SECONDS,
+                )
+            except requests.exceptions.ConnectionError as e:
+                raise OllamaError(
+                    "Impossible de joindre Ollama sur %s. Démarrez-le (`ollama serve`, ou "
+                    "l'application Ollama), puis réessayez." % OLLAMA_HOST
+                ) from e
+            except requests.exceptions.Timeout as e:
+                last_exc = e
+                logger.warning(
+                    "Ollama trop lent à répondre, nouvelle tentative %d/%d...",
+                    attempt + 1, _OLLAMA_MAX_ATTEMPTS,
+                )
+                time.sleep(_OLLAMA_RETRY_DELAY_SECONDS)
+                continue
+
+            if resp.status_code == 404:
+                raise OllamaError(
+                    "Modèle « %s » introuvable localement. Exécutez : ollama pull %s"
+                    % (model, model)
+                )
+            try:
+                resp.raise_for_status()
+            except requests.exceptions.HTTPError as e:
+                last_exc = e
+                break
+
+            data = resp.json()
+            return _OllamaResponse(data.get("response", ""))
+
+        raise OllamaError("Service IA local indisponible. Merci de réessayer dans un instant.") from last_exc
+
+
+class _OllamaClient:
+    def __init__(self):
+        self.models = _OllamaModels()
+
+
+client = _OllamaClient()
 
 
 class IntentUnclear(ValueError):
@@ -612,43 +684,24 @@ Réponds en JSON strict avec exactement ces clés :
 goal, metric, dimension, filters, range_filters, chart_type, aggregation, use_raw_table, is_conversation, limit
 """
 
-    # ServerError (5xx) = surcharge côté Google, transitoire — observé empiriquement en
-    # pratique, une ou deux tentatives suffisent presque toujours. ClientError 429 = quota
-    # épuisé : Google indique lui-même un délai de reprise de plusieurs dizaines de
-    # secondes, donc retenter tout de suite ne servirait à rien — message dédié à la place.
-    response = None
-    for attempt in range(_GEMINI_MAX_ATTEMPTS):
-        try:
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=query,
-                config=genai_types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    response_mime_type="application/json",
-                    temperature=0.0,
-                ),
-            )
-            break
-        except ServerError:
-            if attempt == _GEMINI_MAX_ATTEMPTS - 1:
-                logger.exception("Appel Gemini en échec (surcharge persistante) pour la requête %r", query)
-                raise ValueError("Service IA temporairement indisponible. Merci de réessayer dans un instant.")
-            logger.warning("Gemini surchargé (503), nouvelle tentative %d/%d...", attempt + 1, _GEMINI_MAX_ATTEMPTS)
-            time.sleep(_GEMINI_RETRY_DELAY_SECONDS)
-        except ClientError as e:
-            logger.exception("Appel Gemini en échec (429/quota) pour la requête %r", query)
-            if getattr(e, "code", None) == 429:
-                raise ValueError(
-                    "Trop de questions posées en peu de temps (quota IA atteint). "
-                    "Merci de patienter une minute avant de réessayer."
-                )
-            raise ValueError("Service IA temporairement indisponible. Merci de réessayer dans un instant.")
-        except APIError:
-            logger.exception("Appel Gemini en échec pour la requête %r", query)
-            raise ValueError("Service IA temporairement indisponible. Merci de réessayer dans un instant.")
+    # Les retries sur lenteur transitoire vivent dans _OllamaModels.generate_content ;
+    # ici on ne traduit que l'échec final en message destiné à l'utilisateur.
+    try:
+        response = client.models.generate_content(
+            model=OLLAMA_MODEL,
+            contents=query,
+            config=GenerateContentConfig(
+                system_instruction=system_prompt,
+                response_mime_type="application/json",
+                temperature=0.0,
+            ),
+        )
+    except OllamaError as e:
+        logger.exception("Appel au modèle local en échec pour la requête %r", query)
+        raise ValueError(str(e))
 
     response_text = response.text
-    logger.debug("Réponse brute Gemini : %s", response_text)
+    logger.debug("Réponse brute du modèle local : %s", response_text)
 
     try:
         intent_data = json.loads(response_text)
