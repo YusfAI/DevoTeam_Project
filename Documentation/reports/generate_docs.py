@@ -488,8 +488,8 @@ def build_rapport_professionnel():
              "(Pydantic) — cohérent avec l'exigence anti-hallucination."],
             ["Source de données", "Google Sheets + pandas", "Les équipes gèrent les opportunités dans un "
              "tableur familier ; l'application le charge en mémoire. Aucune base à installer ni administrer."],
-            ["Compréhension du langage", "Google Gemini — gemini-flash-lite-latest", "Sortie JSON "
-             "structurée, faible latence, complétée par une validation stricte côté serveur."],
+            ["Compréhension du langage", "Ollama (local) — qwen2.5:7b-instruct-q4_K_M", "Aucune clé API, "
+             "aucun quota, sortie JSON complétée par une validation stricte côté serveur."],
             ["Tableaux de bord", "Bruin DAC", "Tableaux de bord décrits en fichiers versionnés plutôt que "
              "configurés à la souris : relus en revue, reproductibles, 21 types de graphiques."],
             ["Moteur de requête", "DuckDB (fichier local)", "Copie en lecture seule des données, régénérée "
@@ -523,9 +523,9 @@ def build_rapport_professionnel():
                      "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
-    add_bullet(doc, "La clé de compte de service Google (accès au Sheet) est un fichier JSON exclu "
-                     "du dépôt (dossier credentials/ entièrement gitignoré) — jamais commité, quel "
-                     "que soit son nom.")
+    add_bullet(doc, "La clé API Google Sheets (accès en lecture seule) vit dans .env, exclu du "
+                     "dépôt git — jamais de fichier de compte de service à protéger, l'application "
+                     "n'en utilise plus.")
 
     # --- Preuve de fonctionnement ---
     add_h1(doc, "8. Preuve de fonctionnement — alertes deadlines")
@@ -630,7 +630,7 @@ def build_guide_technique():
         "   │  POST /dashboard { query, previous_intent }\n"
         "   ▼\n"
         "backend/llm.py :: parse_user_query()\n"
-        "   │  parseur rapide (mots-clés) OU appel Gemini + validation Pydantic\n"
+        "   │  parseur rapide (mots-clés) OU appel Ollama (local) + validation Pydantic\n"
         "   │  résolution des filtres (fuzzy match) contre les données réelles\n"
         "   ▼  intent = {metric, dimension, filters, chart_type, ...}\n"
         "backend/db_layer.py (pandas)  →  response_builder.py  →  message texte\n"
@@ -786,7 +786,8 @@ def build_guide_technique():
     add_h1(doc, "4. Source de données (backend/data_store.py)")
     add_body(doc,
         "Il n'y a plus de base de données. Le Google Sheet est la source de vérité : "
-        "`data_store.py` le lit via l'API Google (gspread), valide chaque ligne, et "
+        "`data_store.py` le lit en lecture seule via l'API Sheets v4 et une simple clé "
+        "API (aucun compte de service, aucun fichier JSON), valide chaque ligne, et "
         "construit un DataFrame pandas conservé en mémoire. Ce DataFrame est rafraîchi "
         "toutes les 15 minutes, au démarrage, et à la demande via POST /sheets/sync.")
 
@@ -902,8 +903,9 @@ def build_guide_technique():
         "s'il n'y a pas de contexte de conversation précédent, et seulement après "
         "passage par _augment_rule_based_result(), qui refuse de lui faire confiance "
         "dès qu'une comparaison ou plusieurs pays sont mentionnés (retour à None → "
-        "bascule vers le LLM). Dans tous les autres cas, l'appel Gemini (llm.py) prend "
-        "le relais, avec le contexte multi-tour injecté dans le prompt système.")
+        "bascule vers le LLM). Dans tous les autres cas, l'appel au modèle local "
+        "(Ollama, llm.py) prend le relais, avec le contexte multi-tour injecté dans "
+        "le prompt système.")
     add_h2(doc, "6.2 Validation stricte — DashboardIntent (Pydantic)")
     add_body(doc,
         "La sortie JSON du LLM est chargée dans un modèle Pydantic dont le "
@@ -1498,20 +1500,23 @@ def build_guide_technique():
         "Vérifié sous charge plutôt que supposé : trois rafraîchissements concurrents "
         "lancés pendant vingt-sept requêtes de widgets, tous passants.")
 
-    add_h2(doc, "12.3 Authentification Google — compte de service, pas clé API")
+    add_h2(doc, "12.3 Authentification Google — clé API en lecture seule")
     add_body(doc,
-        "L'application doit pouvoir ÉCRIRE dans le Sheet (identifiants des nouvelles "
-        "lignes et colonnes calculées, section 4.3), ce qu'une simple clé API ne permet "
-        "pas — elle est en lecture seule. L'accès passe donc par un compte de service "
-        "Google (fichier JSON, ajouté en Éditeur sur le Sheet cible).")
+        "L'application ne lit plus le Sheet qu'en LECTURE — elle n'y écrit plus les "
+        "identifiants des nouvelles lignes ni les colonnes calculées, qui restent "
+        "affichées dans les tableaux de bord sans jamais être renvoyées vers Google "
+        "(section 4.3). Une simple clé API suffit donc : un appel HTTP vers l'API "
+        "Sheets v4 (`spreadsheets.values.get`), sans fichier de compte de service ni "
+        "OAuth. Contrepartie assumée : le Sheet doit être partagé en Lecteur, « toute "
+        "personne disposant du lien » — une clé API n'a pas d'identité Google propre "
+        "à qui partager individuellement.")
     add_body(doc,
-        "Optimisation mesurée : la résolution du Sheet (open_by_key puis worksheet) "
-        "coûte deux allers-retours réseau, soit 1,6 s, et était rejouée à chaque cycle "
-        "alors que le client authentifié, lui, était déjà mis en cache. Mettre aussi en "
-        "cache l'objet Worksheet fait tomber ce coût à zéro sur les appels suivants — "
-        "un chargement complet passe de ~1,1 s à ~0,4 s. Le profilage avait d'ailleurs "
-        "démenti l'intuition de départ : les écritures en base ne représentaient que "
-        "0,03 s, l'essentiel du temps était réseau.")
+        "Ce choix a remplacé une authentification par compte de service (fichier JSON, "
+        "partagé en Éditeur sur le Sheet cible), abandonnée précisément parce qu'elle "
+        "exigeait de faire circuler ce fichier — une demande que certaines "
+        "organisations ne peuvent pas satisfaire. L'optimisation de cache autour du "
+        "client `gspread` authentifié qui existait à cette époque a disparu avec lui : "
+        "un appel HTTP simple n'a rien à mettre en cache entre deux chargements.")
 
     add_h2(doc, "12.4 Déclenchement")
     add_body(doc,
@@ -1637,20 +1642,20 @@ def build_guide_technique():
                      ".env.example documente les variables attendues sans valeurs réelles.")
     add_bullet(doc, "Le mot de passe d'application Gmail est distinct du mot de passe principal "
                      "du compte et révocable indépendamment.")
-    add_bullet(doc, "credentials/ (clé de compte de service Google, section 11.1) est gitignoré "
-                     "au niveau du dossier entier — jamais de fichier JSON de credentials commité, "
-                     "quel que soit son nom.")
+    add_bullet(doc, "GOOGLE_SHEETS_API_KEY (section 12.3) n'est qu'une clé de lecture seule, sans "
+                     "accès en écriture possible même exposée — restreinte à l'API Sheets côté "
+                     "console Google Cloud pour limiter encore sa portée.")
 
     # --- Tests ---
     add_h1(doc, "15. Tests automatisés")
     add_body(doc,
-        "337 tests pytest, sans dépendance réseau ni données réelles : le client Gemini "
-        "et le client Google Sheets (gspread) sont simulés (monkeypatch), et les données "
-        "sont un petit DataFrame construit dans le test. La suite tourne donc hors ligne, "
-        "en quelques secondes.")
+        "337 tests pytest, sans dépendance réseau ni données réelles : le client du "
+        "modèle local (Ollama) et le client Google Sheets (l'appel HTTP à l'API "
+        "Sheets) sont simulés (monkeypatch), et les données sont un petit DataFrame "
+        "construit dans le test. La suite tourne donc hors ligne, en quelques secondes.")
     add_body(doc,
         "Ces tests sont systématiquement complétés par une vérification en conditions "
-        "réelles — Sheet réel, appel Gemini réel, exécution effective de chaque widget "
+        "réelles — Sheet réel (clé API), appel au modèle local réel, exécution effective de chaque widget "
         "via `dac check`. La répartition des rôles est nette : les tests protègent contre "
         "les régressions, la vérification réelle est ce qui a révélé la quasi-totalité "
         "des vrais bugs de ce projet (sections 8.3 et 15).")
@@ -1837,12 +1842,14 @@ def build_guide_technique():
         "dériver l'un vers l'autre sans faire échouer les tests.")
 
     add_h1(doc, "18. Limites connues")
-    add_bullet(doc, "Google Gemini (fournisseur actuel depuis la migration forcée, section 2.2) "
-                     "supporte en fait les sorties structurées strictes (vérifié empiriquement), "
-                     "mais l'app garde volontairement l'architecture JSON libre héritée de Groq "
-                     "— le filet de sécurité Pydantic + liste blanche reste donc le mécanisme "
-                     "d'application des règles, plutôt qu'une garantie au niveau du schéma du "
-                     "modèle. Adopter le mode strict resterait une amélioration possible.")
+    add_bullet(doc, "Ollama, le fournisseur actuel (local, remplaçant Gemini — section 2.2), "
+                     "supporte aussi les sorties structurées strictes (un JSON Schema, pas "
+                     "seulement le mode \"json\" libre utilisé aujourd'hui), mais l'app garde "
+                     "volontairement l'architecture JSON libre héritée des fournisseurs "
+                     "précédents (Groq, Gemini) — le filet de sécurité Pydantic + liste blanche "
+                     "reste donc le mécanisme d'application des règles, plutôt qu'une garantie "
+                     "au niveau du schéma du modèle. Adopter le mode strict resterait une "
+                     "amélioration possible.")
     add_bullet(doc, "L'historique de conversation persistant (localStorage) est par "
                      "navigateur/appareil, pas partagé entre postes — nécessiterait un compte "
                      "utilisateur pour ça.")

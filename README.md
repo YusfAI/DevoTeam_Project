@@ -2,18 +2,18 @@
 
 Dashboard commercial conversationnel : l'utilisateur pose une question en langage
 naturel dans un chat (ex. *"montre-moi le budget par pays pour Risk Advisory"*), un
-LLM (Google Gemini) extrait une intention structurée et validée, celle-ci est
-traduite en requête sur les données chargées depuis Google Sheets, et la réponse
-s'affiche sous forme d'un **dashboard complet** (plusieurs graphiques, KPI et
-tableaux partageant les filtres de la question), rendu par Bruin DAC. Une alerte
-quotidienne (email + bannière) prévient aussi des opportunités dont l'échéance
-approche.
+LLM **local** (Ollama + Qwen2.5-7B-Instruct, aucune clé API, aucun quota) extrait une
+intention structurée et validée, celle-ci est traduite en requête sur les données
+chargées depuis Google Sheets, et la réponse s'affiche sous forme d'un **dashboard
+complet** (plusieurs graphiques, KPI et tableaux partageant les filtres de la
+question), rendu par Bruin DAC. Une alerte quotidienne (email + bannière) prévient
+aussi des opportunités dont l'échéance approche.
 
 Stack : **FastAPI** (backend) + **Google Sheets + pandas** (source de données,
-chargée en mémoire) + **Google Gemini** (LLM, `gemini-flash-lite-latest`) +
-**Bruin DAC + DuckDB** (dashboards « as code ») + **Vite/React** (frontend) +
+chargée en mémoire) + **Ollama** (LLM local, `qwen2.5:7b-instruct-q4_K_M` par défaut)
++ **Bruin DAC + DuckDB** (dashboards « as code ») + **Vite/React** (frontend) +
 **APScheduler** (tâches planifiées). Hébergement local uniquement, sans base de
-données à installer.
+données à installer, sans dépendance à une API cloud pour le LLM.
 
 ## Fonctionnalités
 
@@ -149,8 +149,10 @@ données à installer.
   lire comme une moyenne ni l'inverse.
 - Google Sheets comme source de données unique : l'application lit directement le
   Sheet (via pandas), en mémoire, rafraîchi toutes les 15 minutes + au démarrage +
-  sur demande (`POST /sheets/sync`). Le Sheet sert aussi de formulaire d'ajout/
-  modification d'opportunités — plus simple à éditer qu'une base de données. Une
+  sur demande (`POST /sheets/sync`). Lecture seule, via une clé API Google (aucun
+  fichier de compte de service) — le Sheet sert de formulaire d'ajout/modification
+  d'opportunités côté utilisateur, plus simple à éditer qu'une base de données, mais
+  l'application n'y écrit jamais elle-même. Une
   cellule illisible (statut inconnu, date invalide, montant non numérique) coûte la
   cellule, jamais la ligne : elle est remplacée par « Non renseigné » et l'opportunité
   est conservée avec son budget, son échéance et son client. Chaque remplacement est
@@ -171,8 +173,8 @@ navigateur, pour qui reçoit le dossier sans passer par ce fichier.
 **Recommandé — double-cliquer sur `INSTALLER.bat`, à la racine du projet.**
 
 Un seul fichier, un seul clic. Il ne demande que ce qu'il ne peut pas deviner à
-votre place — le fichier `.env` et le fichier d'identifiants Google
-(`credentials\google_service_account.json`) — et automatise tout le reste :
+votre place — le fichier `.env` (clé API Google Sheets en lecture seule, aucun
+fichier de compte de service à déposer) — et automatise tout le reste :
 vérifie Docker, construit l'image, démarre les trois services, crée le raccourci
 du Bureau, puis **prouve que les chiffres affichés sont justes** en exécutant
 `scripts/test_fonctionnel.py` directement à l'intérieur du conteneur — aucune
@@ -197,20 +199,22 @@ directement sur la machine. Voir `setup/README.md` et
 `Documentation/INSTALLATION.md` pour la procédure détaillée et manuelle.
 
 Dans les deux cas, le script de vérification contrôle chaque maillon séparément —
-clé, feuille (lecture ET écriture), colonnes, valeurs inconnues, interface compilée
-— parce qu'une installation ratée ne se signale pas : l'application démarre, la
-page s'ouvre, et les tableaux de bord restent vides.
+clé API, feuille (lecture), colonnes, valeurs inconnues, modèle local, interface
+compilée — parce qu'une installation ratée ne se signale pas : l'application
+démarre, la page s'ouvre, et les tableaux de bord restent vides.
 
 ## Prérequis
 
 Dans les deux méthodes, obligatoires :
-- Une clé API [Google AI Studio](https://aistudio.google.com/apikey)
-- Un compte de service Google avec accès au Sheet source (voir "Google Sheets"
-  ci-dessous — l'application ne fonctionne pas sans données)
+- Une clé API Google Sheets en lecture seule (voir "Google Sheets" ci-dessous —
+  l'application ne fonctionne pas sans données) — aucun compte de service, aucun
+  fichier JSON à déposer
+- [Ollama](https://ollama.com/download) avec le modèle `qwen2.5:7b-instruct-q4_K_M`
+  (aucune clé API — installation et téléchargement automatiques via l'assistant)
 - (Optionnel, pour les alertes email) un compte Gmail avec un
   [mot de passe d'application](https://myaccount.google.com/apppasswords)
 
-Fiche avec les liens exacts pour obtenir ces trois éléments :
+Fiche avec les liens exacts pour obtenir ces éléments :
 `Documentation/OBTENIR_LES_ACCES.md`.
 
 Logiciel à installer, selon la méthode :
@@ -226,11 +230,16 @@ Logiciel à installer, selon la méthode :
 pip install -r requirements.txt      # ou requirements-dev.txt pour lancer les tests
 
 # Config
-cp .env.example .env                 # remplir GOOGLE_API_KEY, GOOGLE_SHEET_ID (voir
-                                      # "Google Sheets" ci-dessous) + GMAIL_SENDER/
-                                      # GMAIL_APP_PASSWORD/ALERT_RECIPIENT_EMAIL si tu
-                                      # veux activer les alertes email (sinon elles sont
-                                      # simplement ignorées avec un avertissement dans les logs)
+cp .env.example .env                 # remplir GOOGLE_SHEET_ID (voir "Google Sheets"
+                                      # ci-dessous) + GMAIL_SENDER/GMAIL_APP_PASSWORD/
+                                      # ALERT_RECIPIENT_EMAIL si tu veux activer les
+                                      # alertes email (sinon elles sont simplement
+                                      # ignorées avec un avertissement dans les logs).
+                                      # OLLAMA_HOST/OLLAMA_MODEL peuvent rester vides
+                                      # (valeurs par défaut du code).
+
+# Modèle local (aucune clé API)
+ollama pull qwen2.5:7b-instruct-q4_K_M
 
 # Frontend
 cd frontend && npm install
@@ -238,26 +247,30 @@ cd frontend && npm install
 
 ## Google Sheets (source de données)
 
+Lecture seule, par clé API — aucun compte de service, aucun fichier JSON à
+télécharger ni à déposer.
+
 1. [console.cloud.google.com](https://console.cloud.google.com) → un projet → activer
    **"Google Sheets API"**.
-2. IAM et administration → Comptes de service → créer un compte de service (aucun rôle
-   GCP requis) → onglet "Clés" → Ajouter une clé → JSON → télécharge le fichier.
-3. Place ce fichier dans `credentials/google_service_account.json` (dossier gitignoré —
-   ne le commit jamais).
-4. Ouvre ton Google Sheet → **Partager** → ajoute l'email du compte de service
-   (`....iam.gserviceaccount.com`, visible dans le JSON) en **Éditeur** (pas juste
-   lecteur — l'application réécrit l'id généré des nouvelles lignes dans le Sheet).
-5. Renseigne `GOOGLE_SHEET_ID` (dans l'URL du Sheet) et `GOOGLE_SHEET_TAB` (le nom de
-   l'onglet) dans `.env`.
-6. La première ligne du Sheet doit contenir ces en-têtes exacts (n'importe quel
+2. APIs et services → Identifiants → **Créer des identifiants** → **Clé API**.
+   Optionnel mais recommandé : restreindre la clé à l'API "Google Sheets API"
+   uniquement (onglet "Restrictions de l'API").
+3. Ouvre ton Google Sheet → **Partager** → Accès général → **"Toute personne
+   disposant du lien"**, rôle **Lecteur**. Sans ce partage, l'API répond 403 quelle
+   que soit la clé fournie — une clé API n'a pas d'identité Google propre, elle ne
+   peut lire que ce qui est déjà public par lien.
+4. Renseigne `GOOGLE_SHEETS_API_KEY`, `GOOGLE_SHEET_ID` (dans l'URL du Sheet) et
+   `GOOGLE_SHEET_TAB` (le nom de l'onglet) dans `.env`.
+5. La première ligne du Sheet doit contenir ces en-têtes exacts (n'importe quel
    ordre) : `id, country, created_date, deadline, practice, description, buyer,
    opp_type, status, budget, funding_source, partner, financial_offer,
-   win_probability`. Ligne avec `id` vide = nouvelle opportunité (un id est généré et
-   réécrit dans le Sheet au chargement suivant).
-7. `deadline_month`, `deadline_year`, `days_remaining` et `weighted_amount` sont
-   **toujours recalculés** depuis les colonnes ci-dessus — inutile (et sans effet) de
-   les éditer dans le Sheet.
-8. `practice`, `opp_type` et `status` doivent correspondre exactement aux valeurs
+   win_probability`. Ligne avec `id` vide = nouvelle opportunité (un id lui est
+   attribué en mémoire à chaque chargement — jamais réécrit dans le Sheet, une clé
+   API ne permettant de toute façon pas l'écriture).
+6. `deadline_month`, `deadline_year`, `days_remaining` et `weighted_amount` sont
+   **toujours recalculés** depuis les colonnes ci-dessus, uniquement affichés dans
+   les tableaux de bord — inutile (et sans effet) de les éditer dans le Sheet.
+7. `practice`, `opp_type` et `status` doivent correspondre exactement aux valeurs
    whitelistées dans `backend/schema_and_whitelist.py` (insensible à la casse) —
    sinon la ligne est ignorée et journalisée, sans bloquer les autres.
 
@@ -360,7 +373,8 @@ Trois différences avec le mode développement, chacune pour une raison :
   chacun garderait sa propre copie des données ET relancerait le planificateur :
   emails d'alerte en double, écritures concurrentes dans le Google Sheet. Le
   goulot d'étranglement n'est de toute façon pas le backend (0,03 s par question)
-  mais le quota du modèle.
+  mais l'inférence du modèle local (plusieurs secondes sur CPU, sans GPU dédié) —
+  plusieurs workers ne la paralléliseraient pas, Ollama sert un seul modèle à la fois.
 
 `tests/test_lanceurs.py` vérifie que ces trois différences restent vraies : les
 deux scripts ne peuvent pas dériver l'un vers l'autre sans faire échouer les tests.
@@ -368,8 +382,10 @@ deux scripts ne peuvent pas dériver l'un vers l'autre sans faire échouer les t
 > **Ce que ce mode ne couvre pas.** Il fait tourner l'application proprement sur un
 > poste ; il ne la rend pas déployable en entreprise. Manquent notamment
 > l'authentification (l'API est ouverte à qui atteint le port), la limitation de
-> débit (le quota Gemini gratuit tient ~16 requêtes/minute) et l'épinglage des
-> dépendances (`requirements.txt` n'en fixe aucune version). Les services
+> débit (aucun quota cloud à surveiller depuis le passage au LLM local, mais rien
+> n'empêche plusieurs utilisateurs de saturer le même modèle Ollama en même temps)
+> et l'épinglage des dépendances (`requirements.txt` n'en fixe aucune version). Les
+> services
 > n'écoutent que sur la boucle locale, ce qui rend l'absence d'authentification
 > sans conséquence tant qu'on ne les expose pas.
 
@@ -397,19 +413,21 @@ pip install -r requirements-dev.txt
 pytest tests/
 ```
 
-La suite ne nécessite ni Google Sheet ni clé Google AI Studio réelle (le client
-Gemini et la lecture du Sheet sont mockés dans les tests qui en ont besoin).
+La suite ne nécessite ni Google Sheet réel ni Ollama installé (le client du modèle
+local et la lecture du Sheet sont mockés dans les tests qui en ont besoin).
 
 ## Sécurité
 
-`.env` contient des identifiants réels (clé Google AI Studio, mot de passe d'application
-Gmail) — il est dans `.gitignore` et ne doit jamais être commité. Si une ancienne version
-de `.env` a fini dans l'historique git, régénérez la clé sur aistudio.google.com/apikey
-et révoquez le mot de passe d'application Gmail sur myaccount.google.com/apppasswords,
-plutôt que de compter sur sa suppression du dépôt.
+`.env` contient des identifiants réels (clé API Google Sheets, mot de passe
+d'application Gmail) — il est dans `.gitignore` et ne doit jamais être commité. Si
+une ancienne version de `.env` a fini dans l'historique git, régénérez la clé API
+sur console.cloud.google.com et révoquez le mot de passe d'application Gmail sur
+myaccount.google.com/apppasswords, plutôt que de compter sur sa suppression du dépôt.
 
-`credentials/` (clé de compte de service Google Sheets) est gitignoré au niveau du
-dossier entier — jamais de fichier `.json` de credentials commité, quel que soit son nom.
+La clé API Google Sheets est volontairement **lecture seule** : même exposée, elle
+ne permet ni d'écrire dans le Sheet ni d'accéder à autre chose que les données déjà
+partagées "toute personne disposant du lien". La restreindre à l'API Sheets (voir
+section "Google Sheets" ci-dessus) limite encore sa portée.
 
 ## Structure
 
@@ -417,7 +435,7 @@ dossier entier — jamais de fichier `.json` de credentials commité, quel que s
 backend/
   data_store.py          chargement Google Sheet -> DataFrame pandas (source de vérité)
   db_layer.py            requêtage pandas (chat, message texte)
-  llm.py                 appel Gemini, validation Pydantic, anti-hallucination
+  llm.py                 appel au LLM local (Ollama), validation Pydantic, anti-hallucination
   intent_refiner.py      parseur rapide, dates relatives, garde-fous déterministes
   sql_builder.py         intention validée -> SQL DuckDB (jamais écrit par le LLM)
   dac_composer.py        composition du dashboard multi-widgets -> YAML
@@ -445,10 +463,9 @@ dac/
   dashboards/_analyse_*.yml instantanés par question, pour les rouvrir (gitignorés)
   data/devoteam.db       projection DuckDB (gitignorée, régénérée)
 frontend/              Vite + React (build servi par FastAPI en local)
-credentials/           clé de compte de service Google (gitignoré, absent par défaut)
 data/                  scheduler_state.json — anti-doublon du digest quotidien
                        (état local, gitignoré, régénéré au besoin)
-tests/                 suite pytest (mock Gemini/Sheets), 489 tests
+tests/                 suite pytest (mock LLM local/Sheets), 489 tests
   test_banc_de_questions.py  trente questions fréquentes, chacune vérifiée
                          contre un calcul refait en pandas nu ET rejouée avec
                          plusieurs ébauches du modèle (justesse + stabilité)

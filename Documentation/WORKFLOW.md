@@ -22,7 +22,7 @@ Chat (frontend)                                          │
   → backend/llm.py :: parse_user_query()                 │
       → RETOUCHE reconnue ? (« en camembert », « top 5 »)│
         → appliquée sur l'intention précédente, sans LLM │
-      → sinon : chemin rapide (mots-clés) OU appel Gemini│
+      → sinon : chemin rapide (mots-clés) OU appel Ollama│
       → validation Pydantic + liste blanche              │
       → résolution des filtres contre les vraies valeurs │
   → backend/intent_refiner.py :: refine_intent()         │
@@ -81,8 +81,8 @@ POST /dashboard
 ```
 
 **2. Compréhension** (`backend/llm.py`). Pas de contexte précédent : le chemin rapide
-par mots-clés (`intent_refiner.py::try_rule_based_parse`) peut suffire — sinon Gemini
-reçoit un prompt système contenant les vraies valeurs des données (practices, pays,
+par mots-clés (`intent_refiner.py::try_rule_based_parse`) peut suffire — sinon Ollama
+(modèle local) reçoit un prompt système contenant les vraies valeurs des données (practices, pays,
 statuts connus, date du jour) et renvoie un JSON structuré :
 ```json
 {"metric": "budget", "dimension": "country",

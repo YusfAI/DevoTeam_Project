@@ -84,10 +84,11 @@ def test_les_secrets_se_saisissent_en_aveugle():
 
     assert "-AsSecureString" in s
 
-    # Les DEUX secrets passent par la saisie masquée. Vérifié sur la valeur
+    # Les DEUX secrets restants (le modèle local n'a pas de clé, seule la lecture
+    # du Sheet en garde une) passent par la saisie masquée. Vérifié sur la valeur
     # affectée plutôt que sur le libellé de la question : le texte des questions
     # a vocation à changer, l'exigence non.
-    for variable in ("GOOGLE_API_KEY", "GMAIL_APP_PASSWORD"):
+    for variable in ("GOOGLE_SHEETS_API_KEY", "GMAIL_APP_PASSWORD"):
         bloc = s[s.index("function DemanderConfiguration"):]
         bloc = bloc[:bloc.index("function RecapitulerConfiguration")]
         affectation = [l for l in bloc.splitlines()
@@ -114,7 +115,8 @@ def test_aucun_secret_n_est_affiche():
     s = _assistant()
 
     for interdit in ("Write-Host $cle", "Write-Host $valeur",
-                     "Write-Host $config['GOOGLE_API_KEY']"):
+                     "Write-Host $config['GMAIL_APP_PASSWORD']",
+                     "Write-Host $config['GOOGLE_SHEETS_API_KEY']"):
         assert interdit not in s, interdit
 
 
@@ -134,35 +136,32 @@ def test_l_identifiant_est_extrait_d_un_lien_colle():
 def test_l_assistant_attend_le_partage_au_lieu_d_echouer():
     """Partager la feuille est un geste qui se fait ailleurs, chez Google.
 
-    Échouer dessus obligerait à tout relancer ; l'assistant affiche l'adresse et
-    revérifie à la demande.
+    Échouer dessus obligerait à tout relancer ; l'assistant revérifie à la demande.
     """
     s = _assistant()
 
     assert "AttendreLePartage" in s
     assert "sonde_feuille.py" in s
-    assert "EDITEUR" in s
+    assert "toute personne" in s
 
 
-def test_la_sonde_verifie_l_ecriture_et_pas_seulement_la_lecture():
-    """Un partage en Lecteur laisse tout fonctionner jusqu'au premier
-    enregistrement — c'est-à-dire jusqu'au premier usage réel."""
+def test_la_sonde_verifie_la_lecture_seule():
+    """Une clé API ne permet jamais l'écriture — rien à prouver de ce côté-là,
+    contrairement à l'ancien compte de service qui pouvait écrire."""
     s = (SETUP / "sonde_feuille.py").read_text(encoding="utf-8")
 
-    assert "update_acell" in s
-    assert "get_all_values" in s
-    # Idempotent : la cellule est réécrite avec sa propre valeur.
-    assert 'update_acell("A1", valeurs[0][0])' in s
+    assert "fetch_sheet_values" in s
+    assert "update_acell" not in s
 
 
 def test_l_assistant_est_rejouable():
     """Relancer après correction ne doit rien défaire ni tout redemander."""
     s = _assistant()
 
-    # Une entrée vide conserve la valeur existante.
+    # Une entrée vide conserve la valeur existante — y compris pour la clé API,
+    # seule chose que l'ancien fichier d'identifiants protégeait par ailleurs.
     assert "Entree pour la garder" in s
-    # Et le fichier d'identifiants déjà en place n'est pas redemandé.
-    assert "Test-Path $Identifiants" in s
+    assert "LireSecret 'Collez la cle :' $config['GOOGLE_SHEETS_API_KEY']" in s
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +169,7 @@ def test_l_assistant_est_rejouable():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("variable", [
-    "GOOGLE_API_KEY", "GOOGLE_SHEET_ID", "GOOGLE_SHEET_TAB",
+    "GOOGLE_SHEETS_API_KEY", "GOOGLE_SHEET_ID", "GOOGLE_SHEET_TAB",
     "GMAIL_SENDER", "GMAIL_APP_PASSWORD", "ALERT_RECIPIENT_EMAIL",
 ])
 def test_chaque_valeur_du_env_est_demandee(variable):

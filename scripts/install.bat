@@ -34,7 +34,7 @@ echo   ============================================================
 echo.
 
 REM --- 1. Python -------------------------------------------------------------
-echo   [1/7] Python...
+echo   [1/8] Python...
 where python >NUL 2>&1
 if errorlevel 1 (
     echo         MANQUANT. Installer Python 3.11 ou plus recent :
@@ -47,7 +47,7 @@ for /f "tokens=2" %%v in ('python --version 2^>^&1') do set "PYVER=%%v"
 echo         OK - Python !PYVER!
 
 REM --- 2. Node.js ------------------------------------------------------------
-echo   [2/7] Node.js...
+echo   [2/8] Node.js...
 where npm >NUL 2>&1
 if errorlevel 1 (
     echo         MANQUANT. Installer Node.js LTS :
@@ -63,7 +63,7 @@ REM --- 3. Environnement Python isole -----------------------------------------
 REM Un environnement virtuel plutot que le Python du systeme : les versions sont
 REM EPINGLEES (requirements.txt), et les installer a l'echelle de la machine
 REM pourrait casser un autre outil deja present sur le poste.
-echo   [3/7] Environnement Python et dependances...
+echo   [3/8] Environnement Python et dependances...
 if not exist "%RACINE%\.venv\Scripts\python.exe" (
     python -m venv "%RACINE%\.venv"
     if errorlevel 1 (
@@ -90,7 +90,7 @@ REM copiee depuis un autre poste) passait le test "if not exist" et sautait tout
 REM droit a "npm run build", qui echouait avec "'vite' is not recognized" — une
 REM erreur qui ne dit rien de sa vraie cause. npm ne reinstalle que ce qui manque
 REM ou a change, donc relancer ne coute que quelques secondes quand tout y est deja.
-echo   [4/7] Compilation de l'interface...
+echo   [4/8] Compilation de l'interface...
 pushd "%RACINE%\frontend"
 echo         installation des paquets...
 call npm install --silent
@@ -114,7 +114,7 @@ REM --- 5. Moteur de tableaux de bord -----------------------------------------
 REM dac.exe delegue l'execution du SQL a bruin.exe, qu'il cherche dans le PATH.
 REM Sans lui, DAC demarre normalement et CHAQUE visuel echoue separement : la
 REM panne la plus deroutante de toute l'installation.
-echo   [5/7] Moteur de tableaux de bord ^(Bruin DAC^)...
+echo   [5/8] Moteur de tableaux de bord ^(Bruin DAC^)...
 set "BRUIN_BIN=%USERPROFILE%\.local\bin"
 if exist "%BRUIN_BIN%\dac.exe" if exist "%BRUIN_BIN%\bruin.exe" (
     echo         OK - deja installe
@@ -129,9 +129,39 @@ echo         Relancer ce script ensuite.
 set "BLOQUANT=1"
 :apres_dac
 
-REM --- 6. Configuration ------------------------------------------------------
-echo   [6/7] Configuration...
-if not exist "%RACINE%\credentials" mkdir "%RACINE%\credentials"
+REM --- 6. Modele local (Ollama) ------------------------------------------------
+REM Aucune cle API : le modele de chat tourne en local. Meme logique que Bruin DAC
+REM juste au-dessus — on detecte et on dit quoi faire plutot que d'installer un
+REM programme externe sans le consentement explicite d'une commande lancee par
+REM l'utilisateur, mais le modele lui-meme (un simple telechargement de donnees,
+REM pas un programme) est tire automatiquement s'il manque.
+echo   [6/8] Modele local ^(Ollama^)...
+where ollama >NUL 2>&1
+if errorlevel 1 (
+    echo         MANQUANT. Installer Ollama :
+    echo           https://ollama.com/download
+    echo         Relancer ce script ensuite.
+    set "BLOQUANT=1"
+    goto :apres_ollama
+)
+echo         OK - Ollama installe
+ollama list 2>NUL | findstr /C:"qwen2.5" >NUL
+if errorlevel 1 (
+    echo         Modele absent - telechargement de qwen2.5:7b-instruct-q4_K_M
+    echo         ^(plusieurs minutes selon la connexion^)...
+    ollama pull qwen2.5:7b-instruct-q4_K_M
+    if errorlevel 1 (
+        echo         ECHEC du telechargement. Reessayer plus tard :
+        echo           ollama pull qwen2.5:7b-instruct-q4_K_M
+        set "BLOQUANT=1"
+        goto :apres_ollama
+    )
+)
+echo         OK - modele present
+:apres_ollama
+
+REM --- 7. Configuration ------------------------------------------------------
+echo   [7/8] Configuration...
 
 if not exist "%RACINE%\.env" (
     copy /y "%RACINE%\.env.example" "%RACINE%\.env" >NUL
@@ -146,8 +176,8 @@ if not exist "%RACINE%\.env" (
     echo         OK - .env deja present
 )
 
-REM --- 7. Raccourcis ---------------------------------------------------------
-echo   [7/7] Raccourcis du Bureau...
+REM --- 8. Raccourcis ---------------------------------------------------------
+echo   [8/8] Raccourcis du Bureau...
 powershell -ExecutionPolicy Bypass -NoProfile -File "%RACINE%\scripts\create_shortcut.ps1" >NUL 2>&1
 if errorlevel 1 (
     echo         ECHEC - les raccourcis n'ont pas ete crees.

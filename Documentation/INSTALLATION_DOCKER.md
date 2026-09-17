@@ -16,12 +16,13 @@ Compter 5 à 10 minutes la première fois (téléchargement des images).
 
 Après avoir installé Docker Desktop (étape 1 ci-dessous) et récupéré le projet
 (étape 2), **double-cliquer sur `INSTALLER.bat`, à la racine**, fait tout le
-reste : vérifie que Docker est bien démarré, ouvre le Bloc-notes sur `.env` et le
-dossier `credentials\` le temps que vous les complétiez, construit l'image,
-démarre les trois services, crée le raccourci du Bureau, puis **exécute
-`scripts/test_fonctionnel.py` directement à l'intérieur du conteneur** — la
-preuve que les chiffres affichés sont justes, sans qu'aucun Python ne soit
-installé sur ce poste.
+reste : vérifie que Docker est bien démarré, vérifie/installe **Ollama** (le
+modèle de chat, qui tourne sur la machine hôte — voir plus bas) et télécharge
+son modèle, ouvre le Bloc-notes sur `.env` le temps que vous le complétiez,
+construit l'image, démarre les trois services, crée le raccourci du Bureau,
+puis **exécute `scripts/test_fonctionnel.py` directement à l'intérieur du
+conteneur** — la preuve que les chiffres affichés sont justes, sans qu'aucun
+Python ne soit installé sur ce poste.
 
 Testé de bout en bout sur ce dépôt : trois exécutions réelles, la dernière
 propre — 15 contrôles sur 15, « TOUT EST JUSTE ».
@@ -36,13 +37,16 @@ utile pour comprendre ou dépanner, pas nécessaire à suivre à la main si
 
 ## Avant de commencer
 
-Les mêmes trois choses que pour l'installation native — rien ne change ici. Fiche
+Les mêmes choses que pour l'installation native — rien ne change ici. Fiche
 détaillée avec les liens exacts : [`OBTENIR_LES_ACCES.md`](OBTENIR_LES_ACCES.md).
 
-1. Un **compte de service Google**, dont la feuille de calcul est **partagée en
-   Éditeur** avec son adresse `client_email`.
-2. Une **clé Gemini** ([aistudio.google.com](https://aistudio.google.com)).
-3. **L'identifiant de la feuille** et le **nom de son onglet**.
+1. Une **clé API Google Sheets, en lecture seule**
+   ([console.cloud.google.com](https://console.cloud.google.com)), et la feuille
+   de calcul **partagée en Lecteur, à « toute personne disposant du lien »**.
+   Aucun compte de service, aucun fichier JSON à déposer.
+2. **L'identifiant de la feuille** et le **nom de son onglet**.
+3. **Ollama** — rien à préparer à l'avance : `INSTALLER.bat` le vérifie et
+   l'installe automatiquement (voir « Le modèle de chat » plus bas).
 
 Voir `Documentation/INSTALLATION.md`, section « Avant le jour de l'installation »,
 pour le détail de chaque point.
@@ -76,7 +80,7 @@ copy .env.example .env
 Ouvrir `.env` dans un éditeur de texte et renseigner :
 
 ```ini
-GOOGLE_API_KEY=            la clé Gemini
+GOOGLE_SHEETS_API_KEY=     la clé API Sheets (lecture seule)
 GOOGLE_SHEET_ID=           l'identifiant de la feuille
 GOOGLE_SHEET_TAB=          le nom de l'onglet
 
@@ -84,16 +88,40 @@ GOOGLE_SHEET_TAB=          le nom de l'onglet
 GMAIL_SENDER=
 GMAIL_APP_PASSWORD=
 ALERT_RECIPIENT_EMAIL=
+
+# Facultatif — vide = valeurs par défaut
+OLLAMA_HOST=
+OLLAMA_MODEL=
 ```
 
-**Ne pas toucher** à `DAC_PUBLIC_URL` / `DAC_DARK_PUBLIC_URL` : Docker les règle
-tout seul (voir la note technique en fin de page si la question se pose).
+**Ne pas toucher** à `DAC_PUBLIC_URL` / `DAC_DARK_PUBLIC_URL`, ni à `OLLAMA_HOST` :
+Docker les règle tout seul (voir la note technique en fin de page si la question
+se pose — `OLLAMA_HOST` y est forcé vers `host.docker.internal`, l'adresse de la
+machine hôte vue depuis un conteneur, peu importe ce qu'indique `.env`).
 
-Déposer le fichier JSON du compte de service dans :
+Aucun fichier à déposer : la lecture du Sheet se fait par la clé API ci-dessus,
+pas par un compte de service.
+
+## Le modèle de chat (Ollama) — tourne sur l'hôte, pas dans Docker
+
+Contrairement au reste, Ollama n'est **pas** conteneurisé : il tourne directement
+sur la machine hôte, comme n'importe quel programme installé normalement.
+`INSTALLER.bat` le vérifie et l'installe automatiquement à l'étape 3/6 ; en
+suivant les étapes manuelles ci-dessous, installez-le vous-même avant `docker
+compose up` :
 
 ```
-credentials\google_service_account.json
+https://ollama.com/download
 ```
+
+Puis téléchargez le modèle (une fois, ~4,7 Go) :
+
+```
+ollama pull qwen2.5:7b-instruct-q4_K_M
+```
+
+Sans ça, tout le reste de l'application fonctionne normalement — seul le chat
+répond « Ollama injoignable ».
 
 ## Étape 4 — Lancer
 
@@ -192,6 +220,7 @@ que si une dépendance ou le moteur de tableaux de bord lui-même a changé.
 | Page blanche, `StaticFiles` en erreur dans les journaux | `frontend-build` a échoué | `docker compose logs frontend-build` |
 | Tableaux de bord vides, aucune erreur | Statuts de la feuille non reconnus | Voir `Documentation/INSTALLATION.md`, section correspondante — identique en Docker |
 | Le chat répond mais aucun tableau de bord chat-généré ne s'affiche | Écriture atomique en échec (`EXDEV`) | Ne devrait plus arriver — signe que `docker-compose.yml` a été modifié pour monter un sous-dossier séparément (voir la note technique ci-dessous) |
+| Le chat répond « Ollama injoignable » | Ollama pas installé, pas démarré, ou modèle non téléchargé sur l'hôte | `ollama serve` doit tourner sur la machine hôte (pas dans un conteneur), et `ollama pull qwen2.5:7b-instruct-q4_K_M` doit avoir réussi |
 | `docker: command not found` dans un terminal | Docker Desktop pas démarré | Le lancer depuis le menu Démarrer, attendre l'icône verte dans la zone de notification |
 
 ---
@@ -215,6 +244,17 @@ identique.
 La solution retenue : un seul volume, `.:/app`, partagé par les trois services.
 `.dac_tmp/` et `dac/dashboards/` se retrouvent alors sous le même point de
 montage, et l'écriture atomique fonctionne comme sur une installation native.
+
+## Note technique — pourquoi `OLLAMA_HOST` est forcé dans `docker-compose.yml`
+
+Même famille de piège que `DAC_URL`/`DAC_PUBLIC_URL` plus haut. Ollama tourne
+sur l'hôte, jamais dans un conteneur : `localhost`/`127.0.0.1` lu par le backend
+depuis `.env` désignerait le conteneur `backend` lui-même, qui n'a évidemment
+aucun serveur Ollama dedans. `docker-compose.yml` force donc `OLLAMA_HOST` vers
+`http://host.docker.internal:11434` — le nom que Docker Desktop résout vers
+l'hôte depuis l'intérieur d'un conteneur (et que `extra_hosts` rend disponible
+aussi sous Docker Engine/Linux, qui ne le fournit pas nativement) — quelle que
+soit la valeur laissée dans `.env`.
 
 C'est aussi ce choix qui fait que le CODE de l'application (pas seulement ses
 données) vient du dépôt monté, jamais de l'image : un `git pull` suffit à mettre

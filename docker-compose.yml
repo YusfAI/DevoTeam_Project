@@ -32,6 +32,15 @@
 # backend/main.py (DAC_URL sonde interne, DAC_PUBLIC_URL adresse du navigateur)
 # — construite à l'origine pour l'accès par tunnel, elle sert ici exactement
 # pour la même raison : deux points de vue différents sur « où est DAC ».
+#
+# OLLAMA_HOST — même piège, un cran plus loin
+# ---------------------------------------------------------------------------
+# Le modèle de chat (Ollama) tourne sur la machine HÔTE, jamais dans un
+# conteneur (voir backend/llm.py) : `localhost`/`127.0.0.1` lu par le backend
+# depuis `.env` y désignerait le conteneur lui-même, pas l'hôte qui fait
+# tourner `ollama serve`. `host.docker.internal` est le nom que Docker Desktop
+# résout vers l'hôte depuis l'intérieur d'un conteneur ; `extra_hosts` le rend
+# disponible aussi sous Docker Engine (Linux), qui ne le fournit pas nativement.
 
 services:
   # Compile l'interface à chaque lancement, puis s'arrête. `backend` attend
@@ -67,6 +76,14 @@ services:
       # Adresse donnée au navigateur (voir la note en tête de fichier).
       DAC_PUBLIC_URL: http://127.0.0.1:8321
       DAC_DARK_PUBLIC_URL: http://127.0.0.1:8322
+      # Le modèle de chat tourne sur l'hôte, jamais dans un conteneur (voir la
+      # note en tête de fichier) — écrase toute valeur de OLLAMA_HOST lue
+      # depuis .env, qui viserait le conteneur lui-même sous ce nom.
+      OLLAMA_HOST: http://host.docker.internal:11434
+    extra_hosts:
+      # Sans effet sous Docker Desktop (déjà fourni) ; nécessaire sous Docker
+      # Engine (Linux), qui ne résout pas host.docker.internal nativement.
+      - "host.docker.internal:host-gateway"
     volumes:
       - .:/app
     ports:

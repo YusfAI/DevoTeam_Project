@@ -1,14 +1,16 @@
 ﻿# Assistant d'installation — DevoTeam Dashboard
 #
 # Conduit une installation complète sur un poste neuf, en ne demandant que ce qui
-# ne peut pas être deviné : la clé du modèle, la feuille de calcul, et le fichier
-# d'identifiants Google.
+# ne peut pas être deviné : la feuille de calcul et sa clé API de lecture. Aucun
+# fichier d'identifiants Google à télécharger ni à sélectionner — lecture seule,
+# par clé API. Le modèle (Ollama, local) n'a pas de clé à saisir non plus — il est
+# vérifié et installé automatiquement, comme le moteur de tableaux de bord (bruin/dac).
 #
 # Il ne réimplémente rien. Les scripts existants font le travail (install.bat,
 # verifier_installation.py, test_fonctionnel.py) ; cet assistant les enchaîne et
 # s'occupe de ce qu'ils ne savent pas faire : poser les questions, retrouver un
-# identifiant dans une URL collée, ouvrir un sélecteur de fichier, et surtout
-# attendre que la feuille soit réellement partagée au lieu d'échouer dessus.
+# identifiant dans une URL collée, et surtout attendre que la feuille soit
+# réellement partagée au lieu d'échouer dessus.
 #
 # Deux règles tenues d'un bout à l'autre :
 #   - aucun secret n'est affiché à l'écran ni écrit ailleurs que dans .env ;
@@ -21,8 +23,6 @@ $ErrorActionPreference = 'Stop'
 $Racine = Split-Path -Parent $PSScriptRoot
 $FichierEnv = Join-Path $Racine '.env'
 $Modele = Join-Path $Racine '.env.example'
-$DossierIdentifiants = Join-Path $Racine 'credentials'
-$Identifiants = Join-Path $DossierIdentifiants 'google_service_account.json'
 $BruinBin = Join-Path $env:USERPROFILE '.local\bin'
 
 # ---------------------------------------------------------------------------
@@ -48,15 +48,15 @@ function Banniere {
     Write-Host ''
     Write-Host '  Cet assistant installe tout. Il vous demandera :' -ForegroundColor White
     Write-Host ''
-    Write-Host '    1. la cle Gemini                          (obligatoire)' -ForegroundColor White
-    Write-Host '    2. le lien de la feuille Google           (obligatoire)' -ForegroundColor White
-    Write-Host '    3. le nom de l''onglet des donnees         (obligatoire)' -ForegroundColor White
-    Write-Host '    4. l''adresse expeditrice des alertes      (facultatif)' -ForegroundColor White
-    Write-Host '    5. le mot de passe d''application Gmail    (facultatif)' -ForegroundColor White
-    Write-Host '    6. l''adresse destinataire des alertes     (facultatif)' -ForegroundColor White
+    Write-Host '    1. la cle API Google Sheets (lecture seule) (obligatoire)' -ForegroundColor White
+    Write-Host '    2. le lien de la feuille Google              (obligatoire)' -ForegroundColor White
+    Write-Host '    3. le nom de l''onglet des donnees            (obligatoire)' -ForegroundColor White
+    Write-Host '    4. l''adresse expeditrice des alertes         (facultatif)' -ForegroundColor White
+    Write-Host '    5. le mot de passe d''application Gmail       (facultatif)' -ForegroundColor White
+    Write-Host '    6. l''adresse destinataire des alertes        (facultatif)' -ForegroundColor White
     Write-Host ''
-    Write-Host '    puis le fichier JSON du compte de service, par une fenetre' -ForegroundColor White
-    Write-Host '    de selection.' -ForegroundColor White
+    Write-Host '  Aucun fichier a telecharger ni a selectionner : pas de compte de' -ForegroundColor White
+    Write-Host '  service, pas de JSON — juste une cle API et un partage en Lecteur.' -ForegroundColor White
     Write-Host ''
     Write-Host '  Rien de ce que vous saisirez ne sera affiche ni copie ailleurs' -ForegroundColor DarkGray
     Write-Host '  que dans le fichier .env, exclu du depot Git.' -ForegroundColor DarkGray
@@ -152,21 +152,6 @@ function IdentifiantDeFeuille($saisie) {
     return $saisie.Trim()
 }
 
-function ChoisirFichierJson {
-    # Un sélecteur graphique plutôt qu'un chemin à taper : le fichier arrive
-    # généralement du dossier Téléchargements sous un nom illisible, et le
-    # glisser-déposer dans une console n'est pas fiable.
-    Add-Type -AssemblyName System.Windows.Forms
-    $dialogue = New-Object System.Windows.Forms.OpenFileDialog
-    $dialogue.Title = 'Choisir le fichier JSON du compte de service Google'
-    $dialogue.Filter = 'Fichiers JSON (*.json)|*.json|Tous les fichiers (*.*)|*.*'
-    $dialogue.InitialDirectory = (Join-Path $env:USERPROFILE 'Downloads')
-    if ($dialogue.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        return $dialogue.FileName
-    }
-    return $null
-}
-
 # ---------------------------------------------------------------------------
 # Lecture / écriture du .env
 # ---------------------------------------------------------------------------
@@ -236,12 +221,57 @@ function VerifierPrerequis {
         InstallerDac
     }
 
+    VerifierOllama
+
     if ($manque.Count -gt 0) {
         Write-Host ''
         Echec "Installez d'abord : $($manque -join ', ')  puis relancez cet assistant."
         return $false
     }
     return $true
+}
+
+function VerifierOllama {
+    # Le modele local n'a pas de cle a saisir : il se verifie et s'installe tout
+    # seul, comme bruin/dac ci-dessus. OLLAMA_HOST et OLLAMA_MODEL (voir .env.example)
+    # restent vides dans l'immense majorite des cas — les valeurs par defaut du code
+    # (http://localhost:11434, qwen2.5:7b-instruct-q4_K_M) suffisent.
+    $hote = if ($env:OLLAMA_HOST) { $env:OLLAMA_HOST } else { 'http://localhost:11434' }
+    $modele = if ($env:OLLAMA_MODEL) { $env:OLLAMA_MODEL } else { 'qwen2.5:7b-instruct-q4_K_M' }
+
+    if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
+        Avertir 'Ollama absent (modele local pour le chat)'
+        Info 'https://ollama.com/download  puis relancez cet assistant.'
+        return
+    }
+    Ok 'Ollama installe'
+
+    try {
+        Invoke-RestMethod -Uri "$hote/api/tags" -TimeoutSec 5 | Out-Null
+        $serviceActif = $true
+    } catch {
+        $serviceActif = $false
+    }
+    if (-not $serviceActif) {
+        Avertir 'Service Ollama non demarre — demarrage...'
+        Start-Process -FilePath 'ollama' -ArgumentList 'serve' -WindowStyle Hidden
+        Start-Sleep -Seconds 2
+    }
+
+    $liste = Executer 'ollama' @('list')
+    if ($liste.Sortie -join "`n" -match [regex]::Escape($modele.Split(':')[0])) {
+        Ok "Modele present ($modele)"
+        return
+    }
+
+    Avertir "Modele absent — telechargement de $modele (plusieurs minutes selon la connexion)"
+    $resultat = Executer 'ollama' @('pull', $modele)
+    if ($resultat.Code -eq 0) {
+        Ok 'Modele telecharge'
+    } else {
+        Echec "Le telechargement automatique a echoue."
+        Info "Manuellement : ollama pull $modele"
+    }
 }
 
 function InstallerDac {
@@ -280,10 +310,11 @@ function DemanderConfiguration {
     $config = LireEnv
 
     Write-Host ''
-    Write-Host '  [1/6] Cle Gemini' -ForegroundColor Cyan
-    Info 'aistudio.google.com > Get API key — la saisie reste invisible'
-    $valeur = LireSecret 'Collez la cle :' $config['GOOGLE_API_KEY']
-    if ($valeur) { $config['GOOGLE_API_KEY'] = $valeur }
+    Write-Host '  [1/6] Cle API Google Sheets' -ForegroundColor Cyan
+    Info 'console.cloud.google.com > APIs et services > Identifiants > Creer une cle API'
+    Info '(puis activer "Google Sheets API" sur le projet) — la saisie reste invisible'
+    $cleSheets = LireSecret 'Collez la cle :' $config['GOOGLE_SHEETS_API_KEY']
+    if ($cleSheets) { $config['GOOGLE_SHEETS_API_KEY'] = $cleSheets }
 
     Write-Host ''
     Write-Host '  [2/6] Feuille Google' -ForegroundColor Cyan
@@ -300,10 +331,6 @@ function DemanderConfiguration {
     Info "Le nom de l'onglet, en bas de la feuille, qui contient les opportunites"
     $onglet = LireTexte 'Nom de l''onglet :' $config['GOOGLE_SHEET_TAB'] 'opportunities'
     if ($onglet) { $config['GOOGLE_SHEET_TAB'] = $onglet }
-
-    if (-not $config['GOOGLE_SHEETS_CREDENTIALS_PATH']) {
-        $config['GOOGLE_SHEETS_CREDENTIALS_PATH'] = 'credentials/google_service_account.json'
-    }
 
     # --- Les alertes email ------------------------------------------------
     # Facultatives, mais DEMANDEES. Elles étaient auparavant derrière une question
@@ -357,7 +384,7 @@ function RecapitulerConfiguration($config) {
     Titre 'Recapitulatif'
 
     $lignes = @(
-        @{ Cle = 'GOOGLE_API_KEY';        Nom = 'Cle Gemini';            Secret = $true;  Requis = $true },
+        @{ Cle = 'GOOGLE_SHEETS_API_KEY'; Nom = 'Cle API Sheets';         Secret = $true;  Requis = $true },
         @{ Cle = 'GOOGLE_SHEET_ID';       Nom = 'Identifiant de feuille'; Secret = $false; Requis = $true },
         @{ Cle = 'GOOGLE_SHEET_TAB';      Nom = 'Onglet';                 Secret = $false; Requis = $true },
         @{ Cle = 'GMAIL_SENDER';          Nom = 'Alertes — expediteur';   Secret = $false; Requis = $false },
@@ -385,55 +412,19 @@ function RecapitulerConfiguration($config) {
     Info 'documentation, section "accessible a distance").'
 }
 
-function DemanderIdentifiants {
-    Titre '3. Compte de service Google'
-
-    if (Test-Path $Identifiants) {
-        Ok 'Fichier deja en place'
-    } else {
-        Write-Host '  Selectionnez le fichier JSON telecharge depuis Google Cloud.' -ForegroundColor White
-        Info 'Une fenetre de selection va s''ouvrir.'
-        $choisi = ChoisirFichierJson
-        if (-not $choisi) {
-            Echec 'Aucun fichier choisi — la feuille restera inaccessible.'
-            return $null
-        }
-        if (-not (Test-Path $DossierIdentifiants)) {
-            New-Item -ItemType Directory -Path $DossierIdentifiants | Out-Null
-        }
-        Copy-Item $choisi $Identifiants -Force
-        Ok 'Fichier copie et renomme correctement'
-    }
-
-    try {
-        $infos = Get-Content $Identifiants -Raw -Encoding UTF8 | ConvertFrom-Json
-    } catch {
-        Echec 'Le fichier n''est pas un JSON valide.'
-        return $null
-    }
-    if (-not $infos.client_email) {
-        Echec 'Ce fichier n''est pas une cle de compte de service.'
-        return $null
-    }
-    return $infos.client_email
-}
-
 # ---------------------------------------------------------------------------
 # 3. Le partage de la feuille — l'étape qui fait échouer les installations
 # ---------------------------------------------------------------------------
 
-function AttendreLePartage($adresse, $python) {
-    Titre '4. Partage de la feuille'
+function AttendreLePartage($python) {
+    Titre '3. Partage de la feuille'
 
-    if (-not $adresse) { return $false }
-
-    Write-Host '  La feuille doit etre partagee avec cette adresse, en EDITEUR :' -ForegroundColor White
+    Write-Host '  La feuille doit etre partagee en LECTEUR, a "toute personne' -ForegroundColor White
+    Write-Host '  disposant du lien" (bouton Partager > Acces general, en haut a' -ForegroundColor White
+    Write-Host '  droite de Google Sheets) :' -ForegroundColor White
     Write-Host ''
-    Write-Host "      $adresse" -ForegroundColor Yellow
-    Write-Host ''
-    Info "L'application ecrit dans la feuille — elle y attribue les identifiants"
-    Info 'manquants. Un partage en Lecteur laisse tout fonctionner jusqu''au'
-    Info 'premier enregistrement, puis echoue sans rien expliquer.'
+    Info "Lecture seule : la cle API ne permet jamais l'ecriture, il n'y a donc"
+    Info 'rien de plus a autoriser cote Google.'
     Write-Host ''
 
     $sonde = Join-Path $PSScriptRoot 'sonde_feuille.py'
@@ -442,7 +433,7 @@ function AttendreLePartage($adresse, $python) {
         $resultat = Executer $python @($sonde)
         $sortie = $resultat.Sortie
         if ($resultat.Code -eq 0) {
-            Ok 'Feuille accessible en lecture ET en ecriture'
+            Ok 'Feuille accessible en lecture'
             Info ($sortie | Select-Object -First 1)
             return $true
         }
@@ -461,9 +452,8 @@ function Main {
     if (-not (VerifierPrerequis)) { return 1 }
 
     DemanderConfiguration
-    $adresse = DemanderIdentifiants
 
-    Titre '5. Installation'
+    Titre '4. Installation'
     Info 'Environnement Python, dependances, interface — quelques minutes.'
     $resultat = Executer (Join-Path $Racine 'scripts\install.bat')
     if ($resultat.Code -ne 0) {
@@ -480,9 +470,9 @@ function Main {
     }
     Ok 'Installation terminee'
 
-    AttendreLePartage $adresse $python | Out-Null
+    AttendreLePartage $python | Out-Null
 
-    Titre '6. Verification'
+    Titre '5. Verification'
     $resultat = Executer $python @((Join-Path $Racine 'scripts\verifier_installation.py'))
     $resultat.Sortie | ForEach-Object { Write-Host $_ }
     $verdict = $resultat.Code

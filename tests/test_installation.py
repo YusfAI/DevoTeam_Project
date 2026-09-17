@@ -124,27 +124,22 @@ def test_toutes_les_colonnes_attendues_passent():
 # Le script vérifie ce qu'il annonce
 # ---------------------------------------------------------------------------
 
-def test_l_ecriture_dans_la_feuille_est_reellement_testee():
-    """Lire ne prouve pas qu'on peut écrire.
-
-    L'application attribue les identifiants manquants et réinscrit les colonnes
-    calculées. Une feuille partagée en Lecteur laisse tout fonctionner jusqu'au
-    premier enregistrement — donc jusqu'au premier vrai usage.
-    """
+def test_la_lecture_de_la_feuille_est_verifiee_par_cle_api():
+    """Lecture seule, clé API : rien à prouver côté écriture — une clé API Google
+    ne permet de toute façon jamais d'écrire."""
     source = (SCRIPTS / "verifier_installation.py").read_text(encoding="utf-8")
 
-    assert "update_acell" in source
-    # Idempotent : la cellule est réécrite avec SA PROPRE valeur, jamais autre chose.
-    assert 'update_acell("A1", valeurs[0][0])' in source
+    assert "fetch_sheet_values" in source
+    assert "update_acell" not in source
 
 
-def test_l_adresse_du_compte_de_service_est_affichee():
-    # C'est l'information qu'on cherche le jour de l'installation, et elle ne se
-    # devine pas : sans elle, impossible de savoir à qui partager la feuille.
+def test_le_403_pointe_vers_le_partage_en_lecteur():
+    # C'est le geste qu'on cherche le jour de l'installation, et il ne se devine
+    # pas : sans lui, impossible de savoir pourquoi la clé API est refusée.
     source = (SCRIPTS / "verifier_installation.py").read_text(encoding="utf-8")
 
-    assert "client_email" in source
-    assert "partagée" in source
+    assert "Lecteur" in source
+    assert "lien" in source
 
 
 # ---------------------------------------------------------------------------
@@ -195,11 +190,16 @@ def test_l_installeur_termine_par_la_verification():
     assert "verifier_installation.py" in contenu
 
 
-def test_la_procedure_documente_le_partage_en_editeur():
-    """Le piège le plus coûteux, parce qu'il ne se voit qu'à l'usage."""
+def test_la_procedure_documente_le_partage_en_lecteur():
+    """Le piège le plus coûteux, parce qu'il ne se voit qu'à l'usage.
+
+    Une clé API ne permettant jamais l'écriture, le partage attendu est
+    « Lecteur, toute personne disposant du lien » — pas Éditeur ni un compte de
+    service ciblé.
+    """
     texte = (RACINE / "Documentation" / "INSTALLATION.md").read_text(encoding="utf-8")
 
-    assert "Éditeur" in texte
+    assert "toute personne disposant du lien" in texte
     assert "Add python.exe to PATH" in texte
     assert "getbruin.com/install/dac" in texte
 
@@ -506,7 +506,7 @@ def test_un_repli_sur_le_python_systeme_est_signale_et_verifie(nom):
     contenu = (SCRIPTS / nom).read_text(encoding="utf-8", errors="surrogateescape")
 
     assert "[ATTENTION] Environnement isole introuvable" in contenu
-    assert "import fastapi, uvicorn, pandas, duckdb, gspread, apscheduler, dotenv" in contenu
+    assert "import fastapi, uvicorn, pandas, duckdb, requests, apscheduler, dotenv" in contenu
     assert "[ARRET] Des dependances Python manquent" in contenu
 
 

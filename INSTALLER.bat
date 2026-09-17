@@ -8,18 +8,22 @@ REM ===========================================================================
 REM LE fichier a double-cliquer sur un poste neuf pour installer l'application
 REM via Docker, de bout en bout.
 REM
-REM Ne demande que deux choses qu'il ne peut pas deviner a votre place :
-REM   - le fichier .env (cle Gemini, feuille Google) ;
-REM   - le fichier credentials\google_service_account.json.
-REM Tout le reste — verification de Docker, construction, demarrage, raccourci
-REM Bureau, verification finale — est automatique.
+REM Ne demande qu'une chose qu'il ne peut pas deviner a votre place : le
+REM fichier .env (cle API Google Sheets en LECTURE SEULE, feuille Google —
+REM aucun compte de service, aucun fichier JSON a deposer). Tout le reste —
+REM verification de Docker, construction, demarrage, raccourci Bureau,
+REM verification finale — est automatique.
 REM
 REM Rejouable sans risque : chaque etape verifie d'abord si elle est deja
-REM faite. Le relancer apres avoir complete .env ou le JSON reprend exactement
-REM la ou ca s'etait arrete, sans rien refaire ni rien perdre.
+REM faite. Le relancer apres avoir complete .env reprend exactement la ou
+REM ca s'etait arrete, sans rien refaire ni rien perdre.
 REM
 REM Ne demande AUCUN secret au clavier : .env s'ouvre dans le Bloc-notes, une
 REM cle tapee dans une console resterait dans son historique.
+REM
+REM Le modele de chat (Ollama) tourne sur la machine HOTE, pas dans un
+REM conteneur : installez-le separement (https://ollama.com/download) et
+REM laissez-le demarre avant d'utiliser le chat.
 REM ===========================================================================
 
 cd /d "%~dp0"
@@ -30,9 +34,9 @@ echo     DevoTeam Dashboard - Installation
 echo   ============================================================
 echo.
 echo   Ce script installe tout automatiquement. Il ne vous demandera
-echo   que deux choses a completer vous-meme :
-echo     - le fichier .env                      (cle Gemini, feuille Google)
-echo     - credentials\google_service_account.json
+echo   qu'une chose a completer vous-meme :
+echo     - le fichier .env      (cle API Google Sheets, feuille Google)
+echo   Aucun fichier de compte de service, aucun JSON a deposer.
 echo.
 echo   Liens et etapes detaillees pour les obtenir :
 echo     Documentation\OBTENIR_LES_ACCES.md
@@ -84,41 +88,52 @@ goto attendre_docker
 :docker_pret
 echo         OK
 
-REM --- 3/6 : .env --------------------------------------------------------------
+REM --- 3/6 : Ollama (modele de chat local) --------------------------------------
+REM Tourne sur la machine HOTE, pas dans un conteneur (voir l'en-tete du
+REM fichier) : verifie ici, avant docker compose, comme les autres prerequis.
 echo.
-echo   [3/6] Fichier de configuration (.env)...
+echo   [3/6] Modele de chat local ^(Ollama^)...
+where ollama >NUL 2>&1
+if errorlevel 1 (
+    echo         MANQUANT. Installez Ollama, puis relancez ce fichier :
+    echo           https://ollama.com/download
+    echo.
+    pause
+    exit /b 1
+)
+echo         OK - Ollama installe
+ollama list 2>NUL | findstr /C:"qwen2.5" >NUL
+if errorlevel 1 (
+    echo         Modele absent - telechargement de qwen2.5:7b-instruct-q4_K_M
+    echo         ^(plusieurs minutes selon la connexion^)...
+    ollama pull qwen2.5:7b-instruct-q4_K_M
+    if errorlevel 1 (
+        echo.
+        echo   [ARRET] Le telechargement du modele a echoue. Reessayez :
+        echo             ollama pull qwen2.5:7b-instruct-q4_K_M
+        echo.
+        pause
+        exit /b 1
+    )
+)
+echo         OK - modele present
+
+REM --- 4/6 : .env --------------------------------------------------------------
+echo.
+echo   [4/6] Fichier de configuration (.env)...
 if not exist ".env" (
     copy /y ".env.example" ".env" >NUL
     echo         .env cree a partir du modele.
     echo.
     echo         Le Bloc-notes va s'ouvrir : renseignez au minimum
-    echo           GOOGLE_API_KEY, GOOGLE_SHEET_ID, GOOGLE_SHEET_TAB
+    echo           GOOGLE_SHEETS_API_KEY, GOOGLE_SHEET_ID, GOOGLE_SHEET_TAB
+    echo         ^(cle API en LECTURE SEULE - voir Documentation\OBTENIR_LES_ACCES.md^)
     echo         puis ENREGISTREZ ^(Ctrl+S^) et fermez le Bloc-notes.
     echo.
     pause
     notepad ".env"
     echo.
     echo   Appuyez sur une touche une fois .env enregistre et ferme.
-    pause
-) else (
-    echo         OK - deja present
-)
-
-REM --- 4/6 : credentials\google_service_account.json ---------------------------
-echo.
-echo   [4/6] Compte de service Google...
-if not exist "credentials" mkdir "credentials"
-if not exist "credentials\google_service_account.json" (
-    echo         Fichier absent.
-    echo.
-    echo         Le dossier va s'ouvrir : deposez-y le fichier JSON du compte
-    echo         de service Google, renomme EXACTEMENT :
-    echo           google_service_account.json
-    echo.
-    pause
-    start "" "credentials"
-    echo.
-    echo   Appuyez sur une touche une fois le fichier depose.
     pause
 ) else (
     echo         OK - deja present

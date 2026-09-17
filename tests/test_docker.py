@@ -94,6 +94,22 @@ def test_le_backend_distingue_l_adresse_interne_et_l_adresse_publique_de_dac():
     assert env["DAC_DARK_PUBLIC_URL"] == "http://127.0.0.1:8322"
 
 
+def test_le_backend_joint_ollama_sur_l_hote_pas_sur_lui_meme():
+    """Le modèle de chat tourne sur la machine HÔTE, jamais dans un conteneur
+    (voir backend/llm.py). `localhost`/`127.0.0.1` lu depuis .env par le backend
+    désignerait le conteneur lui-même — panne silencieuse : le chat "marcherait"
+    (une requête HTTP part bien) mais ne recevrait jamais de réponse d'Ollama,
+    parce qu'il n'y en a pas dans le conteneur.
+    """
+    env = _compose()["services"]["backend"]["environment"]
+
+    assert env["OLLAMA_HOST"] == "http://host.docker.internal:11434"
+    # extra_hosts : host.docker.internal n'est résolu nativement que sous Docker
+    # Desktop — sans ce garde-fou, la même adresse échouerait silencieusement
+    # sous Docker Engine (Linux), qui ne le fournit pas par défaut.
+    assert "host.docker.internal:host-gateway" in _compose()["services"]["backend"]["extra_hosts"]
+
+
 def test_dac_light_et_dac_dark_ne_recoivent_pas_les_secrets():
     """Ils ne lisent que le fichier DuckDB local — jamais Google Sheets ni
     Gemini. Leur donner accès à .env élargirait sans raison la surface de ce qui
@@ -317,12 +333,15 @@ def test_l_installateur_racine_existe_et_porte_des_fins_de_ligne_windows():
     assert contenu.count(b"\n") == contenu.count(b"\r\n")
 
 
-def test_l_installateur_racine_ne_demande_que_env_et_json():
-    """La promesse faite à l'utilisateur : tout le reste est automatique."""
+def test_l_installateur_racine_ne_demande_que_env():
+    """La promesse faite à l'utilisateur : tout le reste est automatique.
+
+    Lecture seule par clé API (voir backend/data_store.py) : plus de fichier de
+    compte de service à déposer, une seule chose à compléter — .env."""
     contenu = _installer_racine().decode("utf-8")
 
     assert ".env" in contenu
-    assert "google_service_account.json" in contenu
+    assert "google_service_account.json" not in contenu
     assert "notepad" in contenu.lower()
 
 

@@ -12,14 +12,9 @@ par point, avec le geste exact à faire quand ça bloque.
 
     python scripts/verifier_installation.py
 
-Il ne modifie rien, à une exception près, volontaire : il réécrit la cellule A1 de
-la feuille AVEC SA PROPRE VALEUR. C'est le seul moyen de prouver l'accès en
-ÉCRITURE, dont l'application a besoin — elle réinscrit les identifiants manquants et
-les colonnes calculées. Un partage en lecture seule laisserait tout fonctionner
-jusqu'au premier enregistrement, puis échouerait sans que personne comprenne
-pourquoi.
+Ne modifie rien : la lecture du Sheet se fait par une clé API (lecture seule, aucun
+accès en écriture possible avec ce mode d'authentification).
 """
-import json
 import os
 import socket
 import sys
@@ -82,7 +77,7 @@ def verifier_python():
     manquants = []
     for module, paquet in [("fastapi", "fastapi"), ("uvicorn", "uvicorn"),
                            ("pandas", "pandas"), ("duckdb", "duckdb"),
-                           ("gspread", "gspread"), ("google.genai", "google-genai"),
+                           ("requests", "requests"),
                            ("apscheduler", "APScheduler"), ("dotenv", "python-dotenv")]:
         try:
             __import__(module)
@@ -110,10 +105,12 @@ def verifier_env():
     load_dotenv(chemin)
     dire(OK, "Fichier .env présent")
 
-    # GOOGLE_SHEET_ID et la clé du modèle sont indispensables. Les trois variables
-    # d'email ne le sont pas : sans elles l'alerte quotidienne ne part pas, et c'est
+    # GOOGLE_SHEETS_API_KEY et GOOGLE_SHEET_ID sont indispensables. Le modèle
+    # (Ollama, local) n'a pas de clé à renseigner — il est vérifié séparément
+    # (section 5, service + modèle présents). Les trois variables d'email ne le
+    # sont pas non plus : sans elles l'alerte quotidienne ne part pas, et c'est
     # tout — l'application reste pleinement utilisable.
-    for cle, role in [("GOOGLE_API_KEY", "l'interprétation des questions"),
+    for cle, role in [("GOOGLE_SHEETS_API_KEY", "la lecture des données"),
                       ("GOOGLE_SHEET_ID", "la lecture des données")]:
         if not (os.getenv(cle) or "").strip():
             dire(KO, "%s vide" % cle, "requise pour %s" % role,
@@ -132,65 +129,27 @@ def verifier_env():
     return True
 
 
-def verifier_credentials():
-    titre("3. Compte de service Google")
-
-    chemin = RACINE / os.getenv("GOOGLE_SHEETS_CREDENTIALS_PATH",
-                                "credentials/google_service_account.json")
-    if not chemin.exists():
-        dire(KO, "Fichier d'identifiants absent", str(chemin),
-             "Déposer le JSON du compte de service à cet emplacement")
-        return None
-
-    try:
-        infos = json.loads(chemin.read_text(encoding="utf-8"))
-    except (ValueError, OSError) as e:
-        dire(KO, "Fichier d'identifiants illisible", str(e),
-             "Retélécharger le JSON depuis la console Google Cloud")
-        return None
-
-    adresse = infos.get("client_email")
-    if not adresse:
-        dire(KO, "Fichier d'identifiants incomplet", "client_email absent",
-             "Ce n'est pas une clé de compte de service — en générer une")
-        return None
-
-    dire(OK, "Compte de service lu")
-    print("       adresse à qui la feuille doit être partagée (en Éditeur) :")
-    print("       %s" % adresse)
-    return adresse
-
-
 # ---------------------------------------------------------------------------
-# 4. La feuille : lecture, écriture, et FORME des données
+# 3. La feuille : lecture (clé API, aucun compte de service) et FORME des données
 # ---------------------------------------------------------------------------
 
-def verifier_feuille(adresse_service):
-    titre("4. Google Sheet")
-
-    if not adresse_service:
-        dire(KO, "Feuille non vérifiée", "identifiants indisponibles")
-        return
+def verifier_feuille():
+    titre("3. Google Sheet")
 
     try:
         from backend import data_store
-        feuille = data_store._get_worksheet()
+        valeurs = data_store.fetch_sheet_values()
     except Exception as e:
         message = str(e)
-        if "PERMISSION_DENIED" in message or "403" in message:
-            geste = ("Partager la feuille avec %s en tant qu'ÉDITEUR" % adresse_service)
-        elif "404" in message or "not found" in message.lower():
-            geste = "Vérifier GOOGLE_SHEET_ID dans .env (l'identifiant est dans l'URL)"
+        if "403" in message:
+            geste = "Partager la feuille en « Lecteur — toute personne disposant du lien »"
+        elif "404" in message:
+            geste = "Vérifier GOOGLE_SHEET_ID et GOOGLE_SHEET_TAB dans .env"
+        elif "400" in message:
+            geste = "Vérifier GOOGLE_SHEETS_API_KEY (clé invalide ou API Sheets non activée)"
         else:
             geste = "Vérifier GOOGLE_SHEET_ID et GOOGLE_SHEET_TAB dans .env"
         dire(KO, "Feuille inaccessible", message[:160], geste)
-        return
-
-    try:
-        valeurs = feuille.get_all_values()
-    except Exception as e:
-        dire(KO, "Lecture de la feuille en échec", str(e)[:160],
-             "Partager la feuille avec %s" % adresse_service)
         return
 
     if not valeurs:
@@ -199,18 +158,6 @@ def verifier_feuille(adresse_service):
 
     dire(OK, "Lecture", "%d ligne(s), onglet « %s »"
          % (len(valeurs) - 1, os.getenv("GOOGLE_SHEET_TAB", "opportunities")))
-
-    # --- L'écriture, prouvée et non supposée -------------------------------
-    # L'application réinscrit les identifiants manquants et les colonnes calculées.
-    # Un partage en lecture seule laisse tout fonctionner jusqu'au premier
-    # enregistrement — c'est-à-dire jusqu'au premier vrai usage.
-    try:
-        feuille.update_acell("A1", valeurs[0][0])
-        dire(OK, "Écriture", "la feuille est bien partagée en Éditeur")
-    except Exception as e:
-        dire(KO, "Écriture refusée", str(e)[:160],
-             "Repartager la feuille avec %s en ÉDITEUR (et non Lecteur)"
-             % adresse_service)
 
     verifier_colonnes(valeurs[0])
     verifier_valeurs(valeurs)
@@ -262,39 +209,35 @@ def verifier_valeurs(valeurs):
 # ---------------------------------------------------------------------------
 
 def verifier_modele():
-    titre("5. Clé du modèle (Gemini)")
+    titre("4. Modèle local (Ollama)")
 
-    cle = (os.getenv("GOOGLE_API_KEY") or "").strip()
-    if not cle:
-        dire(KO, "Clé absente", "", "Renseigner GOOGLE_API_KEY dans .env")
-        return
+    import requests
+    host = (os.getenv("OLLAMA_HOST") or "http://localhost:11434").rstrip("/")
+    modele = os.getenv("OLLAMA_MODEL") or "qwen2.5:7b-instruct-q4_K_M"
 
     try:
-        # La bibliotheque imprime un avertissement sur l'appel de fonctions
-        # automatique, sans rapport avec ce qu'on verifie. Sur un ecran
-        # d'installation, un pave rouge qui ne concerne pas l'utilisateur lui fait
-        # croire a une panne.
-        import logging
-        logging.getLogger("google_genai").setLevel(logging.ERROR)
-        logging.getLogger("google_genai.models").setLevel(logging.ERROR)
-
-        from google import genai
-        client = genai.Client(api_key=cle)
-        # La question la plus courte possible : on vérifie que la clé est acceptée,
-        # pas la qualité du modèle. Inutile de dépenser du quota pour ça.
-        client.models.generate_content(model="gemini-flash-lite-latest", contents="ok")
-        dire(OK, "Clé acceptée par l'API")
+        reponse = requests.get(f"{host}/api/tags", timeout=5)
+        reponse.raise_for_status()
+    except requests.exceptions.ConnectionError:
+        dire(KO, "Ollama injoignable", host,
+             "Démarrer Ollama (`ollama serve`, ou l'application Ollama)")
+        return
     except Exception as e:
-        message = str(e)
-        if "API_KEY_INVALID" in message or "API key not valid" in message:
-            geste = "La clé est refusée — en générer une sur aistudio.google.com"
-        elif "quota" in message.lower() or "429" in message:
-            geste = "Quota atteint pour aujourd'hui — la clé est valide, réessayer plus tard"
-            dire(AVERTIR, "Quota du modèle atteint", message[:120], geste)
-            return
-        else:
-            geste = "Vérifier la connexion réseau et la clé"
-        dire(KO, "Clé refusée", message[:160], geste)
+        dire(KO, "Ollama injoignable", str(e)[:160],
+             "Vérifier OLLAMA_HOST dans .env et que le service tourne")
+        return
+
+    dire(OK, "Service Ollama joignable", host)
+
+    noms = {m.get("name", "") for m in reponse.json().get("models", [])}
+    # Le tag peut être présent sans son suffixe de quantification (ex: pull d'un
+    # tag legerement different) — on accepte un préfixe correspondant plutôt que de
+    # forcer une correspondance caractère pour caractère sur la quantification exacte.
+    if any(n == modele or n.startswith(modele.split(":")[0] + ":") for n in noms):
+        dire(OK, "Modèle « %s » présent" % modele)
+    else:
+        dire(KO, "Modèle « %s » absent" % modele, "",
+             "Exécuter : ollama pull %s" % modele)
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +272,7 @@ def verifier_dac():
     c'est donc lui qui décide du verdict. La présence locale des binaires reste
     vérifiée, mais seulement à titre indicatif.
     """
-    titre("6. Moteur de tableaux de bord (Bruin DAC)")
+    titre("5. Moteur de tableaux de bord (Bruin DAC)")
 
     dossier = Path(os.environ.get("USERPROFILE", Path.home())) / ".local" / "bin"
     binaires_locaux = all((dossier / b).exists() for b in ("dac.exe", "bruin.exe"))
@@ -369,7 +312,7 @@ def verifier_dac():
 
 
 def verifier_frontend():
-    titre("7. Interface compilée")
+    titre("6. Interface compilée")
 
     index = RACINE / "frontend" / "dist" / "index.html"
     if index.exists():
@@ -396,9 +339,8 @@ def main():
 
     verifier_python()
     env_ok = verifier_env()
-    adresse = verifier_credentials() if env_ok else None
     if env_ok:
-        verifier_feuille(adresse)
+        verifier_feuille()
         verifier_modele()
     verifier_dac()
     verifier_frontend()

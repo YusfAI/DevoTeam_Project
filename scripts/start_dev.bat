@@ -32,7 +32,7 @@ REM plantait plusieurs couches plus bas (le processus de rechargement
 REM d'uvicorn) avec une trace Python confuse — "ModuleNotFoundError:
 REM apscheduler" loin de sa cause reelle. Autant le dire ici, tout de suite,
 REM en une ligne claire.
-"%PY%" -c "import fastapi, uvicorn, pandas, duckdb, gspread, apscheduler, dotenv" >NUL 2>&1
+"%PY%" -c "import fastapi, uvicorn, pandas, duckdb, requests, apscheduler, dotenv" >NUL 2>&1
 if errorlevel 1 (
     echo.
     echo   [ARRET] Des dependances Python manquent pour :

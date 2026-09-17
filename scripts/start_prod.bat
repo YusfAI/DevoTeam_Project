@@ -44,7 +44,7 @@ if exist "%PROJECT_ROOT%\.venv\Scripts\python.exe" (
 REM Verifie que l'interpreteur choisi a bien les dependances du projet, AVANT
 REM de lancer quoi que ce soit — plutot qu'une trace Python confuse plusieurs
 REM couches plus bas quand l'une d'elles manque.
-"%PY%" -c "import fastapi, uvicorn, pandas, duckdb, gspread, apscheduler, dotenv" >NUL 2>&1
+"%PY%" -c "import fastapi, uvicorn, pandas, duckdb, requests, apscheduler, dotenv" >NUL 2>&1
 if errorlevel 1 (
     echo.
     echo   [ARRET] Des dependances Python manquent pour :

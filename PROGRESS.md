@@ -49,6 +49,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 42 — Déploiement Docker : trois services, un seul montage du dépôt, le pilote DuckDB préinstallé à la construction
 - [x] Phase 43 — Les intitulés d'une vraie feuille métier française reconnus sans renommage, et plusieurs destinataires pour l'alerte email
 - [x] Phase 44 — Un installateur en un clic : Docker vérifié, construit, démarré, vérifié — sans Python local
+- [x] Phase 45 — Migration Google Gemini → LLM local (Ollama), et Google Sheets lu par simple clé API au lieu d'un compte de service
 
 ## 📝 Journaux
 
@@ -485,6 +486,60 @@ racine, désormais recommandé.
 Trois exécutions réelles et complètes de `INSTALLER.bat`, la dernière propre :
 15 contrôles sur 15, « TOUT EST JUSTE ». 606 tests.
 
+**Phase 45** : Terminée. Deux dépendances externes retirées, chacune pour la
+même raison — ne plus demander à l'entreprise de fournir une clé ou un
+identifiant qu'elle n'est pas à l'aise de partager.
+
+*LLM : Google Gemini → Ollama local.* `backend/llm.py` appelle désormais un
+serveur Ollama local (`qwen2.5:7b-instruct-q4_K_M`, HTTP sur
+`localhost:11434`) au lieu de l'API Gemini — plus de clé API, plus de quota,
+plus d'appel réseau externe pour interpréter une question. Le point d'entrée
+(`client.models.generate_content(model=, contents=, config=)`) est resté
+identique à celui du SDK `google-genai` qu'il remplace, ce qui a permis de ne
+toucher AUCUN des douze tests qui le simulaient (`tests/test_llm_validation.py`)
+— seule l'implémentation change, jamais le contrat. Qwen2.5-Instruct a été
+choisi parmi les modèles ouverts pour sa fiabilité sur du JSON à schéma strict,
+seule qualité qui compte ici : c'est la validation Pydantic + la liste blanche
+qui garantissent l'exactitude, pas la taille du modèle. Vérifié en conditions
+réelles sur ce poste (CPU + GPU 8 Go) : une question de comparaison
+(« compare le budget entre la France et le Maroc ») a produit exactement le
+même filtre à valeurs multiples que Gemini aurait produit.
+
+*Google Sheets : compte de service → clé API en lecture seule.*
+`backend/data_store.py` lit désormais le Sheet via l'API Sheets v4 REST
+(`GOOGLE_SHEETS_API_KEY`) au lieu de `gspread` + un fichier JSON de compte de
+service. Plus aucun fichier à télécharger, renommer ou déposer — juste une clé
+API et un partage Google standard (« Lecteur, toute personne disposant du
+lien »). Contrepartie assumée, pas un défaut découvert après coup : une clé
+API ne permettant jamais l'écriture, l'application n'écrit plus l'id des
+nouvelles lignes ni les colonnes calculées dans le Sheet — ces colonnes
+restent affichées dans les tableaux de bord, simplement jamais renvoyées vers
+Google. L'id d'une ligne sans identifiant reste stable d'un chargement à
+l'autre uniquement si le Sheet porte sa propre colonne "id" ou si l'ordre des
+lignes ne change pas.
+
+*Une panne trouvée en testant sans données réelles.* Un Sheet sans la moindre
+ligne (le temps de renseigner la clé API) laisse la colonne `deadline`
+totalement vide : DuckDB, qui devine le type d'une colonne pandas depuis ses
+valeurs, n'a alors rien à examiner et retombe sur INTEGER au lieu de DATE.
+Chaque dashboard comparant une échéance à la date du jour échouait avec
+`Binder Error: Cannot compare values of type INTEGER and type DATE` — la même
+panne qu'un garde-fou de la Phase 43 couvrait déjà pour une colonne
+entièrement à None, mais pas pour un DataFrame de zéro ligne. Corrigé dans
+`backend/duckdb_export.py` par un `ALTER TABLE ... TYPE DATE` explicite après
+la création de la table, qui ne dépend d'aucune inférence — contrairement au
+`pd.to_datetime(...).dt.date` existant, qui ne peut rien garantir sur une
+colonne sans la moindre valeur à convertir.
+
+Les installateurs (`scripts/install.bat`, `setup/assistant.ps1`,
+`INSTALLER.bat`) vérifient et installent désormais Ollama et son modèle
+automatiquement, au même titre que le moteur de tableaux de bord ; plus aucun
+des deux ne demande de sélectionner un fichier JSON. 569 tests passent sans
+clé API réelle (mockée) ; neuf tests qui comparent les DEUX moteurs de requête
+sur les VRAIES données du Sheet ont besoin d'une clé `GOOGLE_SHEETS_API_KEY`
+réelle dans `.env` pour s'exécuter, comme c'était déjà le cas avec l'ancien
+compte de service.
+
 ## 📊 Bilan du Produit
 
 L'application est **complète et fonctionnelle, exécutable de bout-en-bout**, hébergée localement, **sans aucune base de données à installer**. En développement, trois processus : `uvicorn backend.main:app --reload` (API), `dac serve --dir . --port 8321` dans `dac/` (dashboards), et `npm run dev` dans `frontend/` (UI) — `scripts/start_dev.bat` les lance d'un coup sous Windows. Pour déployer sur un autre poste, deux méthodes au choix : `INSTALLER.bat` (Docker, recommandé — un seul clic, aucun Python/Node à poser sur la machine) ou `setup\INSTALLER_NATIF.bat` (installation directe, si Docker n'est pas envisageable). Voir `README.md` pour le détail.
@@ -505,5 +560,5 @@ L'application est **complète et fonctionnelle, exécutable de bout-en-bout**, h
 - **Épingler une analyse** : les instantanés sont conservés (12 derniers) et rouvrables depuis la liste, mais ils tournent. Permettre d'en épingler un — le renommer et le versionner dans git — ferait du chat un vrai atelier de création « as code ».
 - **Couche sémantique DAC** : DAC permet de définir métriques et dimensions une seule fois dans `semantic/` et de les réutiliser dans tous les widgets — remplacerait avantageusement la génération SQL widget par widget de `sql_builder.py`.
 - **Session ID Tracking** : ajouter un `session_id` au journal des requêtes pour faire du vrai product-analytics sur le comportement des utilisateurs.
-- **Mode JSON Schema strict** : non supporté par Groq/`llama-3.3-70b-versatile` (testé en Phase 9). Fonctionne nativement avec Claude (validé en Phase 10) et avec Gemini (vérifié empiriquement en Phase 18 — `Literal`/`Union`/listes d'objets imbriqués tous supportés, un seul vrai piège : un enum ne peut pas contenir la chaîne vide `""`, il faut une valeur sentinelle) — le fournisseur actuel (Gemini) le permettrait donc, mais la Phase 18 a délibérément gardé l'architecture JSON libre + réparation heuristique pour limiter le risque d'une migration faite dans l'urgence. Le filet de sécurité actuel (Pydantic + whitelist + `IntentUnclear`) reste suffisant en attendant une passe dédiée.
+- **Mode JSON Schema strict** : non supporté par Groq/`llama-3.3-70b-versatile` (testé en Phase 9). Fonctionne nativement avec Claude (validé en Phase 10) et avec Gemini (vérifié empiriquement en Phase 18 — `Literal`/`Union`/listes d'objets imbriqués tous supportés, un seul vrai piège : un enum ne peut pas contenir la chaîne vide `""`, il faut une valeur sentinelle). Ollama (Phase 45, fournisseur actuel) le permet aussi (`format` accepte un JSON Schema, pas seulement `"json"`), mais chaque migration de fournisseur a jusqu'ici délibérément gardé l'architecture JSON libre + réparation heuristique pour limiter le risque d'un changement fait sous pression. Le filet de sécurité actuel (Pydantic + whitelist + `IntentUnclear`) reste suffisant en attendant une passe dédiée.
 - **Barres empilées/groupées (2 dimensions)** : ex. « budget par pays, décomposé par statut ». Chart type envisagé en Phase 14 mais pas construit — nécessiterait un champ `group_by` dans le schéma d'intention, plus gros chantier que les 4 types livrés (qui réutilisent tous la dimension unique existante).

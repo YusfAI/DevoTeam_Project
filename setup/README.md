@@ -11,17 +11,18 @@ pas deviner.
 
 ## Ce qu'il vous demande
 
-Six informations, posées une par une, puis un fichier à sélectionner.
+Six informations, posées une par une. Aucun fichier à sélectionner : ni compte de
+service Google, ni JSON à déposer — la lecture du Sheet se fait par une simple clé
+API, et le modèle de chat (Ollama) est vérifié et installé automatiquement.
 
 | # | Information | Où la trouver | |
 |---|---|---|---|
-| 1 | Clé Gemini | [aistudio.google.com](https://aistudio.google.com) → *Get API key* | obligatoire |
+| 1 | Clé API Google Sheets | console.cloud.google.com → APIs et services → Identifiants → Créer une clé API (activer "Google Sheets API" sur le projet) | obligatoire |
 | 2 | Lien de la feuille Google | Copiez l'URL entière depuis le navigateur — l'identifiant en est extrait | obligatoire |
 | 3 | Nom de l'onglet | Celui qui contient les opportunités (`opportunities` par défaut) | obligatoire |
 | 4 | Adresse expéditrice des alertes | Le compte Gmail qui **envoie** le rappel quotidien | facultatif |
 | 5 | Mot de passe d'application Gmail | [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) — 16 caractères | facultatif |
 | 6 | Adresse destinataire des alertes | Qui **reçoit** le rappel — plusieurs adresses possibles, séparées par une virgule | facultatif |
-| — | Fichier JSON du compte de service | Une fenêtre de sélection s'ouvre ; le fichier est copié et renommé | obligatoire |
 
 Les questions 4 à 6 ne concernent que le rappel par email. Entrée à la question 4
 les désactive toutes les trois — l'application fonctionne intégralement sans elles.
@@ -38,11 +39,11 @@ saisie.
 
 - Vérifie Python et Node, et dit précisément quoi installer s'ils manquent
 - **Installe le moteur de tableaux de bord** (bruin + dac) via Git Bash
+- **Vérifie/installe Ollama et télécharge le modèle de chat** (`qwen2.5:7b-instruct-q4_K_M`)
 - Crée l'environnement Python isolé et installe les dépendances aux versions épinglées
 - Compile l'interface
 - Écrit le `.env` en conservant ses commentaires
-- Copie et renomme le fichier d'identifiants
-- **Affiche l'adresse à qui partager la feuille, puis attend** que ce soit fait —
+- **Affiche le geste de partage attendu, puis attend** que ce soit fait —
   en revérifiant à chaque fois que vous le lui dites
 - Crée les raccourcis du Bureau
 - Lance le diagnostic complet et affiche le verdict
@@ -50,15 +51,15 @@ saisie.
 ## Trois choses qu'il fait bien
 
 **Il attend le partage au lieu d'échouer dessus.** Partager la feuille est un geste
-qui se fait ailleurs, dans l'interface de Google. L'assistant affiche l'adresse
-exacte, vous laisse le temps, et revérifie — jusqu'à dix fois. Il teste la lecture
-**et l'écriture** : un partage en Lecteur laisse tout fonctionner jusqu'au premier
-enregistrement, puis échoue sans rien expliquer.
+qui se fait ailleurs, dans l'interface de Google. L'assistant explique le geste
+exact — partager en **Lecteur, à toute personne disposant du lien** — vous laisse le
+temps, et revérifie — jusqu'à dix fois. Une clé API ne permettant jamais l'écriture,
+il n'y a rien de plus à prouver une fois la lecture confirmée.
 
-**Aucun secret ne s'affiche.** La clé et le mot de passe se saisissent en aveugle et
-ne sont écrits que dans `.env`, exclu du dépôt Git. Les espaces des mots de passe
-d'application Gmail — que Google affiche en quatre groupes de quatre — sont retirés
-automatiquement : collés tels quels, ils font échouer l'authentification.
+**Aucun secret ne s'affiche.** La clé API et le mot de passe se saisissent en
+aveugle et ne sont écrits que dans `.env`, exclu du dépôt Git. Les espaces des mots
+de passe d'application Gmail — que Google affiche en quatre groupes de quatre — sont
+retirés automatiquement : collés tels quels, ils font échouer l'authentification.
 
 **Il est rejouable.** Relancez-le après avoir corrigé quelque chose : les valeurs
 déjà saisies sont proposées par défaut, l'environnement existant est réutilisé, et
@@ -98,7 +99,7 @@ Tant qu'il n'affiche pas **« TOUT EST JUSTE »**, ne présentez pas l'applicati
 |---|---|
 | `INSTALLER_NATIF.bat` | Le fichier à double-cliquer |
 | `assistant.ps1` | L'assistant lui-même |
-| `sonde_feuille.py` | Teste l'accès à la feuille en lecture **et** en écriture |
+| `sonde_feuille.py` | Teste l'accès à la feuille en lecture (clé API, lecture seule) |
 
 L'assistant ne réimplémente rien : il enchaîne `scripts\install.bat` et
 `scripts\verifier_installation.py`. Deux chemins d'installation qui feraient la même
