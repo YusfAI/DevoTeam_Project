@@ -11,19 +11,22 @@ REM s'installent tout seuls si absents (winget), sans autre logiciel a poser
 REM a la main au prealable. Seul git (pour recuperer le depot avant de lancer
 REM ce fichier) reste un prerequis manuel.
 REM
-REM Ne demande qu'une chose qu'il ne peut pas deviner a votre place : le
-REM fichier .env (cle API Google Sheets en LECTURE SEULE, feuille Google —
-REM aucun compte de service, aucun fichier JSON a deposer). Tout le reste —
-REM Docker, Ollama, construction, demarrage, raccourci Bureau, verification
-REM finale — est automatique.
+REM Ne demande que ce qu'il ne peut pas deviner a votre place : la cle API
+REM Google Sheets (LECTURE SEULE, aucun compte de service, aucun fichier JSON
+REM a deposer), l'identifiant de la feuille et son onglet — trois questions
+REM posees directement en console (etape 4/6). Tout le reste — Docker, Ollama,
+REM construction, demarrage, raccourci Bureau, verification finale — est
+REM automatique.
 REM
 REM Rejouable sans risque : chaque etape verifie d'abord si elle est deja
-REM faite. Le relancer apres avoir complete .env (ou apres avoir installe
+REM faite. Le relancer apres avoir renseigne .env (ou apres avoir installe
 REM Docker/redemarre Windows) reprend exactement la ou ca s'etait arrete,
 REM sans rien refaire ni rien perdre.
 REM
-REM Ne demande AUCUN secret au clavier : .env s'ouvre dans le Bloc-notes, une
-REM cle tapee dans une console resterait dans son historique.
+REM La cle API saisie a l'etape 4/6 reste visible dans l'historique de CETTE
+REM fenetre jusqu'a sa fermeture — compromis assume au profit de la rapidite :
+REM la cle est de toute facon restreinte en LECTURE SEULE, sans acces a rien
+REM d'autre que le Sheet deja partage publiquement par lien.
 REM
 REM Le modele de chat (Ollama) tourne sur la machine HOTE, pas dans un
 REM conteneur (etape 3/6 ci-dessous) — docker-compose.yml route le backend
@@ -37,9 +40,11 @@ echo   ============================================================
 echo     DevoTeam Dashboard - Installation
 echo   ============================================================
 echo.
-echo   Ce script installe tout automatiquement. Il ne vous demandera
-echo   qu'une chose a completer vous-meme :
-echo     - le fichier .env      (cle API Google Sheets, feuille Google)
+echo   Ce script installe tout automatiquement. Il vous demandera juste
+echo   trois valeurs, en console :
+echo     - la cle API Google Sheets ^(lecture seule^)
+echo     - l'identifiant de la feuille
+echo     - le nom de l'onglet
 echo   Aucun fichier de compte de service, aucun JSON a deposer.
 echo.
 echo   Liens et etapes detaillees pour les obtenir :
@@ -139,25 +144,77 @@ if errorlevel 1 (
 echo         OK - modele present
 
 REM --- 4/6 : .env --------------------------------------------------------------
+REM Trois valeurs demandees ICI, en console (set /p) plutot que par le
+REM Bloc-notes : plus rapide, un seul enchainement de questions. La cle API
+REM saisie ainsi reste visible dans l'historique de CETTE fenetre jusqu'a sa
+REM fermeture -- compromis assume au profit de la rapidite, la cle etant de
+REM toute facon restreinte en LECTURE SEULE (voir Documentation\OBTENIR_LES_ACCES.md).
 echo.
-echo   [4/6] Fichier de configuration (.env)...
+echo   [4/6] Configuration (feuille Google)...
 if not exist ".env" (
     copy /y ".env.example" ".env" >NUL
     echo         .env cree a partir du modele.
-    echo.
-    echo         Le Bloc-notes va s'ouvrir : renseignez au minimum
-    echo           GOOGLE_SHEETS_API_KEY, GOOGLE_SHEET_ID, GOOGLE_SHEET_TAB
-    echo         ^(cle API en LECTURE SEULE - voir Documentation\OBTENIR_LES_ACCES.md^)
-    echo         puis ENREGISTREZ ^(Ctrl+S^) et fermez le Bloc-notes.
-    echo.
-    pause
-    notepad ".env"
-    echo.
-    echo   Appuyez sur une touche une fois .env enregistre et ferme.
-    pause
-) else (
-    echo         OK - deja present
 )
+
+set "CUR_KEY="
+set "CUR_ID="
+set "CUR_TAB="
+for /f "usebackq tokens=1,* delims==" %%a in (".env") do (
+    if "%%a"=="GOOGLE_SHEETS_API_KEY" set "CUR_KEY=%%b"
+    if "%%a"=="GOOGLE_SHEET_ID" set "CUR_ID=%%b"
+    if "%%a"=="GOOGLE_SHEET_TAB" set "CUR_TAB=%%b"
+)
+
+echo.
+echo         Trois valeurs necessaires ^(Entree conserve la valeur actuelle^) :
+echo.
+if defined CUR_KEY (
+    set /p "GOOGLE_SHEETS_API_KEY=  Cle API Google Sheets [deja renseignee] : "
+) else (
+    set /p "GOOGLE_SHEETS_API_KEY=  Cle API Google Sheets ^(lecture seule^) : "
+)
+if not defined GOOGLE_SHEETS_API_KEY set "GOOGLE_SHEETS_API_KEY=%CUR_KEY%"
+
+set /p "GOOGLE_SHEET_ID=  Identifiant de la feuille [%CUR_ID%] : "
+if not defined GOOGLE_SHEET_ID set "GOOGLE_SHEET_ID=%CUR_ID%"
+
+set "DEFAUT_TAB=%CUR_TAB%"
+if "%DEFAUT_TAB%"=="" set "DEFAUT_TAB=opportunities"
+set /p "GOOGLE_SHEET_TAB=  Nom de l'onglet [%DEFAUT_TAB%] : "
+if not defined GOOGLE_SHEET_TAB set "GOOGLE_SHEET_TAB=%DEFAUT_TAB%"
+
+if "%GOOGLE_SHEETS_API_KEY%"=="" (
+    echo.
+    echo   [ARRET] La cle API Google Sheets est obligatoire.
+    echo           Voir Documentation\OBTENIR_LES_ACCES.md pour l'obtenir,
+    echo           puis relancez ce fichier.
+    echo.
+    pause
+    exit /b 1
+)
+if "%GOOGLE_SHEET_ID%"=="" (
+    echo.
+    echo   [ARRET] L'identifiant de la feuille est obligatoire.
+    echo.
+    pause
+    exit /b 1
+)
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\maj_env.ps1"
+if errorlevel 1 (
+    echo.
+    echo   [ARRET] Echec de l'ecriture dans .env.
+    echo.
+    pause
+    exit /b 1
+)
+echo.
+echo         OK - .env mis a jour
+echo.
+echo         Facultatif ^(rappel quotidien des echeances par email^) : ouvrez
+echo         .env vous-meme pour renseigner GMAIL_SENDER / GMAIL_APP_PASSWORD /
+echo         ALERT_RECIPIENT_EMAIL. Sans elles, l'application fonctionne
+echo         integralement, seul ce rappel ne part pas.
 
 REM --- 5/6 : construction et demarrage ------------------------------------------
 echo.

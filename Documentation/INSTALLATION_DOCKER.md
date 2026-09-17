@@ -18,12 +18,17 @@ Après avoir récupéré le projet (étape 2 ci-dessous), **double-cliquer sur
 `INSTALLER.bat`, à la racine** : c'est tout, il installe même Docker Desktop et
 Ollama tout seul (via `winget`) s'ils manquent — vérifie/installe **Docker
 Desktop**, vérifie/installe **Ollama** (le modèle de chat, qui tourne sur la
-machine hôte — voir plus bas) et télécharge son modèle, ouvre le Bloc-notes sur
-`.env` le temps que vous le complétiez, construit l'image, démarre les trois
-services, crée le raccourci du Bureau, puis **exécute
-`scripts/test_fonctionnel.py` directement à l'intérieur du conteneur** — la
-preuve que les chiffres affichés sont justes, sans qu'aucun Python ne soit
-installé sur ce poste.
+machine hôte — voir plus bas) et télécharge son modèle, **demande en console**
+(pas de Bloc-notes) la clé API Google Sheets, l'identifiant de la feuille et son
+onglet, construit l'image, démarre les trois services, crée le raccourci du
+Bureau, puis **exécute `scripts/test_fonctionnel.py` directement à l'intérieur
+du conteneur** — la preuve que les chiffres affichés sont justes, sans qu'aucun
+Python ne soit installé sur ce poste.
+
+> La clé API saisie à la console reste visible dans l'historique de cette
+> fenêtre jusqu'à sa fermeture — compromis assumé pour la rapidité (un seul
+> enchaînement de questions plutôt qu'un aller-retour par le Bloc-notes), la
+> clé étant de toute façon restreinte en lecture seule.
 
 > Seule exception qui reste manuelle : si Windows demande un **redémarrage**
 > pour activer WSL2 (nécessaire à Docker), il faut le faire, puis lancer Docker
