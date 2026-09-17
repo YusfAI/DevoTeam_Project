@@ -355,6 +355,23 @@ def test_l_installateur_racine_verifie_docker_avant_tout():
     assert "docker info" in contenu
 
 
+def test_l_installateur_racine_installe_docker_desktop_tout_seul():
+    """« Tout le reste est automatique » doit couvrir Docker Desktop lui-même,
+    pas seulement le modèle de chat : sans ça, un poste sans Docker préinstallé
+    retombait sur un simple lien à suivre à la main avant de pouvoir continuer."""
+    contenu = _installer_racine().decode("utf-8")
+
+    assert "winget install --id Docker.DockerDesktop" in contenu
+    assert "where winget" in contenu  # repli explicite si winget est absent
+
+
+def test_l_installateur_racine_installe_ollama_et_son_modele():
+    contenu = _installer_racine().decode("utf-8")
+
+    assert "where ollama" in contenu
+    assert "ollama pull qwen2.5:7b-instruct-q4_K_M" in contenu
+
+
 def test_l_installateur_racine_construit_puis_demarre():
     contenu = _installer_racine().decode("utf-8")
 

@@ -14,15 +14,22 @@ Compter 5 à 10 minutes la première fois (téléchargement des images).
 
 ## En un clic : `INSTALLER.bat`
 
-Après avoir installé Docker Desktop (étape 1 ci-dessous) et récupéré le projet
-(étape 2), **double-cliquer sur `INSTALLER.bat`, à la racine**, fait tout le
-reste : vérifie que Docker est bien démarré, vérifie/installe **Ollama** (le
-modèle de chat, qui tourne sur la machine hôte — voir plus bas) et télécharge
-son modèle, ouvre le Bloc-notes sur `.env` le temps que vous le complétiez,
-construit l'image, démarre les trois services, crée le raccourci du Bureau,
-puis **exécute `scripts/test_fonctionnel.py` directement à l'intérieur du
-conteneur** — la preuve que les chiffres affichés sont justes, sans qu'aucun
-Python ne soit installé sur ce poste.
+Après avoir récupéré le projet (étape 2 ci-dessous), **double-cliquer sur
+`INSTALLER.bat`, à la racine** : c'est tout, il installe même Docker Desktop et
+Ollama tout seul (via `winget`) s'ils manquent — vérifie/installe **Docker
+Desktop**, vérifie/installe **Ollama** (le modèle de chat, qui tourne sur la
+machine hôte — voir plus bas) et télécharge son modèle, ouvre le Bloc-notes sur
+`.env` le temps que vous le complétiez, construit l'image, démarre les trois
+services, crée le raccourci du Bureau, puis **exécute
+`scripts/test_fonctionnel.py` directement à l'intérieur du conteneur** — la
+preuve que les chiffres affichés sont justes, sans qu'aucun Python ne soit
+installé sur ce poste.
+
+> Seule exception qui reste manuelle : si Windows demande un **redémarrage**
+> pour activer WSL2 (nécessaire à Docker), il faut le faire, puis lancer Docker
+> Desktop une première fois depuis le menu Démarrer (accepter les conditions
+> d'utilisation) avant de relancer `INSTALLER.bat`. Il reprend alors exactement
+> là où il s'était arrêté.
 
 Testé de bout en bout sur ce dépôt : trois exécutions réelles, la dernière
 propre — 15 contrôles sur 15, « TOUT EST JUSTE ».
@@ -45,19 +52,27 @@ détaillée avec les liens exacts : [`OBTENIR_LES_ACCES.md`](OBTENIR_LES_ACCES.m
    de calcul **partagée en Lecteur, à « toute personne disposant du lien »**.
    Aucun compte de service, aucun fichier JSON à déposer.
 2. **L'identifiant de la feuille** et le **nom de son onglet**.
-3. **Ollama** — rien à préparer à l'avance : `INSTALLER.bat` le vérifie et
-   l'installe automatiquement (voir « Le modèle de chat » plus bas).
+3. **Docker Desktop** et **Ollama** — rien à préparer à l'avance : `INSTALLER.bat`
+   installe les deux automatiquement s'ils manquent (voir l'étape 1 et « Le
+   modèle de chat » plus bas).
 
 Voir `Documentation/INSTALLATION.md`, section « Avant le jour de l'installation »,
-pour le détail de chaque point.
+pour le détail des autres points.
 
-## Étape 1 — Installer Docker Desktop
+## Étape 1 — Docker Desktop
+
+`INSTALLER.bat` l'installe automatiquement (via `winget`) s'il n'est pas déjà
+présent — rien à faire à l'avance dans la plupart des cas. Pour l'installer
+vous-même avant de lancer le script (ou si `winget` n'est pas disponible sur ce
+poste) :
 
 [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
 
 Au premier lancement, Docker Desktop demande d'activer WSL2 (Windows Subsystem for
 Linux) si ce n'est pas déjà fait — suivre les instructions à l'écran, un
-redémarrage peut être nécessaire.
+redémarrage peut être nécessaire. `INSTALLER.bat` le rappelle si l'installation
+automatique vient de se terminer : redémarrer si demandé, lancer Docker Desktop
+une première fois depuis le menu Démarrer, puis relancer le script.
 
 > Docker Desktop est gratuit pour un usage personnel ou dans une petite
 > entreprise ; au-delà d'un certain effectif, Docker facture un abonnement. À

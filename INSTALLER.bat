@@ -6,24 +6,28 @@ chcp 65001 >NUL
 
 REM ===========================================================================
 REM LE fichier a double-cliquer sur un poste neuf pour installer l'application
-REM via Docker, de bout en bout.
+REM via Docker, de bout en bout — Docker Desktop et Ollama compris : les deux
+REM s'installent tout seuls si absents (winget), sans autre logiciel a poser
+REM a la main au prealable. Seul git (pour recuperer le depot avant de lancer
+REM ce fichier) reste un prerequis manuel.
 REM
 REM Ne demande qu'une chose qu'il ne peut pas deviner a votre place : le
 REM fichier .env (cle API Google Sheets en LECTURE SEULE, feuille Google —
 REM aucun compte de service, aucun fichier JSON a deposer). Tout le reste —
-REM verification de Docker, construction, demarrage, raccourci Bureau,
-REM verification finale — est automatique.
+REM Docker, Ollama, construction, demarrage, raccourci Bureau, verification
+REM finale — est automatique.
 REM
 REM Rejouable sans risque : chaque etape verifie d'abord si elle est deja
-REM faite. Le relancer apres avoir complete .env reprend exactement la ou
-REM ca s'etait arrete, sans rien refaire ni rien perdre.
+REM faite. Le relancer apres avoir complete .env (ou apres avoir installe
+REM Docker/redemarre Windows) reprend exactement la ou ca s'etait arrete,
+REM sans rien refaire ni rien perdre.
 REM
 REM Ne demande AUCUN secret au clavier : .env s'ouvre dans le Bloc-notes, une
 REM cle tapee dans une console resterait dans son historique.
 REM
 REM Le modele de chat (Ollama) tourne sur la machine HOTE, pas dans un
-REM conteneur : installez-le separement (https://ollama.com/download) et
-REM laissez-le demarre avant d'utiliser le chat.
+REM conteneur (etape 3/6 ci-dessous) — docker-compose.yml route le backend
+REM vers lui via host.docker.internal.
 REM ===========================================================================
 
 cd /d "%~dp0"
@@ -48,10 +52,26 @@ echo.
 echo   [1/6] Verification de Docker...
 where docker >NUL 2>&1
 if errorlevel 1 (
+    echo         MANQUANT. Installation automatique via winget...
+    where winget >NUL 2>&1
+    if errorlevel 1 (
+        echo.
+        echo   [ARRET] winget indisponible sur ce poste ^(Windows trop ancien^).
+        echo           Installez Docker Desktop manuellement, puis relancez :
+        echo           https://www.docker.com/products/docker-desktop/
+        echo.
+        pause
+        exit /b 1
+    )
+    winget install --id Docker.DockerDesktop -e --silent --accept-package-agreements --accept-source-agreements
     echo.
-    echo   [ARRET] Docker n'est pas installe sur ce poste.
-    echo           Installez Docker Desktop, puis relancez ce fichier :
-    echo           https://www.docker.com/products/docker-desktop/
+    echo   Docker Desktop installe. Une derniere etape MANUELLE, obligatoire :
+    echo     1. Windows demande peut-etre a REDEMARRER ^(activation de WSL2^) —
+    echo        faites-le si c'est le cas.
+    echo     2. Lancez « Docker Desktop » depuis le menu Demarrer une premiere
+    echo        fois ^(accepter les conditions d'utilisation^).
+    echo     3. Relancez ce fichier — il reprendra exactement ici, sans rien
+    echo        refaire de ce qui precede.
     echo.
     pause
     exit /b 1

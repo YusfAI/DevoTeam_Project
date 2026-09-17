@@ -218,10 +218,13 @@ Fiche avec les liens exacts pour obtenir ces éléments :
 `Documentation/OBTENIR_LES_ACCES.md`.
 
 Logiciel à installer, selon la méthode :
-- **Installation Docker (recommandée)** : uniquement
-  [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+- **Installation Docker (recommandée)** : rien à poser à l'avance —
+  `INSTALLER.bat` installe [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+  lui-même (via `winget`) s'il manque.
 - **Installation native** : Python 3.11+, Node.js 18+ / npm, et le moteur de
   tableaux de bord (voir `Documentation/INSTALLATION.md`).
+
+Les deux méthodes installent aussi Ollama (modèle de chat local) automatiquement.
 
 ## Installation
 
