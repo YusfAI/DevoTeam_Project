@@ -4,13 +4,14 @@ lue en direct, mise en cache, rafraîchie périodiquement. Le reste de l'applica
 (chat, graphiques, alertes) lit exclusivement via get_dataframe(), jamais le Sheet
 directement.
 
-Lecture SEULE, via une clé API Google Sheets (aucun fichier de compte de service,
-aucun OAuth) : le Sheet doit être partagé en « Lecteur — toute personne disposant
-du lien ». Champs calculés à chaque chargement (jamais LUS depuis le Sheet, même
+Lecture SEULE, via le lien d'export public du Sheet (aucune clé API, aucun fichier
+de compte de service, aucun OAuth) : le Sheet doit être partagé en « Lecteur —
+toute personne disposant du lien ». Champs calculés à chaque chargement (jamais LUS
+depuis le Sheet, même
 s'ils y figurent en colonne, toujours recalculés depuis les colonnes "brutes" pour
 ne jamais en diverger) : deadline_month, deadline_year, days_remaining,
 weighted_amount — affichés dans les tableaux de bord, jamais réécrits dans le
-Sheet (une clé API seule ne permet de toute façon pas l'écriture). Une ligne sans
+Sheet (un lien d'export public ne permet de toute façon pas l'écriture). Une ligne sans
 id en reçoit un (max existant + 1) pour la durée de CE chargement ; sans colonne
 "id" dans le Sheet, cet id n'est stable d'un chargement à l'autre que si l'ordre
 des lignes ne change pas.
@@ -19,11 +20,13 @@ Volontairement PAS de suppression : une ligne retirée du Sheet disparaît du
 prochain chargement, ce qui est le comportement naturel d'une lecture en direct
 (rien à supprimer explicitement quelque part).
 """
+import csv
+import io
 import logging
 import os
+import re
 import threading
 from datetime import date, datetime
-from urllib.parse import quote
 
 import pandas as pd
 import requests
@@ -103,43 +106,65 @@ _cache_lock = threading.Lock()
 _cached_df: "pd.DataFrame | None" = None
 _last_refresh_summary: dict = {}
 
-_SHEETS_API_TIMEOUT_SECONDS = 20
+_SHEETS_EXPORT_TIMEOUT_SECONDS = 20
+
+# GOOGLE_SHEET_ID accepte aussi bien l'identifiant nu que le lien complet collé
+# depuis le navigateur — recopier "la partie entre /d/ et /edit" est une
+# manipulation inutile à demander, et une source d'erreur de plus le jour de
+# l'installation (même logique que setup/assistant.ps1::IdentifiantDeFeuille).
+_MOTIF_LIEN_SHEET = re.compile(r"/d/([A-Za-z0-9_-]{20,})")
+
+
+def _extraire_identifiant(valeur: str) -> str:
+    correspondance = _MOTIF_LIEN_SHEET.search(valeur)
+    return correspondance.group(1) if correspondance else valeur.strip()
 
 
 def fetch_sheet_values() -> list[list[str]]:
-    """Lit toutes les valeurs de l'onglet configuré via l'API Sheets v4 + clé API.
+    """Lit toutes les valeurs de l'onglet configuré via le lien d'export CSV public
+    du Sheet (le même mécanisme que Fichier > Télécharger > CSV, exposé en URL).
 
-    Lecture seule, sans fichier de compte de service ni OAuth : le Sheet doit être
-    partagé en « Lecteur — toute personne disposant du lien », sans quoi l'API
-    répond 403 quelle que soit la clé fournie.
+    Lecture seule, sans clé API ni fichier de compte de service : le Sheet doit
+    être partagé en « Lecteur — toute personne disposant du lien », faute de quoi
+    Google répond une page de connexion (HTML) plutôt que le CSV attendu.
+
+    Limite connue et acceptée : un nom d'onglet INCORRECT ne produit PAS d'erreur —
+    Google retombe silencieusement sur le premier onglet de la feuille. Rien ne
+    permet de le détecter depuis ce seul appel ; la vérification des colonnes
+    attendues (_load_from_sheet, juste après) reste le seul filet de sécurité
+    contre un onglet mal nommé qui ressemblerait quand même au bon.
     """
-    api_key = os.getenv("GOOGLE_SHEETS_API_KEY")
     sheet_id = os.getenv("GOOGLE_SHEET_ID")
     tab_name = os.getenv("GOOGLE_SHEET_TAB", "opportunities")
-    if not api_key:
-        raise ValueError("GOOGLE_SHEETS_API_KEY manquant dans .env")
     if not sheet_id:
         raise ValueError("GOOGLE_SHEET_ID manquant dans .env")
+    sheet_id = _extraire_identifiant(sheet_id)
 
-    url = f"https://sheets.googleapis.com/v4/spreadsheets/{sheet_id}/values/{quote(tab_name)}"
-    resp = requests.get(url, params={"key": api_key}, timeout=_SHEETS_API_TIMEOUT_SECONDS)
-    if resp.status_code == 403:
-        raise ValueError(
-            "Accès refusé (403) — le Sheet doit être partagé en « Lecteur, toute "
-            "personne disposant du lien » pour être lisible avec une simple clé API."
-        )
+    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq"
+    resp = requests.get(
+        url, params={"tqx": "out:csv", "sheet": tab_name},
+        timeout=_SHEETS_EXPORT_TIMEOUT_SECONDS,
+    )
     if resp.status_code == 404:
         raise ValueError(
-            "Sheet ou onglet introuvable (404) — vérifier GOOGLE_SHEET_ID et "
-            "GOOGLE_SHEET_TAB dans .env."
-        )
-    if resp.status_code == 400:
-        raise ValueError(
-            "Requête refusée (400) — vérifier que GOOGLE_SHEETS_API_KEY est une clé "
-            "API valide avec l'API Google Sheets activée."
+            "Sheet introuvable (404) — vérifier GOOGLE_SHEET_ID dans .env."
         )
     resp.raise_for_status()
-    return resp.json().get("values", [])
+
+    # Un Sheet privé (ou l'identifiant d'un document qui n'est pas un Sheet) ne
+    # renvoie pas d'erreur HTTP franche : Google sert une page de connexion HTML,
+    # avec un code 200. Le Content-Type est le seul signal fiable observé pour
+    # distinguer ce cas du CSV attendu.
+    content_type = resp.headers.get("Content-Type", "")
+    if "text/csv" not in content_type:
+        raise ValueError(
+            "Réponse inattendue de Google (pas du CSV) — le Sheet doit être "
+            "partagé en « Lecteur, toute personne disposant du lien » ; vérifier "
+            "aussi GOOGLE_SHEET_ID dans .env."
+        )
+
+    texte = resp.content.decode("utf-8")
+    return list(csv.reader(io.StringIO(texte)))
 
 
 class RowError(ValueError):

@@ -1,6 +1,7 @@
 from datetime import date
 
 import pytest
+import requests
 
 from backend import data_store
 from backend.data_store import (
@@ -360,14 +361,74 @@ def test_get_dataframe_lazily_loads_on_first_call(monkeypatch):
     assert len(df) == 1
 
 
-def test_fetch_sheet_values_requires_an_api_key(monkeypatch):
-    monkeypatch.delenv("GOOGLE_SHEETS_API_KEY", raising=False)
-    with pytest.raises(ValueError, match="GOOGLE_SHEETS_API_KEY"):
+def test_fetch_sheet_values_requires_a_sheet_id(monkeypatch):
+    monkeypatch.delenv("GOOGLE_SHEET_ID", raising=False)
+    with pytest.raises(ValueError, match="GOOGLE_SHEET_ID"):
         data_store.fetch_sheet_values()
 
 
-def test_fetch_sheet_values_requires_a_sheet_id(monkeypatch):
-    monkeypatch.setenv("GOOGLE_SHEETS_API_KEY", "une-cle")
-    monkeypatch.delenv("GOOGLE_SHEET_ID", raising=False)
+class _FakeCsvResponse:
+    """Simule ce que renvoie requests.get() pour le lien d'export public."""
+
+    def __init__(self, status_code=200, content_type="text/csv; charset=utf-8", body=b""):
+        self.status_code = status_code
+        self.headers = {"Content-Type": content_type}
+        self.content = body
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.exceptions.HTTPError(f"{self.status_code} error")
+
+
+def test_fetch_sheet_values_extracts_the_id_from_a_pasted_link(monkeypatch):
+    """Recopier « la partie entre /d/ et /edit » est une manipulation inutile à
+    demander — l'identifiant nu ou le lien complet collé doivent tous deux marcher."""
+    monkeypatch.setenv(
+        "GOOGLE_SHEET_ID",
+        "https://docs.google.com/spreadsheets/d/1tTAhb78H4nmCWB63cOlMXBgl_L5xh5hUav_ZocyDZfc/edit#gid=0",
+    )
+    urls_appelees = []
+
+    def _get_capture(url, **kw):
+        urls_appelees.append(url)
+        return _FakeCsvResponse(body=b"id\r\n1\r\n")
+
+    monkeypatch.setattr(data_store.requests, "get", _get_capture)
+    data_store.fetch_sheet_values()
+
+    assert urls_appelees[0] == (
+        "https://docs.google.com/spreadsheets/d/1tTAhb78H4nmCWB63cOlMXBgl_L5xh5hUav_ZocyDZfc/gviz/tq"
+    )
+
+
+def test_fetch_sheet_values_parses_the_csv_export(monkeypatch):
+    monkeypatch.setenv("GOOGLE_SHEET_ID", "un-identifiant")
+    corps = 'id,country\r\n1,Bénin\r\n'.encode("utf-8")
+    monkeypatch.setattr(
+        data_store.requests, "get",
+        lambda *a, **kw: _FakeCsvResponse(body=corps))
+
+    valeurs = data_store.fetch_sheet_values()
+    assert valeurs == [["id", "country"], ["1", "Bénin"]]
+
+
+def test_fetch_sheet_values_rejects_html_as_not_shared(monkeypatch):
+    """Une feuille privée ne renvoie pas une erreur HTTP franche — Google sert une
+    page de connexion HTML avec un code 200. Seul le Content-Type le trahit."""
+    monkeypatch.setenv("GOOGLE_SHEET_ID", "un-identifiant")
+    monkeypatch.setattr(
+        data_store.requests, "get",
+        lambda *a, **kw: _FakeCsvResponse(content_type="text/html; charset=utf-8", body=b"<html>..."))
+
+    with pytest.raises(ValueError, match="partagé"):
+        data_store.fetch_sheet_values()
+
+
+def test_fetch_sheet_values_reports_a_missing_sheet(monkeypatch):
+    monkeypatch.setenv("GOOGLE_SHEET_ID", "un-identifiant")
+    monkeypatch.setattr(
+        data_store.requests, "get",
+        lambda *a, **kw: _FakeCsvResponse(status_code=404))
+
     with pytest.raises(ValueError, match="GOOGLE_SHEET_ID"):
         data_store.fetch_sheet_values()
