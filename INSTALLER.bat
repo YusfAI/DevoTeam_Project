@@ -11,22 +11,21 @@ REM s'installent tout seuls si absents (winget), sans autre logiciel a poser
 REM a la main au prealable. Seul git (pour recuperer le depot avant de lancer
 REM ce fichier) reste un prerequis manuel.
 REM
-REM Ne demande que ce qu'il ne peut pas deviner a votre place : la cle API
-REM Google Sheets (LECTURE SEULE, aucun compte de service, aucun fichier JSON
-REM a deposer), l'identifiant de la feuille et son onglet — trois questions
-REM posees directement en console (etape 4/6). Tout le reste — Docker, Ollama,
-REM construction, demarrage, raccourci Bureau, verification finale — est
-REM automatique.
+REM Ne demande que ce qu'il ne peut pas deviner a votre place : l'identifiant
+REM (ou le lien) de la feuille Google et le nom de son onglet — deux questions
+REM posees directement en console (etape 4/6). Aucune cle API, aucun compte de
+REM service, aucun fichier JSON : la lecture du Sheet se fait par son lien
+REM d'export public. Tout le reste — Docker, Ollama, construction, demarrage,
+REM raccourci Bureau, verification finale — est automatique.
 REM
 REM Rejouable sans risque : chaque etape verifie d'abord si elle est deja
 REM faite. Le relancer apres avoir renseigne .env (ou apres avoir installe
 REM Docker/redemarre Windows) reprend exactement la ou ca s'etait arrete,
 REM sans rien refaire ni rien perdre.
 REM
-REM La cle API saisie a l'etape 4/6 reste visible dans l'historique de CETTE
-REM fenetre jusqu'a sa fermeture — compromis assume au profit de la rapidite :
-REM la cle est de toute facon restreinte en LECTURE SEULE, sans acces a rien
-REM d'autre que le Sheet deja partage publiquement par lien.
+REM IMPORTANT : le nom de l'onglet doit etre EXACT. Un nom incorrect ne produit
+REM PAS d'erreur -- Google charge alors silencieusement le premier onglet de la
+REM feuille a la place, sans le moindre avertissement.
 REM
 REM Le modele de chat (Ollama) tourne sur la machine HOTE, pas dans un
 REM conteneur (etape 3/6 ci-dessous) — docker-compose.yml route le backend
@@ -41,11 +40,10 @@ echo     DevoTeam Dashboard - Installation
 echo   ============================================================
 echo.
 echo   Ce script installe tout automatiquement. Il vous demandera juste
-echo   trois valeurs, en console :
-echo     - la cle API Google Sheets ^(lecture seule^)
-echo     - l'identifiant de la feuille
+echo   deux valeurs, en console :
+echo     - l'identifiant ^(ou le lien^) de la feuille Google
 echo     - le nom de l'onglet
-echo   Aucun fichier de compte de service, aucun JSON a deposer.
+echo   Aucune cle API, aucun compte de service, aucun JSON a deposer.
 echo.
 echo   Liens et etapes detaillees pour les obtenir :
 echo     Documentation\OBTENIR_LES_ACCES.md
@@ -144,11 +142,9 @@ if errorlevel 1 (
 echo         OK - modele present
 
 REM --- 4/6 : .env --------------------------------------------------------------
-REM Trois valeurs demandees ICI, en console (set /p) plutot que par le
-REM Bloc-notes : plus rapide, un seul enchainement de questions. La cle API
-REM saisie ainsi reste visible dans l'historique de CETTE fenetre jusqu'a sa
-REM fermeture -- compromis assume au profit de la rapidite, la cle etant de
-REM toute facon restreinte en LECTURE SEULE (voir Documentation\OBTENIR_LES_ACCES.md).
+REM Deux valeurs demandees ICI, en console (set /p) plutot que par le Bloc-notes :
+REM plus rapide, un seul enchainement de questions. Aucune n'est un secret --
+REM la lecture du Sheet ne demande plus de cle API du tout (lien d'export public).
 echo.
 echo   [4/6] Configuration (feuille Google)...
 if not exist ".env" (
@@ -156,42 +152,27 @@ if not exist ".env" (
     echo         .env cree a partir du modele.
 )
 
-set "CUR_KEY="
 set "CUR_ID="
 set "CUR_TAB="
 for /f "usebackq tokens=1,* delims==" %%a in (".env") do (
-    if "%%a"=="GOOGLE_SHEETS_API_KEY" set "CUR_KEY=%%b"
     if "%%a"=="GOOGLE_SHEET_ID" set "CUR_ID=%%b"
     if "%%a"=="GOOGLE_SHEET_TAB" set "CUR_TAB=%%b"
 )
 
 echo.
-echo         Trois valeurs necessaires ^(Entree conserve la valeur actuelle^) :
+echo         Deux valeurs necessaires ^(Entree conserve la valeur actuelle^) :
 echo.
-if defined CUR_KEY (
-    set /p "GOOGLE_SHEETS_API_KEY=  Cle API Google Sheets [deja renseignee] : "
-) else (
-    set /p "GOOGLE_SHEETS_API_KEY=  Cle API Google Sheets ^(lecture seule^) : "
-)
-if not defined GOOGLE_SHEETS_API_KEY set "GOOGLE_SHEETS_API_KEY=%CUR_KEY%"
-
-set /p "GOOGLE_SHEET_ID=  Identifiant de la feuille [%CUR_ID%] : "
+set /p "GOOGLE_SHEET_ID=  Identifiant ou lien de la feuille [%CUR_ID%] : "
 if not defined GOOGLE_SHEET_ID set "GOOGLE_SHEET_ID=%CUR_ID%"
 
 set "DEFAUT_TAB=%CUR_TAB%"
 if "%DEFAUT_TAB%"=="" set "DEFAUT_TAB=opportunities"
+echo         IMPORTANT : le nom de l'onglet doit etre EXACT -- un nom incorrect
+echo         ne produit pas d'erreur, il charge silencieusement le premier
+echo         onglet de la feuille a la place.
 set /p "GOOGLE_SHEET_TAB=  Nom de l'onglet [%DEFAUT_TAB%] : "
 if not defined GOOGLE_SHEET_TAB set "GOOGLE_SHEET_TAB=%DEFAUT_TAB%"
 
-if "%GOOGLE_SHEETS_API_KEY%"=="" (
-    echo.
-    echo   [ARRET] La cle API Google Sheets est obligatoire.
-    echo           Voir Documentation\OBTENIR_LES_ACCES.md pour l'obtenir,
-    echo           puis relancez ce fichier.
-    echo.
-    pause
-    exit /b 1
-)
 if "%GOOGLE_SHEET_ID%"=="" (
     echo.
     echo   [ARRET] L'identifiant de la feuille est obligatoire.

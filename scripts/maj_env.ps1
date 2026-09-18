@@ -1,11 +1,11 @@
-# Écrit GOOGLE_SHEETS_API_KEY / GOOGLE_SHEET_ID / GOOGLE_SHEET_TAB dans .env,
-# à partir des variables d'environnement du même nom.
+# Écrit GOOGLE_SHEET_ID / GOOGLE_SHEET_TAB dans .env, à partir des variables
+# d'environnement du même nom.
 #
-# Appelé par INSTALLER.bat après avoir demandé ces trois valeurs en console
+# Appelé par INSTALLER.bat après avoir demandé ces deux valeurs en console
 # (set /p) : l'édition du fichier passe par PowerShell plutôt que par du batch
-# pur pour rester correcte quel que soit le contenu collé (une clé API, un
-# identifiant de feuille) — un remplacement de ligne ligne par ligne, jamais
-# une substitution de texte qui interpréterait la valeur comme un motif.
+# pur pour rester correcte quel que soit le contenu collé (un lien de feuille
+# complet, par exemple) — un remplacement de ligne par ligne, jamais une
+# substitution de texte qui interpréterait la valeur comme un motif.
 #
 # Ne touche à AUCUNE autre ligne du fichier : les commentaires et les autres
 # variables (alertes email, Ollama, accès public) restent tels quels.
@@ -21,9 +21,8 @@ if (-not (Test-Path $FichierEnv)) {
 }
 
 $valeurs = [ordered]@{
-    'GOOGLE_SHEETS_API_KEY' = $env:GOOGLE_SHEETS_API_KEY
-    'GOOGLE_SHEET_ID'       = $env:GOOGLE_SHEET_ID
-    'GOOGLE_SHEET_TAB'      = $env:GOOGLE_SHEET_TAB
+    'GOOGLE_SHEET_ID'  = $env:GOOGLE_SHEET_ID
+    'GOOGLE_SHEET_TAB' = $env:GOOGLE_SHEET_TAB
 }
 
 $lignes = Get-Content $FichierEnv -Encoding UTF8

@@ -19,16 +19,11 @@ Après avoir récupéré le projet (étape 2 ci-dessous), **double-cliquer sur
 Ollama tout seul (via `winget`) s'ils manquent — vérifie/installe **Docker
 Desktop**, vérifie/installe **Ollama** (le modèle de chat, qui tourne sur la
 machine hôte — voir plus bas) et télécharge son modèle, **demande en console**
-(pas de Bloc-notes) la clé API Google Sheets, l'identifiant de la feuille et son
-onglet, construit l'image, démarre les trois services, crée le raccourci du
-Bureau, puis **exécute `scripts/test_fonctionnel.py` directement à l'intérieur
-du conteneur** — la preuve que les chiffres affichés sont justes, sans qu'aucun
+(pas de Bloc-notes, aucune clé API) l'identifiant de la feuille et son onglet,
+construit l'image, démarre les trois services, crée le raccourci du Bureau,
+puis **exécute `scripts/test_fonctionnel.py` directement à l'intérieur du
+conteneur** — la preuve que les chiffres affichés sont justes, sans qu'aucun
 Python ne soit installé sur ce poste.
-
-> La clé API saisie à la console reste visible dans l'historique de cette
-> fenêtre jusqu'à sa fermeture — compromis assumé pour la rapidité (un seul
-> enchaînement de questions plutôt qu'un aller-retour par le Bloc-notes), la
-> clé étant de toute façon restreinte en lecture seule.
 
 > Seule exception qui reste manuelle : si Windows demande un **redémarrage**
 > pour activer WSL2 (nécessaire à Docker), il faut le faire, puis lancer Docker
@@ -52,11 +47,12 @@ utile pour comprendre ou dépanner, pas nécessaire à suivre à la main si
 Les mêmes choses que pour l'installation native — rien ne change ici. Fiche
 détaillée avec les liens exacts : [`OBTENIR_LES_ACCES.md`](OBTENIR_LES_ACCES.md).
 
-1. Une **clé API Google Sheets, en lecture seule**
-   ([console.cloud.google.com](https://console.cloud.google.com)), et la feuille
-   de calcul **partagée en Lecteur, à « toute personne disposant du lien »**.
-   Aucun compte de service, aucun fichier JSON à déposer.
-2. **L'identifiant de la feuille** et le **nom de son onglet**.
+1. La feuille de calcul **partagée en Lecteur, à « toute personne disposant du
+   lien »** — aucune clé API, aucun compte de service, aucun fichier JSON à
+   déposer : la lecture se fait par le lien d'export public du Sheet.
+2. **L'identifiant de la feuille** et le **nom EXACT de son onglet** — un nom
+   incorrect ne produit aucune erreur, il charge silencieusement le premier
+   onglet de la feuille à la place.
 3. **Docker Desktop** et **Ollama** — rien à préparer à l'avance : `INSTALLER.bat`
    installe les deux automatiquement s'ils manquent (voir l'étape 1 et « Le
    modèle de chat » plus bas).
@@ -100,9 +96,8 @@ copy .env.example .env
 Ouvrir `.env` dans un éditeur de texte et renseigner :
 
 ```ini
-GOOGLE_SHEETS_API_KEY=     la clé API Sheets (lecture seule)
 GOOGLE_SHEET_ID=           l'identifiant de la feuille
-GOOGLE_SHEET_TAB=          le nom de l'onglet
+GOOGLE_SHEET_TAB=          le nom EXACT de l'onglet
 
 # Facultatif — le rappel quotidien des échéances
 GMAIL_SENDER=
@@ -119,8 +114,9 @@ Docker les règle tout seul (voir la note technique en fin de page si la questio
 se pose — `OLLAMA_HOST` y est forcé vers `host.docker.internal`, l'adresse de la
 machine hôte vue depuis un conteneur, peu importe ce qu'indique `.env`).
 
-Aucun fichier à déposer : la lecture du Sheet se fait par la clé API ci-dessus,
-pas par un compte de service.
+Aucun fichier à déposer, aucune clé API : la lecture du Sheet se fait par son
+lien d'export public, à condition qu'il soit bien partagé en Lecteur (voir
+« Avant de commencer » ci-dessus).
 
 ## Le modèle de chat (Ollama) — tourne sur l'hôte, pas dans Docker
 
@@ -239,6 +235,8 @@ que si une dépendance ou le moteur de tableaux de bord lui-même a changé.
 | `ports are not available` au lancement | Un port (8000/8321/8322) est déjà pris par une installation native encore active | Fermer les fenêtres de l'installation native, ou changer les ports publiés dans `docker-compose.yml` |
 | Page blanche, `StaticFiles` en erreur dans les journaux | `frontend-build` a échoué | `docker compose logs frontend-build` |
 | Tableaux de bord vides, aucune erreur | Statuts de la feuille non reconnus | Voir `Documentation/INSTALLATION.md`, section correspondante — identique en Docker |
+| « Réponse inattendue de Google (pas du CSV) » dans les journaux backend | Feuille pas encore partagée en Lecteur, toute personne disposant du lien | Repartager depuis Google Sheets, puis `docker compose exec backend python scripts/verifier_installation.py` |
+| Les chiffres semblent faux, aucune erreur affichée | `GOOGLE_SHEET_TAB` ne correspond à aucun onglet réel — Google charge silencieusement le premier onglet à la place | Vérifier l'orthographe exacte dans `.env` |
 | Le chat répond mais aucun tableau de bord chat-généré ne s'affiche | Écriture atomique en échec (`EXDEV`) | Ne devrait plus arriver — signe que `docker-compose.yml` a été modifié pour monter un sous-dossier séparément (voir la note technique ci-dessous) |
 | Le chat répond « Ollama injoignable » | Ollama pas installé, pas démarré, ou modèle non téléchargé sur l'hôte | `ollama serve` doit tourner sur la machine hôte (pas dans un conteneur), et `ollama pull qwen2.5:7b-instruct-q4_K_M` doit avoir réussi |
 | `docker: command not found` dans un terminal | Docker Desktop pas démarré | Le lancer depuis le menu Démarrer, attendre l'icône verte dans la zone de notification |

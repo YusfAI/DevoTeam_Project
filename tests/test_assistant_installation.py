@@ -84,11 +84,11 @@ def test_les_secrets_se_saisissent_en_aveugle():
 
     assert "-AsSecureString" in s
 
-    # Les DEUX secrets restants (le modèle local n'a pas de clé, seule la lecture
-    # du Sheet en garde une) passent par la saisie masquée. Vérifié sur la valeur
-    # affectée plutôt que sur le libellé de la question : le texte des questions
-    # a vocation à changer, l'exigence non.
-    for variable in ("GOOGLE_SHEETS_API_KEY", "GMAIL_APP_PASSWORD"):
+    # Le seul secret restant (ni le modèle local ni la lecture du Sheet — lien
+    # d'export public — n'ont de clé). Vérifié sur la valeur affectée plutôt
+    # que sur le libellé de la question : le texte des questions a vocation à
+    # changer, l'exigence non.
+    for variable in ("GMAIL_APP_PASSWORD",):
         bloc = s[s.index("function DemanderConfiguration"):]
         bloc = bloc[:bloc.index("function RecapitulerConfiguration")]
         affectation = [l for l in bloc.splitlines()
@@ -115,8 +115,7 @@ def test_aucun_secret_n_est_affiche():
     s = _assistant()
 
     for interdit in ("Write-Host $cle", "Write-Host $valeur",
-                     "Write-Host $config['GMAIL_APP_PASSWORD']",
-                     "Write-Host $config['GOOGLE_SHEETS_API_KEY']"):
+                     "Write-Host $config['GMAIL_APP_PASSWORD']"):
         assert interdit not in s, interdit
 
 
@@ -146,8 +145,8 @@ def test_l_assistant_attend_le_partage_au_lieu_d_echouer():
 
 
 def test_la_sonde_verifie_la_lecture_seule():
-    """Une clé API ne permet jamais l'écriture — rien à prouver de ce côté-là,
-    contrairement à l'ancien compte de service qui pouvait écrire."""
+    """Le lien d'export public ne permet jamais l'écriture — rien à prouver de
+    ce côté-là, contrairement à l'ancien compte de service qui pouvait écrire."""
     s = (SETUP / "sonde_feuille.py").read_text(encoding="utf-8")
 
     assert "fetch_sheet_values" in s
@@ -158,10 +157,10 @@ def test_l_assistant_est_rejouable():
     """Relancer après correction ne doit rien défaire ni tout redemander."""
     s = _assistant()
 
-    # Une entrée vide conserve la valeur existante — y compris pour la clé API,
-    # seule chose que l'ancien fichier d'identifiants protégeait par ailleurs.
+    # Une entrée vide conserve la valeur existante — y compris pour le nom de
+    # l'onglet, dont une faute de frappe ne se voit sinon qu'à l'usage.
     assert "Entree pour la garder" in s
-    assert "LireSecret 'Collez la cle :' $config['GOOGLE_SHEETS_API_KEY']" in s
+    assert "LireTexte 'Nom de l''onglet :' $config['GOOGLE_SHEET_TAB']" in s
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +168,7 @@ def test_l_assistant_est_rejouable():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("variable", [
-    "GOOGLE_SHEETS_API_KEY", "GOOGLE_SHEET_ID", "GOOGLE_SHEET_TAB",
+    "GOOGLE_SHEET_ID", "GOOGLE_SHEET_TAB",
     "GMAIL_SENDER", "GMAIL_APP_PASSWORD", "ALERT_RECIPIENT_EMAIL",
 ])
 def test_chaque_valeur_du_env_est_demandee(variable):
@@ -185,15 +184,15 @@ def test_chaque_valeur_du_env_est_demandee(variable):
 
 
 def test_les_questions_sont_numerotees():
-    """Six questions annoncées, six questions posées.
+    """Cinq questions annoncées, cinq questions posées.
 
     Un assistant qui n'annonce pas ce qu'il va demander laisse croire qu'on a fini
     alors qu'il reste des champs vides.
     """
     s = _assistant()
 
-    for i in range(1, 7):
-        assert "[%d/6]" % i in s, i
+    for i in range(1, 6):
+        assert "[%d/5]" % i in s, i
 
 
 def test_le_recapitulatif_montre_ce_qui_manque():

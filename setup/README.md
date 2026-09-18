@@ -11,21 +11,25 @@ pas deviner.
 
 ## Ce qu'il vous demande
 
-Six informations, posées une par une. Aucun fichier à sélectionner : ni compte de
-service Google, ni JSON à déposer — la lecture du Sheet se fait par une simple clé
-API, et le modèle de chat (Ollama) est vérifié et installé automatiquement.
+Cinq informations, posées une par une. Aucun fichier à sélectionner, aucune clé
+API : ni compte de service Google, ni JSON à déposer — la lecture du Sheet se
+fait par son lien d'export public, et le modèle de chat (Ollama) est vérifié et
+installé automatiquement.
 
 | # | Information | Où la trouver | |
 |---|---|---|---|
-| 1 | Clé API Google Sheets | console.cloud.google.com → APIs et services → Identifiants → Créer une clé API (activer "Google Sheets API" sur le projet) | obligatoire |
-| 2 | Lien de la feuille Google | Copiez l'URL entière depuis le navigateur — l'identifiant en est extrait | obligatoire |
-| 3 | Nom de l'onglet | Celui qui contient les opportunités (`opportunities` par défaut) | obligatoire |
-| 4 | Adresse expéditrice des alertes | Le compte Gmail qui **envoie** le rappel quotidien | facultatif |
-| 5 | Mot de passe d'application Gmail | [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) — 16 caractères | facultatif |
-| 6 | Adresse destinataire des alertes | Qui **reçoit** le rappel — plusieurs adresses possibles, séparées par une virgule | facultatif |
+| 1 | Lien de la feuille Google | Copiez l'URL entière depuis le navigateur — l'identifiant en est extrait | obligatoire |
+| 2 | Nom de l'onglet | Celui qui contient les opportunités (`opportunities` par défaut) — **doit être exact**, voir la note plus bas | obligatoire |
+| 3 | Adresse expéditrice des alertes | Le compte Gmail qui **envoie** le rappel quotidien | facultatif |
+| 4 | Mot de passe d'application Gmail | [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) — 16 caractères | facultatif |
+| 5 | Adresse destinataire des alertes | Qui **reçoit** le rappel — plusieurs adresses possibles, séparées par une virgule | facultatif |
 
-Les questions 4 à 6 ne concernent que le rappel par email. Entrée à la question 4
+Les questions 3 à 5 ne concernent que le rappel par email. Entrée à la question 3
 les désactive toutes les trois — l'application fonctionne intégralement sans elles.
+
+> **Le nom de l'onglet (question 2) doit être exact.** Un nom qui ne correspond à
+> aucun onglet ne produit aucune erreur — Google charge silencieusement le
+> premier onglet de la feuille à la place, sans le moindre avertissement.
 
 Deux variables restent volontairement vides : `DAC_PUBLIC_URL` et
 `DAC_DARK_PUBLIC_URL`, qui ne servent qu'à exposer l'application depuis une autre
@@ -53,13 +57,13 @@ saisie.
 **Il attend le partage au lieu d'échouer dessus.** Partager la feuille est un geste
 qui se fait ailleurs, dans l'interface de Google. L'assistant explique le geste
 exact — partager en **Lecteur, à toute personne disposant du lien** — vous laisse le
-temps, et revérifie — jusqu'à dix fois. Une clé API ne permettant jamais l'écriture,
-il n'y a rien de plus à prouver une fois la lecture confirmée.
+temps, et revérifie — jusqu'à dix fois. Le lien d'export public ne permettant
+jamais l'écriture, il n'y a rien de plus à prouver une fois la lecture confirmée.
 
-**Aucun secret ne s'affiche.** La clé API et le mot de passe se saisissent en
-aveugle et ne sont écrits que dans `.env`, exclu du dépôt Git. Les espaces des mots
-de passe d'application Gmail — que Google affiche en quatre groupes de quatre — sont
-retirés automatiquement : collés tels quels, ils font échouer l'authentification.
+**Aucun secret ne s'affiche.** Le mot de passe d'application Gmail se saisit en
+aveugle et n'est écrit que dans `.env`, exclu du dépôt Git. Les espaces qu'il
+contient — Google l'affiche en quatre groupes de quatre — sont retirés
+automatiquement : collés tels quels, ils font échouer l'authentification.
 
 **Il est rejouable.** Relancez-le après avoir corrigé quelque chose : les valeurs
 déjà saisies sont proposées par défaut, l'environnement existant est réutilisé, et
@@ -99,7 +103,7 @@ Tant qu'il n'affiche pas **« TOUT EST JUSTE »**, ne présentez pas l'applicati
 |---|---|
 | `INSTALLER_NATIF.bat` | Le fichier à double-cliquer |
 | `assistant.ps1` | L'assistant lui-même |
-| `sonde_feuille.py` | Teste l'accès à la feuille en lecture (clé API, lecture seule) |
+| `sonde_feuille.py` | Teste l'accès à la feuille en lecture (lien d'export public) |
 
 L'assistant ne réimplémente rien : il enchaîne `scripts\install.bat` et
 `scripts\verifier_installation.py`. Deux chemins d'installation qui feraient la même

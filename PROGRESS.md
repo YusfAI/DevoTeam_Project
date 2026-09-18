@@ -50,6 +50,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 43 — Les intitulés d'une vraie feuille métier française reconnus sans renommage, et plusieurs destinataires pour l'alerte email
 - [x] Phase 44 — Un installateur en un clic : Docker vérifié, construit, démarré, vérifié — sans Python local
 - [x] Phase 45 — Migration Google Gemini → LLM local (Ollama), et Google Sheets lu par simple clé API au lieu d'un compte de service
+- [x] Phase 46 — Google Sheets lu par lien d'export public : plus aucun identifiant, ni clé API ni compte de service
 
 ## 📝 Journaux
 
@@ -539,6 +540,44 @@ clé API réelle (mockée) ; neuf tests qui comparent les DEUX moteurs de requê
 sur les VRAIES données du Sheet ont besoin d'une clé `GOOGLE_SHEETS_API_KEY`
 réelle dans `.env` pour s'exécuter, comme c'était déjà le cas avec l'ancien
 compte de service.
+
+**Phase 46** : Terminée. La clé API Sheets de la Phase 45 a elle-même été
+retirée : `backend/data_store.py` lit désormais le Sheet par son **lien
+d'export public** (`docs.google.com/.../gviz/tq?tqx=out:csv`, le mécanisme
+derrière « Fichier → Télécharger → CSV »), sans le moindre identifiant. Le
+Sheet étant déjà partagé « toute personne disposant du lien » pour que la clé
+API fonctionne, la clé elle-même s'est révélée être une étape superflue —
+observation de l'utilisateur, vérifiée avant d'agir plutôt que supposée.
+
+*Un risque trouvé en testant contre le vrai Sheet, pas en le devinant.* Un nom
+d'onglet inexistant (`this_tab_does_not_exist`) renvoie un **200 OK avec des
+données réelles**, identiques à celles du bon onglet — Google retombe
+silencieusement sur le premier onglet de la feuille au lieu de signaler
+l'erreur. Pour cette application précisément, c'est le pire genre de défaut :
+une feuille renommée ou une coquille dans `GOOGLE_SHEET_TAB` afficherait des
+chiffres différents sans qu'aucun message ne le dise, à l'exact opposé de
+toutes les autres garanties anti-hallucination du projet. Présenté à
+l'utilisateur avec trois options (accepter le risque en le documentant,
+revenir à la clé API, ou ajouter une vérification de l'onglet au démarrage) —
+choix : accepter, documenter partout, compter sur la vérification des colonnes
+déjà en place (`_load_from_sheet`) comme seul filet de sécurité restant.
+
+Deux autres améliorations au passage :
+- `GOOGLE_SHEET_ID` accepte maintenant aussi bien l'identifiant nu que le lien
+  complet collé (`_extraire_identifiant`, même regex que
+  `setup/assistant.ps1::IdentifiantDeFeuille`) — plus robuste à un copier-coller
+  malheureux qu'avant, où seule la clé API absorbait ce genre d'erreur de
+  frappe par la validation de l'API elle-même.
+- `INSTALLER.bat` perd une question entière (la clé API) : de six à cinq côté
+  assistant natif, de trois à deux valeurs en console côté Docker. Le fichier
+  `scripts/maj_env.ps1` qui écrit `.env` ligne par ligne (ajouté Phase 45 pour
+  la clé) ne gère plus que les deux valeurs Sheet restantes.
+
+576 tests passent **sans aucun identifiant réel** — les neuf tests qui
+comparaient les deux moteurs de requête sur les vraies données du Sheet, qui
+avaient besoin d'une clé API en Phase 45, tournent maintenant hors ligne comme
+tous les autres : rien à configurer sur une machine neuve pour les faire
+passer, seulement le Sheet de démonstration déjà public par lien.
 
 ## 📊 Bilan du Produit
 

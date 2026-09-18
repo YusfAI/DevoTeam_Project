@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""La feuille est-elle lisible avec la clé API renseignée dans .env ?
+"""La feuille est-elle lisible via son lien d'export public ?
 
 Employée par l'assistant pour attendre que le partage soit fait, plutôt que
 d'échouer dessus. C'est l'étape qui bloque le plus d'installations, et la seule
@@ -8,9 +8,11 @@ qui dépende d'un geste fait ailleurs — dans l'interface de Google Sheets.
 Sort avec 0 si tout va bien, 1 sinon, et affiche une ligne lisible dans les deux
 cas : l'assistant la reprend telle quelle.
 
-Lecture seule : une clé API Google ne permet jamais l'écriture, il n'y a donc
-rien à prouver de ce côté-là — seulement que la feuille est bien partagée en
-« Lecteur — toute personne disposant du lien », sans quoi l'API répond 403.
+Lecture seule, sans clé API ni compte de service : le lien d'export public d'un
+Sheet ne permet jamais l'écriture, il n'y a donc rien à prouver de ce côté-là —
+seulement que la feuille est bien partagée en « Lecteur — toute personne
+disposant du lien », sans quoi Google sert une page de connexion HTML au lieu
+du CSV attendu.
 """
 import sys
 from pathlib import Path
@@ -37,12 +39,10 @@ def main():
         valeurs = data_store.fetch_sheet_values()
     except Exception as e:
         message = str(e)
-        if "403" in message:
+        if "404" in message:
+            print("Feuille introuvable : verifier l'identifiant de la feuille.")
+        elif "partag" in message:
             print("Acces refuse : la feuille n'est pas partagee en Lecteur, toute personne disposant du lien.")
-        elif "404" in message:
-            print("Feuille introuvable : verifier l'identifiant et le nom de l'onglet.")
-        elif "400" in message:
-            print("Cle API refusee : verifier GOOGLE_SHEETS_API_KEY et que l'API Sheets est activee.")
         else:
             print("Feuille inaccessible : %s" % message[:120])
         return 1

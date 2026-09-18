@@ -149,10 +149,10 @@ données à installer, sans dépendance à une API cloud pour le LLM.
   lire comme une moyenne ni l'inverse.
 - Google Sheets comme source de données unique : l'application lit directement le
   Sheet (via pandas), en mémoire, rafraîchi toutes les 15 minutes + au démarrage +
-  sur demande (`POST /sheets/sync`). Lecture seule, via une clé API Google (aucun
-  fichier de compte de service) — le Sheet sert de formulaire d'ajout/modification
-  d'opportunités côté utilisateur, plus simple à éditer qu'une base de données, mais
-  l'application n'y écrit jamais elle-même. Une
+  sur demande (`POST /sheets/sync`). Lecture seule, via le lien d'export public du
+  Sheet (aucune clé API, aucun compte de service) — le Sheet sert de formulaire
+  d'ajout/modification d'opportunités côté utilisateur, plus simple à éditer qu'une
+  base de données, mais l'application n'y écrit jamais elle-même. Une
   cellule illisible (statut inconnu, date invalide, montant non numérique) coûte la
   cellule, jamais la ligne : elle est remplacée par « Non renseigné » et l'opportunité
   est conservée avec son budget, son échéance et son client. Chaque remplacement est
@@ -173,8 +173,9 @@ navigateur, pour qui reçoit le dossier sans passer par ce fichier.
 **Recommandé — double-cliquer sur `INSTALLER.bat`, à la racine du projet.**
 
 Un seul fichier, un seul clic. Il ne demande que ce qu'il ne peut pas deviner à
-votre place — le fichier `.env` (clé API Google Sheets en lecture seule, aucun
-fichier de compte de service à déposer) — et automatise tout le reste :
+votre place — l'identifiant de la feuille Google et son onglet, demandés en
+console, aucune clé API ni fichier de compte de service à déposer — et
+automatise tout le reste :
 vérifie Docker, construit l'image, démarre les trois services, crée le raccourci
 du Bureau, puis **prouve que les chiffres affichés sont justes** en exécutant
 `scripts/test_fonctionnel.py` directement à l'intérieur du conteneur — aucune
@@ -199,16 +200,17 @@ directement sur la machine. Voir `setup/README.md` et
 `Documentation/INSTALLATION.md` pour la procédure détaillée et manuelle.
 
 Dans les deux cas, le script de vérification contrôle chaque maillon séparément —
-clé API, feuille (lecture), colonnes, valeurs inconnues, modèle local, interface
-compilée — parce qu'une installation ratée ne se signale pas : l'application
-démarre, la page s'ouvre, et les tableaux de bord restent vides.
+feuille (lecture), colonnes, valeurs inconnues, modèle local, interface compilée
+— parce qu'une installation ratée ne se signale pas : l'application démarre, la
+page s'ouvre, et les tableaux de bord restent vides.
 
 ## Prérequis
 
 Dans les deux méthodes, obligatoires :
-- Une clé API Google Sheets en lecture seule (voir "Google Sheets" ci-dessous —
-  l'application ne fonctionne pas sans données) — aucun compte de service, aucun
-  fichier JSON à déposer
+- Une feuille Google Sheets partagée en Lecteur, « toute personne disposant du
+  lien » (voir "Google Sheets" ci-dessous — l'application ne fonctionne pas sans
+  données) — aucune clé API, aucun compte de service, aucun fichier JSON à
+  déposer
 - [Ollama](https://ollama.com/download) avec le modèle `qwen2.5:7b-instruct-q4_K_M`
   (aucune clé API — installation et téléchargement automatiques via l'assistant)
 - (Optionnel, pour les alertes email) un compte Gmail avec un
@@ -250,30 +252,30 @@ cd frontend && npm install
 
 ## Google Sheets (source de données)
 
-Lecture seule, par clé API — aucun compte de service, aucun fichier JSON à
-télécharger ni à déposer.
+Lecture seule, par le lien d'export public du Sheet — aucune clé API, aucun
+compte de service, aucun fichier JSON à télécharger ni à déposer.
 
-1. [console.cloud.google.com](https://console.cloud.google.com) → un projet → activer
-   **"Google Sheets API"**.
-2. APIs et services → Identifiants → **Créer des identifiants** → **Clé API**.
-   Optionnel mais recommandé : restreindre la clé à l'API "Google Sheets API"
-   uniquement (onglet "Restrictions de l'API").
-3. Ouvre ton Google Sheet → **Partager** → Accès général → **"Toute personne
-   disposant du lien"**, rôle **Lecteur**. Sans ce partage, l'API répond 403 quelle
-   que soit la clé fournie — une clé API n'a pas d'identité Google propre, elle ne
-   peut lire que ce qui est déjà public par lien.
-4. Renseigne `GOOGLE_SHEETS_API_KEY`, `GOOGLE_SHEET_ID` (dans l'URL du Sheet) et
-   `GOOGLE_SHEET_TAB` (le nom de l'onglet) dans `.env`.
-5. La première ligne du Sheet doit contenir ces en-têtes exacts (n'importe quel
+1. Ouvre ton Google Sheet → **Partager** → Accès général → **"Toute personne
+   disposant du lien"**, rôle **Lecteur**. Sans ce partage, Google sert une page
+   de connexion (HTML) au lieu des données — une clé n'y changerait rien, il n'y
+   en a pas : le lien lui-même est la seule autorisation qui compte ici.
+2. Renseigne `GOOGLE_SHEET_ID` (l'identifiant dans l'URL, ou l'URL complète —
+   l'identifiant en est extrait automatiquement) et `GOOGLE_SHEET_TAB` (le nom de
+   l'onglet) dans `.env`.
+   > **Piège à connaître** : un `GOOGLE_SHEET_TAB` qui ne correspond à AUCUN
+   > onglet ne produit aucune erreur — Google charge silencieusement le premier
+   > onglet de la feuille à la place. Vérifier que le nom tapé correspond
+   > exactement à celui affiché en bas de la feuille.
+3. La première ligne du Sheet doit contenir ces en-têtes exacts (n'importe quel
    ordre) : `id, country, created_date, deadline, practice, description, buyer,
    opp_type, status, budget, funding_source, partner, financial_offer,
    win_probability`. Ligne avec `id` vide = nouvelle opportunité (un id lui est
-   attribué en mémoire à chaque chargement — jamais réécrit dans le Sheet, une clé
-   API ne permettant de toute façon pas l'écriture).
-6. `deadline_month`, `deadline_year`, `days_remaining` et `weighted_amount` sont
+   attribué en mémoire à chaque chargement — jamais réécrit dans le Sheet, le
+   lien d'export public ne permettant de toute façon pas l'écriture).
+4. `deadline_month`, `deadline_year`, `days_remaining` et `weighted_amount` sont
    **toujours recalculés** depuis les colonnes ci-dessus, uniquement affichés dans
    les tableaux de bord — inutile (et sans effet) de les éditer dans le Sheet.
-7. `practice`, `opp_type` et `status` doivent correspondre exactement aux valeurs
+5. `practice`, `opp_type` et `status` doivent correspondre exactement aux valeurs
    whitelistées dans `backend/schema_and_whitelist.py` (insensible à la casse) —
    sinon la ligne est ignorée et journalisée, sans bloquer les autres.
 
@@ -421,16 +423,15 @@ local et la lecture du Sheet sont mockés dans les tests qui en ont besoin).
 
 ## Sécurité
 
-`.env` contient des identifiants réels (clé API Google Sheets, mot de passe
-d'application Gmail) — il est dans `.gitignore` et ne doit jamais être commité. Si
-une ancienne version de `.env` a fini dans l'historique git, régénérez la clé API
-sur console.cloud.google.com et révoquez le mot de passe d'application Gmail sur
-myaccount.google.com/apppasswords, plutôt que de compter sur sa suppression du dépôt.
+`.env` contient un identifiant réel (le mot de passe d'application Gmail, s'il est
+configuré) — il est dans `.gitignore` et ne doit jamais être commité. Si une
+ancienne version de `.env` a fini dans l'historique git, révoquez le mot de passe
+d'application Gmail sur myaccount.google.com/apppasswords, plutôt que de compter
+sur sa suppression du dépôt.
 
-La clé API Google Sheets est volontairement **lecture seule** : même exposée, elle
-ne permet ni d'écrire dans le Sheet ni d'accéder à autre chose que les données déjà
-partagées "toute personne disposant du lien". La restreindre à l'API Sheets (voir
-section "Google Sheets" ci-dessus) limite encore sa portée.
+La lecture du Sheet ne passe par aucun identifiant : le lien d'export public
+n'existe que parce que le Sheet est déjà partagé "toute personne disposant du
+lien" — exactement l'inverse d'un secret, rien à protéger de ce côté-là.
 
 ## Structure
 

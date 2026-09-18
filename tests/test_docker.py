@@ -333,56 +333,65 @@ def test_l_installateur_racine_existe_et_porte_des_fins_de_ligne_windows():
     assert contenu.count(b"\n") == contenu.count(b"\r\n")
 
 
-def test_l_installateur_racine_ne_demande_que_trois_valeurs():
+def test_l_installateur_racine_ne_demande_que_deux_valeurs():
     """La promesse faite à l'utilisateur : tout le reste est automatique.
 
-    Lecture seule par clé API (voir backend/data_store.py) : plus de fichier de
-    compte de service à déposer, trois valeurs demandées en console (clé,
-    identifiant de feuille, onglet) plutôt qu'un aller-retour par le
-    Bloc-notes."""
+    Lecture seule par lien d'export public (voir backend/data_store.py) : plus
+    de fichier de compte de service à déposer, plus de clé API du tout — deux
+    valeurs demandées en console (identifiant de feuille, onglet) plutôt qu'un
+    aller-retour par le Bloc-notes."""
     contenu = _installer_racine().decode("utf-8")
 
     assert ".env" in contenu
     assert "google_service_account.json" not in contenu
-    assert "set /p \"GOOGLE_SHEETS_API_KEY=" in contenu
+    assert "GOOGLE_SHEETS_API_KEY" not in contenu
     assert "set /p \"GOOGLE_SHEET_ID=" in contenu
     assert "set /p \"GOOGLE_SHEET_TAB=" in contenu
 
 
-def test_l_installateur_racine_est_rejouable_sur_ses_trois_valeurs():
+def test_l_installateur_racine_est_rejouable_sur_ses_deux_valeurs():
     """Relancer après correction ne doit pas obliger à ressaisir ce qui était
     déjà bon — même exigence que l'assistant natif (setup/assistant.ps1)."""
     contenu = _installer_racine().decode("utf-8")
 
     assert "Entree conserve la valeur actuelle" in contenu
-    # Les trois valeurs retombent sur celle déjà présente si la question
-    # reste sans réponse (Entree seule) — jamais sur une chaîne vide qui
-    # écraserait silencieusement une configuration qui marchait.
-    assert 'if not defined GOOGLE_SHEETS_API_KEY set "GOOGLE_SHEETS_API_KEY=%CUR_KEY%"' in contenu
+    # Les deux valeurs retombent sur celle déjà présente si la question reste
+    # sans réponse (Entree seule) — jamais sur une chaîne vide qui écraserait
+    # silencieusement une configuration qui marchait.
     assert 'if not defined GOOGLE_SHEET_ID set "GOOGLE_SHEET_ID=%CUR_ID%"' in contenu
+    assert 'if not defined GOOGLE_SHEET_TAB set "GOOGLE_SHEET_TAB=%DEFAUT_TAB%"' in contenu
 
 
-def test_l_installateur_racine_bloque_sur_une_cle_ou_un_identifiant_vide():
-    """Une clé ou un identifiant vide écrit quand même dans .env produirait la
-    même panne silencieuse qu'un .env jamais rempli — mieux vaut l'arrêter ici,
-    avec le geste exact à faire, que de laisser Docker démarrer pour rien."""
+def test_l_installateur_racine_avertit_sur_le_nom_d_onglet_exact():
+    """Le piège spécifique du lien d'export public : un nom d'onglet incorrect
+    ne produit PAS d'erreur, il charge silencieusement le premier onglet de la
+    feuille — le seul moment où ça se voit est ici, avant que ça n'arrive."""
     contenu = _installer_racine().decode("utf-8")
 
-    assert 'if "%GOOGLE_SHEETS_API_KEY%"=="" (' in contenu
+    assert "EXACT" in contenu
+    assert "silencieusement" in contenu
+
+
+def test_l_installateur_racine_bloque_sur_un_identifiant_vide():
+    """Un identifiant vide écrit quand même dans .env produirait la même panne
+    silencieuse qu'un .env jamais rempli — mieux vaut l'arrêter ici, avec le
+    geste exact à faire, que de laisser Docker démarrer pour rien."""
+    contenu = _installer_racine().decode("utf-8")
+
     assert 'if "%GOOGLE_SHEET_ID%"=="" (' in contenu
 
 
 def test_l_installateur_racine_delegue_l_ecriture_du_env_a_powershell():
-    """Une valeur collée (clé API, identifiant) peut contenir des caractères
-    qu'une substitution de texte en batch pur interpréterait à tort — la
-    réécriture de .env passe donc par un remplacement ligne par ligne en
-    PowerShell (scripts/maj_env.ps1), jamais par un patch texte en batch."""
+    """Une valeur collée (un lien de feuille complet, par exemple) peut contenir
+    des caractères qu'une substitution de texte en batch pur interpréterait à
+    tort — la réécriture de .env passe donc par un remplacement ligne par ligne
+    en PowerShell (scripts/maj_env.ps1), jamais par un patch texte en batch."""
     contenu = _installer_racine().decode("utf-8")
 
     assert "scripts\\maj_env.ps1" in contenu
 
     script = (RACINE / "scripts" / "maj_env.ps1").read_text(encoding="utf-8")
-    assert "$env:GOOGLE_SHEETS_API_KEY" in script
+    assert "GOOGLE_SHEETS_API_KEY" not in script
     assert "$env:GOOGLE_SHEET_ID" in script
     assert "$env:GOOGLE_SHEET_TAB" in script
     # PowerShell 5.1 : Set-Content -Encoding UTF8 ajoute un BOM même quand le

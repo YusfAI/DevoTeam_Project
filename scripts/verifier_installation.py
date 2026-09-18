@@ -97,7 +97,7 @@ def verifier_env():
     chemin = RACINE / ".env"
     if not chemin.exists():
         dire(KO, "Fichier .env absent",
-             "l'application ne saura ni quelle feuille lire, ni quelle clé utiliser",
+             "l'application ne saura pas quelle feuille lire",
              "Copier .env.example en .env, puis le remplir")
         return False
 
@@ -105,13 +105,13 @@ def verifier_env():
     load_dotenv(chemin)
     dire(OK, "Fichier .env présent")
 
-    # GOOGLE_SHEETS_API_KEY et GOOGLE_SHEET_ID sont indispensables. Le modèle
-    # (Ollama, local) n'a pas de clé à renseigner — il est vérifié séparément
-    # (section 5, service + modèle présents). Les trois variables d'email ne le
-    # sont pas non plus : sans elles l'alerte quotidienne ne part pas, et c'est
-    # tout — l'application reste pleinement utilisable.
-    for cle, role in [("GOOGLE_SHEETS_API_KEY", "la lecture des données"),
-                      ("GOOGLE_SHEET_ID", "la lecture des données")]:
+    # GOOGLE_SHEET_ID est indispensable. Le modèle (Ollama, local) n'a pas de clé
+    # à renseigner — il est vérifié séparément (section 4, service + modèle
+    # présents), et la lecture du Sheet non plus (lien d'export public, aucune
+    # clé). Les trois variables d'email ne sont pas indispensables non plus :
+    # sans elles l'alerte quotidienne ne part pas, et c'est tout — l'application
+    # reste pleinement utilisable.
+    for cle, role in [("GOOGLE_SHEET_ID", "la lecture des données")]:
         if not (os.getenv(cle) or "").strip():
             dire(KO, "%s vide" % cle, "requise pour %s" % role,
                  "Renseigner cette valeur dans .env")
@@ -130,7 +130,7 @@ def verifier_env():
 
 
 # ---------------------------------------------------------------------------
-# 3. La feuille : lecture (clé API, aucun compte de service) et FORME des données
+# 3. La feuille : lecture (lien d'export public, aucune clé) et FORME des données
 # ---------------------------------------------------------------------------
 
 def verifier_feuille():
@@ -141,12 +141,10 @@ def verifier_feuille():
         valeurs = data_store.fetch_sheet_values()
     except Exception as e:
         message = str(e)
-        if "403" in message:
+        if "404" in message:
+            geste = "Vérifier GOOGLE_SHEET_ID dans .env"
+        elif "partagé" in message:
             geste = "Partager la feuille en « Lecteur — toute personne disposant du lien »"
-        elif "404" in message:
-            geste = "Vérifier GOOGLE_SHEET_ID et GOOGLE_SHEET_TAB dans .env"
-        elif "400" in message:
-            geste = "Vérifier GOOGLE_SHEETS_API_KEY (clé invalide ou API Sheets non activée)"
         else:
             geste = "Vérifier GOOGLE_SHEET_ID et GOOGLE_SHEET_TAB dans .env"
         dire(KO, "Feuille inaccessible", message[:160], geste)
@@ -158,6 +156,10 @@ def verifier_feuille():
 
     dire(OK, "Lecture", "%d ligne(s), onglet « %s »"
          % (len(valeurs) - 1, os.getenv("GOOGLE_SHEET_TAB", "opportunities")))
+    dire(INFO, "Un nom d'onglet incorrect ne produit PAS d'erreur ici",
+         "Google charge alors silencieusement le premier onglet de la feuille",
+         "Vérifier que « %s » est bien le nom affiché en bas de la feuille"
+         % os.getenv("GOOGLE_SHEET_TAB", "opportunities"))
 
     verifier_colonnes(valeurs[0])
     verifier_valeurs(valeurs)

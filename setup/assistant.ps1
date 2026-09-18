@@ -1,10 +1,11 @@
 ﻿# Assistant d'installation — DevoTeam Dashboard
 #
 # Conduit une installation complète sur un poste neuf, en ne demandant que ce qui
-# ne peut pas être deviné : la feuille de calcul et sa clé API de lecture. Aucun
-# fichier d'identifiants Google à télécharger ni à sélectionner — lecture seule,
-# par clé API. Le modèle (Ollama, local) n'a pas de clé à saisir non plus — il est
-# vérifié et installé automatiquement, comme le moteur de tableaux de bord (bruin/dac).
+# ne peut pas être deviné : le lien de la feuille de calcul et son onglet. Aucune
+# clé API, aucun fichier d'identifiants Google à télécharger ni à sélectionner —
+# lecture seule, par le lien d'export public du Sheet. Le modèle (Ollama, local)
+# n'a pas de clé à saisir non plus — il est vérifié et installé automatiquement,
+# comme le moteur de tableaux de bord (bruin/dac).
 #
 # Il ne réimplémente rien. Les scripts existants font le travail (install.bat,
 # verifier_installation.py, test_fonctionnel.py) ; cet assistant les enchaîne et
@@ -48,15 +49,14 @@ function Banniere {
     Write-Host ''
     Write-Host '  Cet assistant installe tout. Il vous demandera :' -ForegroundColor White
     Write-Host ''
-    Write-Host '    1. la cle API Google Sheets (lecture seule) (obligatoire)' -ForegroundColor White
-    Write-Host '    2. le lien de la feuille Google              (obligatoire)' -ForegroundColor White
-    Write-Host '    3. le nom de l''onglet des donnees            (obligatoire)' -ForegroundColor White
-    Write-Host '    4. l''adresse expeditrice des alertes         (facultatif)' -ForegroundColor White
-    Write-Host '    5. le mot de passe d''application Gmail       (facultatif)' -ForegroundColor White
-    Write-Host '    6. l''adresse destinataire des alertes        (facultatif)' -ForegroundColor White
+    Write-Host '    1. le lien de la feuille Google              (obligatoire)' -ForegroundColor White
+    Write-Host '    2. le nom de l''onglet des donnees            (obligatoire)' -ForegroundColor White
+    Write-Host '    3. l''adresse expeditrice des alertes         (facultatif)' -ForegroundColor White
+    Write-Host '    4. le mot de passe d''application Gmail       (facultatif)' -ForegroundColor White
+    Write-Host '    5. l''adresse destinataire des alertes        (facultatif)' -ForegroundColor White
     Write-Host ''
-    Write-Host '  Aucun fichier a telecharger ni a selectionner : pas de compte de' -ForegroundColor White
-    Write-Host '  service, pas de JSON — juste une cle API et un partage en Lecteur.' -ForegroundColor White
+    Write-Host '  Aucun fichier a telecharger ni a selectionner, aucune cle API :' -ForegroundColor White
+    Write-Host '  juste un partage en Lecteur, toute personne disposant du lien.' -ForegroundColor White
     Write-Host ''
     Write-Host '  Rien de ce que vous saisirez ne sera affiche ni copie ailleurs' -ForegroundColor DarkGray
     Write-Host '  que dans le fichier .env, exclu du depot Git.' -ForegroundColor DarkGray
@@ -305,19 +305,12 @@ function InstallerDac {
 
 function DemanderConfiguration {
     Titre '2. Configuration'
-    Write-Host '  Six informations. Entree conserve ce qui est deja en place.' -ForegroundColor DarkGray
+    Write-Host '  Cinq informations. Entree conserve ce qui est deja en place.' -ForegroundColor DarkGray
 
     $config = LireEnv
 
     Write-Host ''
-    Write-Host '  [1/6] Cle API Google Sheets' -ForegroundColor Cyan
-    Info 'console.cloud.google.com > APIs et services > Identifiants > Creer une cle API'
-    Info '(puis activer "Google Sheets API" sur le projet) — la saisie reste invisible'
-    $cleSheets = LireSecret 'Collez la cle :' $config['GOOGLE_SHEETS_API_KEY']
-    if ($cleSheets) { $config['GOOGLE_SHEETS_API_KEY'] = $cleSheets }
-
-    Write-Host ''
-    Write-Host '  [2/6] Feuille Google' -ForegroundColor Cyan
+    Write-Host '  [1/5] Feuille Google' -ForegroundColor Cyan
     Info "Collez le lien entier depuis le navigateur — l'identifiant en est extrait"
     $lien = LireTexte 'Lien ou identifiant :' $config['GOOGLE_SHEET_ID'] $null
     $id = IdentifiantDeFeuille $lien
@@ -327,8 +320,10 @@ function DemanderConfiguration {
     }
 
     Write-Host ''
-    Write-Host '  [3/6] Onglet des donnees' -ForegroundColor Cyan
+    Write-Host '  [2/5] Onglet des donnees' -ForegroundColor Cyan
     Info "Le nom de l'onglet, en bas de la feuille, qui contient les opportunites"
+    Info "IMPORTANT : doit correspondre EXACTEMENT — un nom incorrect ne produit"
+    Info "aucune erreur, il charge silencieusement le premier onglet a la place."
     $onglet = LireTexte 'Nom de l''onglet :' $config['GOOGLE_SHEET_TAB'] 'opportunities'
     if ($onglet) { $config['GOOGLE_SHEET_TAB'] = $onglet }
 
@@ -342,7 +337,7 @@ function DemanderConfiguration {
     Info "Entree a la question suivante pour s'en passer : rien d'autre ne change."
 
     Write-Host ''
-    Write-Host '  [4/6] Adresse expeditrice' -ForegroundColor Cyan
+    Write-Host '  [3/5] Adresse expeditrice' -ForegroundColor Cyan
     Info "Le compte Gmail qui ENVOIE le rappel (Entree pour desactiver les alertes)"
     $expediteur = LireTexte 'Adresse expeditrice :' $config['GMAIL_SENDER'] $null
 
@@ -350,7 +345,7 @@ function DemanderConfiguration {
         $config['GMAIL_SENDER'] = $expediteur
 
         Write-Host ''
-        Write-Host '  [5/6] Mot de passe d''application Gmail' -ForegroundColor Cyan
+        Write-Host '  [4/5] Mot de passe d''application Gmail' -ForegroundColor Cyan
         Info 'myaccount.google.com/apppasswords — 16 caracteres.'
         Info "PAS le mot de passe du compte : un mot de passe DEDIE, qui exige"
         Info "que la validation en 2 etapes soit active. Les espaces sont retires."
@@ -358,14 +353,14 @@ function DemanderConfiguration {
         if ($motdepasse) { $config['GMAIL_APP_PASSWORD'] = $motdepasse }
 
         Write-Host ''
-        Write-Host '  [6/6] Adresse destinataire' -ForegroundColor Cyan
+        Write-Host '  [5/5] Adresse destinataire' -ForegroundColor Cyan
         Info 'Qui RECOIT le rappel — la meme adresse convient tres bien.'
         Info 'Plusieurs adresses : separez-les par une virgule.'
         $destinataire = LireTexte 'Adresse destinataire :' $config['ALERT_RECIPIENT_EMAIL'] $expediteur
         if ($destinataire) { $config['ALERT_RECIPIENT_EMAIL'] = $destinataire }
     } else {
         Write-Host ''
-        Avertir 'Alertes email desactivees — questions 5 et 6 sans objet.'
+        Avertir 'Alertes email desactivees — questions 4 et 5 sans objet.'
         Info "L'application fonctionne integralement ; seul le rappel ne part pas."
         $config['GMAIL_SENDER'] = ''
         $config['GMAIL_APP_PASSWORD'] = ''
@@ -384,7 +379,6 @@ function RecapitulerConfiguration($config) {
     Titre 'Recapitulatif'
 
     $lignes = @(
-        @{ Cle = 'GOOGLE_SHEETS_API_KEY'; Nom = 'Cle API Sheets';         Secret = $true;  Requis = $true },
         @{ Cle = 'GOOGLE_SHEET_ID';       Nom = 'Identifiant de feuille'; Secret = $false; Requis = $true },
         @{ Cle = 'GOOGLE_SHEET_TAB';      Nom = 'Onglet';                 Secret = $false; Requis = $true },
         @{ Cle = 'GMAIL_SENDER';          Nom = 'Alertes — expediteur';   Secret = $false; Requis = $false },

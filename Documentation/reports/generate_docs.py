@@ -523,9 +523,9 @@ def build_rapport_professionnel():
                      "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
-    add_bullet(doc, "La clé API Google Sheets (accès en lecture seule) vit dans .env, exclu du "
-                     "dépôt git — jamais de fichier de compte de service à protéger, l'application "
-                     "n'en utilise plus.")
+    add_bullet(doc, "La lecture du Sheet ne passe par aucun identifiant (lien d'export public) — "
+                     "ni clé API à protéger, ni fichier de compte de service, l'application "
+                     "n'en utilise plus aucun.")
 
     # --- Preuve de fonctionnement ---
     add_h1(doc, "8. Preuve de fonctionnement — alertes deadlines")
@@ -786,10 +786,11 @@ def build_guide_technique():
     add_h1(doc, "4. Source de données (backend/data_store.py)")
     add_body(doc,
         "Il n'y a plus de base de données. Le Google Sheet est la source de vérité : "
-        "`data_store.py` le lit en lecture seule via l'API Sheets v4 et une simple clé "
-        "API (aucun compte de service, aucun fichier JSON), valide chaque ligne, et "
-        "construit un DataFrame pandas conservé en mémoire. Ce DataFrame est rafraîchi "
-        "toutes les 15 minutes, au démarrage, et à la demande via POST /sheets/sync.")
+        "`data_store.py` le lit en lecture seule via son lien d'export public "
+        "(aucune clé API, aucun compte de service, aucun fichier JSON), valide "
+        "chaque ligne, et construit un DataFrame pandas conservé en mémoire. Ce "
+        "DataFrame est rafraîchi toutes les 15 minutes, au démarrage, et à la "
+        "demande via POST /sheets/sync.")
 
     add_h2(doc, "4.1 Les colonnes")
     add_body(doc,
@@ -1500,23 +1501,27 @@ def build_guide_technique():
         "Vérifié sous charge plutôt que supposé : trois rafraîchissements concurrents "
         "lancés pendant vingt-sept requêtes de widgets, tous passants.")
 
-    add_h2(doc, "12.3 Authentification Google — clé API en lecture seule")
+    add_h2(doc, "12.3 Authentification Google — aucune, lien d'export public")
     add_body(doc,
         "L'application ne lit plus le Sheet qu'en LECTURE — elle n'y écrit plus les "
         "identifiants des nouvelles lignes ni les colonnes calculées, qui restent "
         "affichées dans les tableaux de bord sans jamais être renvoyées vers Google "
-        "(section 4.3). Une simple clé API suffit donc : un appel HTTP vers l'API "
-        "Sheets v4 (`spreadsheets.values.get`), sans fichier de compte de service ni "
-        "OAuth. Contrepartie assumée : le Sheet doit être partagé en Lecteur, « toute "
-        "personne disposant du lien » — une clé API n'a pas d'identité Google propre "
-        "à qui partager individuellement.")
+        "(section 4.3). Aucun identifiant n'est donc nécessaire : un appel HTTP vers "
+        "le lien d'export CSV public du Sheet (`/gviz/tq?tqx=out:csv`, le même "
+        "mécanisme que « Fichier → Télécharger → CSV »), sans clé API, sans fichier "
+        "de compte de service, sans OAuth. Contrepartie assumée : le Sheet doit être "
+        "partagé en Lecteur, « toute personne disposant du lien » — et un nom "
+        "d'onglet incorrect ne produit AUCUNE erreur, Google retombe silencieusement "
+        "sur le premier onglet de la feuille (mitigé par la vérification des colonnes "
+        "attendues juste après la lecture, seul filet de sécurité disponible ici).")
     add_body(doc,
-        "Ce choix a remplacé une authentification par compte de service (fichier JSON, "
-        "partagé en Éditeur sur le Sheet cible), abandonnée précisément parce qu'elle "
-        "exigeait de faire circuler ce fichier — une demande que certaines "
-        "organisations ne peuvent pas satisfaire. L'optimisation de cache autour du "
-        "client `gspread` authentifié qui existait à cette époque a disparu avec lui : "
-        "un appel HTTP simple n'a rien à mettre en cache entre deux chargements.")
+        "Ce choix a remplacé une authentification par clé API Sheets v4 restreinte "
+        "(elle-même remplaçante d'un compte de service, fichier JSON partagé en "
+        "Éditeur sur le Sheet cible) — chaque étape supprimant une pièce d'identité "
+        "de plus à faire circuler, la dernière ne demandant plus rien du tout côté "
+        "Google Cloud Console. L'appel HTTP au lien d'export n'a rien à mettre en "
+        "cache entre deux chargements, contrairement au client authentifié qu'il "
+        "remplace.")
 
     add_h2(doc, "12.4 Déclenchement")
     add_body(doc,
@@ -1638,24 +1643,24 @@ def build_guide_technique():
     add_bullet(doc, "Aucune injection SQL possible : le LLM ne produit jamais de SQL, "
                      "uniquement un JSON borné par une liste blanche, converti en requêtes "
                      "paramétrées.")
-    add_bullet(doc, ".env (clés API, identifiants email) exclu du suivi git via .gitignore ; "
+    add_bullet(doc, ".env (identifiants email) exclu du suivi git via .gitignore ; "
                      ".env.example documente les variables attendues sans valeurs réelles.")
     add_bullet(doc, "Le mot de passe d'application Gmail est distinct du mot de passe principal "
                      "du compte et révocable indépendamment.")
-    add_bullet(doc, "GOOGLE_SHEETS_API_KEY (section 12.3) n'est qu'une clé de lecture seule, sans "
-                     "accès en écriture possible même exposée — restreinte à l'API Sheets côté "
-                     "console Google Cloud pour limiter encore sa portée.")
+    add_bullet(doc, "La lecture du Sheet (section 12.3) ne passe par aucun identifiant à protéger : "
+                     "le lien d'export public n'existe que parce que le Sheet est déjà partagé "
+                     "« toute personne disposant du lien », exactement l'inverse d'un secret.")
 
     # --- Tests ---
     add_h1(doc, "15. Tests automatisés")
     add_body(doc,
         "337 tests pytest, sans dépendance réseau ni données réelles : le client du "
-        "modèle local (Ollama) et le client Google Sheets (l'appel HTTP à l'API "
-        "Sheets) sont simulés (monkeypatch), et les données sont un petit DataFrame "
-        "construit dans le test. La suite tourne donc hors ligne, en quelques secondes.")
+        "modèle local (Ollama) et l'appel HTTP au lien d'export du Sheet sont "
+        "simulés (monkeypatch), et les données sont un petit DataFrame construit "
+        "dans le test. La suite tourne donc hors ligne, en quelques secondes.")
     add_body(doc,
         "Ces tests sont systématiquement complétés par une vérification en conditions "
-        "réelles — Sheet réel (clé API), appel au modèle local réel, exécution effective de chaque widget "
+        "réelles — Sheet réel, appel au modèle local réel, exécution effective de chaque widget "
         "via `dac check`. La répartition des rôles est nette : les tests protègent contre "
         "les régressions, la vérification réelle est ce qui a révélé la quasi-totalité "
         "des vrais bugs de ce projet (sections 8.3 et 15).")

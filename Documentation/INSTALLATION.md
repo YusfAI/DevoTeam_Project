@@ -1,7 +1,7 @@
 # Installer l'application sur un autre poste
 
 Procédure pour déployer DevoTeam Dashboard sur un poste Windows qui n'est pas celui
-du développeur, avec **les clés et la feuille de calcul de ce poste-là**.
+du développeur, avec **la feuille de calcul de ce poste-là**.
 
 Compter une heure la première fois, dont l'essentiel est du téléchargement.
 
@@ -11,8 +11,9 @@ Compter une heure la première fois, dont l'essentiel est du téléchargement.
 > [démonstration guidée](https://app.arcade.software/flows/0JEAJAGmgCqMbVXfQo2R/view) (aussi dans `Demo video.url`, à la racine du projet).
 
 > **Plus rapide :** `setup\INSTALLER_NATIF.bat` fait tout ce qui suit automatiquement et
-> ne vous demande que la clé API et la feuille. Cette page reste la référence si vous
-> préférez procéder à la main, ou pour comprendre ce que l'assistant fait.
+> ne vous demande que le lien de la feuille et son onglet. Cette page reste la
+> référence si vous préférez procéder à la main, ou pour comprendre ce que
+> l'assistant fait.
 >
 > **Sans rien installer sur la machine que Docker Desktop** (pas de Python, Node,
 > ni moteur de tableaux de bord à poser directement sur le poste) :
@@ -20,46 +21,48 @@ Compter une heure la première fois, dont l'essentiel est du téléchargement.
 
 ## Avant le jour de l'installation
 
-Deux choses doivent être obtenues **à l'avance**. Ce sont elles qui font échouer une
-installation faite dans l'urgence, parce qu'aucune ne dépend de vous seul. Aucune
-n'est un secret à protéger comme un mot de passe : la clé Sheets est en lecture
-seule, et le modèle de chat tourne en local, sans clé du tout.
+Une seule chose doit être obtenue **à l'avance**. C'est elle qui fait échouer une
+installation faite dans l'urgence, parce qu'elle ne dépend pas de vous seul. Ce
+n'est pas un secret à protéger comme un mot de passe : le partage de la feuille
+est volontairement public par lien, et le modèle de chat tourne en local, sans
+clé du tout.
 
 > Fiche à garder, avec les liens exacts et le détail de chaque étape :
 > [`OBTENIR_LES_ACCES.md`](OBTENIR_LES_ACCES.md).
 
-### 1. Une clé API Google Sheets, en lecture seule
+### 1. Partager la feuille Google, en lecture
 
-L'application ne se connecte pas avec un compte de service ni un fichier JSON : une
-simple clé API suffit, parce qu'elle ne fait jamais que LIRE le Sheet.
+L'application ne se connecte avec aucun identifiant — ni compte de service, ni
+fichier JSON, ni clé API : elle lit le Sheet par son **lien d'export public**, le
+même mécanisme que « Fichier → Télécharger → CSV » depuis l'interface Sheets.
 
-- Sur [console.cloud.google.com](https://console.cloud.google.com) → *API et
-  services* → *Bibliothèque* → activer **Google Sheets API**.
-- *API et services* → *Identifiants* → *Créer des identifiants* → **Clé API**.
-- *(Recommandé)* Restreindre la clé à *Google Sheets API* uniquement.
-- **Partager la feuille de calcul** → Accès général → **« Toute personne disposant
+- Ouvrir le Sheet → **Partager** → Accès général → **« Toute personne disposant
   du lien »**, rôle **Lecteur**.
 
-> Une clé API n'a pas d'identité Google propre : elle ne peut lire que ce qui est
-> déjà accessible par lien, quel que soit son propriétaire — d'où l'absence d'une
-> adresse précise à qui partager, contrairement à un compte de service. C'est aussi
-> pourquoi le rôle Lecteur suffit : une clé API ne permet jamais d'écrire, donc rien
-> ne peut échouer plus tard faute d'un rôle Éditeur qu'on aurait oublié.
+> Sans ce partage, Google sert une page de connexion à la place des données —
+> il n'y a pas de clé à corriger, le lien EST l'autorisation.
 >
-> À peser côté entreprise : « toute personne disposant du lien » est un partage
-> plus large qu'un compte de service ciblé. Si ce n'est pas acceptable pour cette
-> feuille, il faut soit y limiter les données sensibles, soit revenir à une
-> authentification par compte de service (non couverte par ce guide).
+> À peser côté entreprise : « toute personne disposant du lien » rend la feuille
+> lisible par quiconque obtient ce lien, sans identité Google à vérifier. Si ce
+> n'est pas acceptable pour cette feuille, il faut soit y limiter les données
+> sensibles, soit revenir à une authentification par compte de service (non
+> couverte par ce guide).
 
-### 2. L'identifiant de la feuille
+### 2. L'identifiant de la feuille et son onglet
 
-Il est dans son URL, entre `/d/` et `/edit` :
+L'identifiant est dans son URL, entre `/d/` et `/edit` — coller l'URL complète
+fonctionne aussi, l'identifiant en est extrait automatiquement :
 
 ```
 https://docs.google.com/spreadsheets/d/IDENTIFIANT_DE_LA_FEUILLE/edit
 ```
 
-Relever aussi le **nom de l'onglet** qui contient les données.
+Relever aussi le **nom de l'onglet** qui contient les données, affiché en bas de
+la feuille.
+
+> **Piège à connaître :** un nom d'onglet qui ne correspond à AUCUN onglet ne
+> produit aucune erreur — Google charge silencieusement le premier onglet de la
+> feuille à la place. Vérifier que le nom tapé est exactement celui affiché.
 
 ### Le modèle de chat (Ollama) — rien à préparer
 
@@ -122,9 +125,8 @@ télécharge le modèle de chat s'il manque**, et crée les raccourcis du Bureau
 À un moment il ouvre le **Bloc-notes** sur le fichier `.env`. Remplir :
 
 ```ini
-GOOGLE_SHEETS_API_KEY=     la clé API de l'étape 1 (lecture seule)
-GOOGLE_SHEET_ID=           l'identifiant relevé dans l'URL
-GOOGLE_SHEET_TAB=          le nom de l'onglet
+GOOGLE_SHEET_ID=           l'identifiant relevé dans l'URL (étape 2)
+GOOGLE_SHEET_TAB=          le nom EXACT de l'onglet (étape 2)
 
 # Facultatif — l'email de rappel quotidien
 GMAIL_SENDER=
@@ -138,9 +140,9 @@ OLLAMA_MODEL=
 
 **Enregistrer**, puis fermer le Bloc-notes pour que l'installation reprenne.
 
-> La clé se saisit ici, dans un fichier, et jamais dans une console : une clé
-> tapée dans un terminal reste dans son historique. Le fichier `.env` est exclu du
-> dépôt Git.
+> Le seul secret ici est le mot de passe d'application Gmail (facultatif) : il se
+> saisit dans ce fichier, et jamais dans une console, où il resterait dans
+> l'historique. Le fichier `.env` est exclu du dépôt Git.
 
 ### Étape 5 — Vérifier
 
@@ -153,8 +155,8 @@ verdict par point :
 
 - Python, dépendances, interface compilée
 - `.env` et chacune de ses variables
-- la feuille : lecture par clé API (aucune écriture à tester — une clé API n'écrit
-  jamais)
+- la feuille : lecture par lien d'export public (aucune écriture à tester — ce
+  lien ne permet jamais d'écrire)
 - les colonnes attendues, et les **valeurs inconnues** dans les colonnes de choix
 - le modèle local — service Ollama joignable, modèle bien téléchargé
 - `dac.exe`, `bruin.exe`, et les serveurs
@@ -251,8 +253,9 @@ L'application reconnaît déjà les intitulés suivants, en plus des noms intern
 **La colonne `id` est la seule totalement facultative.** Une feuille métier qui n'en
 a jamais eu n'a besoin d'aucun ajout : l'application attribue un identifiant à
 chaque ligne en mémoire à chaque chargement. Une limite honnête à connaître : la
-lecture se fait par clé API, qui ne permet jamais d'écrire — cet identifiant n'est
-donc **jamais réécrit dans le Sheet**, contrairement à l'ancien compte de service.
+lecture se fait par le lien d'export public, qui ne permet jamais d'écrire — cet
+identifiant n'est donc **jamais réécrit dans le Sheet**, contrairement à l'ancien
+compte de service.
 Il reste stable d'un chargement à l'autre si le Sheet porte sa propre colonne
 `id` ; sinon, il n'est valable que pour le chargement en cours (attribué dans
 l'ordre des lignes). Sans conséquence pour l'usage courant (rien dans
@@ -337,9 +340,9 @@ tunnels:
 | Tous les visuels en erreur, la page s'affiche | `bruin.exe` absent ou hors du PATH | Refaire l'étape 3, relancer par le raccourci |
 | « Serveur de dashboards injoignable » | DAC pas démarré | Relancer par le raccourci, ne pas fermer les fenêtres |
 | Tableaux de bord vides, aucune erreur | Statuts non reconnus | Voir la section ci-dessus |
-| « Accès refusé (403) » à la lecture du Sheet | Feuille pas encore partagée en « Lecteur, toute personne disposant du lien » | Repartager depuis Google Sheets (voir étape 1) |
-| Erreur « 429 » ou 403 intermittent sur la lecture du Sheet | Quota gratuit de l'API Sheets dépassé (nombreuses requêtes rapprochées) | Attendre une minute ; sans rapport avec la clé ou le partage |
-| « GOOGLE_SHEETS_API_KEY manquant » ou « GOOGLE_SHEET_ID manquant » | `.env` absent ou vide | Refaire l'étape 4 |
+| « Réponse inattendue de Google (pas du CSV) » à la lecture du Sheet | Feuille pas encore partagée en « Lecteur, toute personne disposant du lien » | Repartager depuis Google Sheets (voir étape 1) |
+| Les chiffres semblent faux, sans aucune erreur affichée | `GOOGLE_SHEET_TAB` ne correspond à aucun onglet réel — Google charge silencieusement le premier onglet à la place | Vérifier l'orthographe exacte de l'onglet dans `.env`, comparée à celle affichée en bas de la feuille |
+| « GOOGLE_SHEET_ID manquant » | `.env` absent ou vide | Refaire l'étape 4 |
 | Les fenêtres s'ouvrent puis se referment, rien ne démarre | Lanceur antérieur à la correction des chemins à espaces | Mettre le projet à jour (`git pull`) |
 | `python` non reconnu | Case PATH décochée | Réinstaller Python en cochant la case |
 | Tableaux vides derrière une URL ngrok | Un seul tunnel, ou `DAC_PUBLIC_URL` non renseignée | Voir la section « accessible à distance » |
