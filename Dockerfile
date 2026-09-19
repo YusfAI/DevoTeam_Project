@@ -24,7 +24,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # --- Moteur de tableaux de bord (bruin + dac) -------------------------------
-RUN bash -c "curl -LsSf https://getbruin.com/install/dac | sh"
+# Retenté plusieurs fois : constaté en pratique (build --no-cache, deux essais
+# consécutifs) que ce téléchargement échoue sporadiquement en TLS (curl 56 —
+# "decryption failed or bad record mac", "connection reset"...), sur une
+# connexion par ailleurs fonctionnelle — un aléa réseau, pas une panne de
+# getbruin.com. Sans retry, un seul accroc bloque toute l'installation.
+RUN for essai in 1 2 3 4 5; do \
+        bash -c "curl -LsSf https://getbruin.com/install/dac | sh" && exit 0; \
+        echo "Telechargement bruin/dac : echec $essai/5, nouvel essai dans 5s..." >&2; \
+        sleep 5; \
+    done; \
+    echo "Telechargement bruin/dac : echec apres 5 tentatives." >&2; \
+    exit 1
 ENV PATH="/root/.local/bin:${PATH}"
 
 # --- Dépendances Python ------------------------------------------------------

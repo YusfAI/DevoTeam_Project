@@ -219,6 +219,28 @@ def test_les_dependances_python_sont_installees_avant_le_prechauffage():
     assert dockerfile.index("pip install") < dockerfile.index("dac connections")
 
 
+def test_l_installation_de_bruin_reessaie_avant_d_abandonner():
+    """Constaté en pratique (build --no-cache, deux essais consécutifs, deux
+    fichiers différents) : ce téléchargement échoue sporadiquement en TLS sur
+    une connexion par ailleurs fonctionnelle — un aléa réseau, pas une panne du
+    service. Sans retry, un seul accroc bloque toute la construction de
+    l'image, sur n'importe quel poste."""
+    dockerfile = _dockerfile()
+
+    bloc = dockerfile[dockerfile.index("Moteur de tableaux de bord"):]
+    bloc = bloc[:bloc.index("ENV PATH")]
+
+    assert "getbruin.com/install/dac" in bloc
+    # Plusieurs tentatives, chacune espacée d'une pause — jamais une boucle qui
+    # retenterait en rafale contre un service déjà en difficulté.
+    assert "sleep" in bloc
+    for essai in ("1", "2", "3"):
+        assert essai in bloc
+    # Un échec APRÈS la dernière tentative doit rester un échec : une boucle
+    # qui retourne silencieusement 0 masquerait la panne au lieu de l'arrêter.
+    assert "exit 1" in bloc
+
+
 # ---------------------------------------------------------------------------
 # Les secrets ne doivent jamais entrer dans l'image
 # ---------------------------------------------------------------------------
