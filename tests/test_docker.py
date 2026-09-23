@@ -442,10 +442,76 @@ def test_l_installateur_racine_installe_docker_desktop_tout_seul():
 
 
 def test_l_installateur_racine_installe_ollama_et_son_modele():
+    """« Tout le reste est automatique » couvre Ollama comme Docker Desktop.
+    L'en-tête du fichier l'annonçait déjà alors que le code se contentait
+    d'afficher un lien à suivre à la main : l'écart est corrigé ici."""
     contenu = _installer_racine().decode("utf-8")
 
     assert "where ollama" in contenu
-    assert "ollama pull qwen2.5:7b-instruct-q4_K_M" in contenu
+    assert "winget install --id Ollama.Ollama" in contenu
+    assert "pull qwen2.5:7b-instruct-q4_K_M" in contenu
+
+
+def test_l_installateur_racine_vise_l_executable_ollama_apres_installation():
+    """winget met à jour le PATH dans le registre, pas dans les processus déjà
+    lancés : après l'installation, « where ollama » échoue encore DANS CETTE
+    fenêtre. Sans viser l'exécutable à son emplacement connu, l'installation
+    réussie retomberait quand même sur un arrêt — le contraire du un-clic."""
+    contenu = _installer_racine().decode("utf-8")
+
+    assert "Programs\\Ollama\\ollama.exe" in contenu
+
+
+def test_l_installateur_racine_verifie_que_le_service_ollama_repond():
+    """Installé ne veut pas dire démarré : sans le service sur 11434, « pull »
+    échoue et le chat reste muet une fois l'application lancée. On le démarre
+    plutôt que d'échouer."""
+    contenu = _installer_racine().decode("utf-8")
+
+    assert "11434" in contenu
+    assert "serve" in contenu
+
+
+def test_l_installateur_racine_exige_un_clone_git():
+    """Vérifié en conditions réelles, dans le conteneur : même dossier, même
+    .bruin.yml, mêmes données — avec .git la connexion DuckDB répond
+    « connected », sans .git elle répond « bruin query failed ». Un dossier
+    obtenu par « Download ZIP » sur GitHub n'a pas de .git : l'application
+    s'installerait et démarrerait, mais tous les tableaux de bord resteraient
+    vides. C'est la panne la plus coûteuse à découvrir en démonstration."""
+    contenu = _installer_racine().decode("utf-8")
+
+    assert 'if not exist ".git"' in contenu
+    assert "git clone" in contenu
+
+
+def test_l_installateur_racine_verifie_les_ports_sans_se_bloquer_lui_meme():
+    """Un port déjà pris fait échouer « docker compose up » sur un message de
+    bas niveau qui ne dit pas quoi faire. Mais la vérification ne doit pas se
+    déclencher quand ce sont les conteneurs DU PROJET qui tiennent ces ports,
+    sinon un simple relancement se bloquerait lui-même."""
+    contenu = _installer_racine().decode("utf-8")
+
+    assert "8000,8321,8322" in contenu
+    assert "docker compose ps -q" in contenu
+
+
+def test_l_installateur_racine_ne_place_aucune_etiquette_dans_un_bloc():
+    """Une étiquette (:nom) à l'intérieur d'un bloc ( ... ) n'est pas
+    analysable par cmd.exe — le fichier échoue alors au lancement, pas à
+    l'écriture. Les trois boucles d'attente de ce fichier sont donc écrites à
+    plat, et ce test garde cette propriété."""
+    lignes = _installer_racine().decode("utf-8").splitlines()
+
+    profondeur = 0
+    for ligne in lignes:
+        nue = ligne.strip()
+        if nue.startswith(":") and not nue.startswith("::"):
+            assert profondeur == 0, f"etiquette dans un bloc : {nue}"
+        # Les parenthèses échappées (^( ^)) sont du texte affiché, pas des blocs.
+        sans_echap = nue.replace("^(", "").replace("^)", "")
+        profondeur += sans_echap.count("(") - sans_echap.count(")")
+        profondeur = max(profondeur, 0)
 
 
 def test_l_installateur_racine_construit_puis_demarre():

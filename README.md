@@ -170,6 +170,13 @@ navigateur, pour qui reçoit le dossier sans passer par ce fichier.
 
 ## Installer sur un autre poste
 
+**Récupérer le projet avec `git clone`, jamais avec « Download ZIP ».** Le
+dossier `.git` est nécessaire au fonctionnement, pas seulement à l'historique :
+le moteur de tableaux de bord refuse de lancer une requête sans racine de dépôt
+Git. Un dossier issu d'un ZIP s'installe et démarre normalement, mais laisse
+**tous les tableaux de bord vides**. `INSTALLER.bat` s'arrête désormais dès son
+étape 1/7 dans ce cas, avec la commande exacte à lancer.
+
 **Recommandé — double-cliquer sur `INSTALLER.bat`, à la racine du projet.**
 
 Un seul fichier, un seul clic. Il ne demande que ce qu'il ne peut pas deviner à
@@ -220,9 +227,12 @@ Fiche avec les liens exacts pour obtenir ces éléments :
 `Documentation/OBTENIR_LES_ACCES.md`.
 
 Logiciel à installer, selon la méthode :
-- **Installation Docker (recommandée)** : rien à poser à l'avance —
-  `INSTALLER.bat` installe [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-  lui-même (via `winget`) s'il manque.
+- **Installation Docker (recommandée)** : [git](https://git-scm.com/download/win)
+  est le seul prérequis manuel — il sert à récupérer le projet, et son dossier
+  `.git` reste nécessaire ensuite (voir « Installer sur un autre poste »).
+  `INSTALLER.bat` installe tout le reste lui-même (via `winget`) :
+  [Docker Desktop](https://www.docker.com/products/docker-desktop/) et
+  [Ollama](https://ollama.com/download).
 - **Installation native** : Python 3.11+, Node.js 18+ / npm, et le moteur de
   tableaux de bord (voir `Documentation/INSTALLATION.md`).
 

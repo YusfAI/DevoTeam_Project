@@ -51,6 +51,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 44 — Un installateur en un clic : Docker vérifié, construit, démarré, vérifié — sans Python local
 - [x] Phase 45 — Migration Google Gemini → LLM local (Ollama), et Google Sheets lu par simple clé API au lieu d'un compte de service
 - [x] Phase 46 — Google Sheets lu par lien d'export public : plus aucun identifiant, ni clé API ni compte de service
+- [x] Phase 47 — Installation prouvée sur un poste nu : Ollama installé et démarré tout seul, et le piège du « Download ZIP » arrêté avant la démonstration
 
 ## 📝 Journaux
 
@@ -578,6 +579,56 @@ comparaient les deux moteurs de requête sur les vraies données du Sheet, qui
 avaient besoin d'une clé API en Phase 45, tournent maintenant hors ligne comme
 tous les autres : rien à configurer sur une machine neuve pour les faire
 passer, seulement le Sheet de démonstration déjà public par lien.
+
+**Phase 47** : Terminée. Le test de la Phase 46 (clone neuf → `INSTALLER.bat` →
+15/15) avait prouvé moins qu'il n'y paraissait : il tournait sur une machine où
+Docker **et** Ollama étaient déjà installés, avec le modèle déjà téléchargé. Les
+branches « poste nu » n'avaient donc jamais été exécutées une seule fois. Trois
+écarts trouvés en les examinant, tous corrigés ici.
+
+*L'écart le plus coûteux : `.git` est nécessaire au FONCTIONNEMENT, pas
+seulement à l'historique.* Vérifié dans le conteneur, à données et
+configuration identiques : avec `.git`, `dac connections` répond
+« ✓ connected » ; sans `.git`, « ✗ bruin query failed ». Un dossier obtenu par
+le bouton « Download ZIP » de GitHub — la façon la plus naturelle pour un
+non-technicien de récupérer un projet — s'installe et démarre normalement, mais
+laisse **tous les tableaux de bord vides**, sans un message d'erreur. C'est
+exactement le genre de panne qui se découvre en démonstration. `INSTALLER.bat`
+s'arrête maintenant dès l'étape 1/7, avec la commande `git clone` exacte à
+lancer.
+
+*Le deuxième : l'en-tête du fichier mentait au code.* Il annonçait « Docker
+Desktop et Ollama compris : les deux s'installent tout seuls (winget) » alors
+que la branche Ollama se contentait d'afficher un lien à suivre à la main avant
+de s'arrêter. Ollama s'installe désormais vraiment tout seul
+(`winget install --id Ollama.Ollama`). Deux pièges à contourner au passage :
+winget met à jour le `PATH` dans le registre mais **pas dans les processus déjà
+lancés**, donc `where ollama` échoue encore juste après l'installation — on vise
+l'exécutable à son emplacement connu ; et « installé » ne veut pas dire
+« démarré » — le service est maintenant sondé sur le port 11434 et lancé s'il
+ne répond pas, sans quoi `pull` échoue et le chat reste muet.
+
+*Le troisième, préventif :* un des ports 8000/8321/8322 déjà pris par un autre
+programme faisait échouer `docker compose up` sur un « bind: address already in
+use » qui ne dit pas quoi faire. Vérifié avant — mais seulement si le projet n'a
+pas déjà ses propres conteneurs en route, sinon un simple relancement se
+bloquerait sur ses ports à lui.
+
+*Au passage, une vérification qui manquait depuis la Phase 45.* Le test
+fonctionnel (15/15) ne touche **jamais** au LLM : `/dashboard` a un parseur
+rapide qui répond seul sur les questions courantes. « TOUT EST JUSTE » ne
+prouvait donc rien sur Ollama. Vérifié explicitement cette fois : `ollama ps`
+vide avant, une question en langage naturel envoyée à l'application, puis
+`qwen2.5:7b-instruct-q4_K_M` chargé en mémoire après — le chemin
+conteneur → `host.docker.internal` → Ollama fonctionne bel et bien. À noter
+aussi : Ollama n'écoute que sur `127.0.0.1`, et c'est sans conséquence ici car
+Docker Desktop (Windows) relaie `host.docker.internal` vers la boucle locale de
+l'hôte. Aucune variable `OLLAMA_HOST` à poser sur le poste — ce ne serait pas
+vrai sous Docker natif Linux.
+
+582 tests passent (40 sur `INSTALLER.bat` seul, dont un qui refuse toute
+étiquette `:nom` placée dans un bloc `( ... )` — cmd.exe ne sait pas l'analyser,
+et la panne se produit alors au lancement, pas à l'écriture).
 
 ## 📊 Bilan du Produit
 

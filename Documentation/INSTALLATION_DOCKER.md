@@ -87,6 +87,17 @@ git clone https://github.com/<votre-organisation>/DevoTeam_Project.git
 cd DevoTeam_Project
 ```
 
+> **`git clone` — surtout pas « Download ZIP ».** Le dossier `.git` n'est pas
+> qu'un historique ici : le moteur de tableaux de bord (`dac`, qui appelle
+> `bruin`) refuse de lancer la moindre requête s'il ne trouve pas de racine de
+> dépôt Git. Vérifié en conditions réelles, à données et configuration
+> identiques : avec `.git`, la connexion DuckDB répond « connected » ; sans
+> `.git`, elle répond « bruin query failed ». Un dossier obtenu par le bouton
+> « Download ZIP » de GitHub n'a pas de `.git` : l'application s'installerait et
+> démarrerait normalement, mais **tous les tableaux de bord resteraient vides**.
+> `INSTALLER.bat` s'arrête désormais dès l'étape 1/7 dans ce cas, avec la
+> commande exacte à lancer.
+
 ## Étape 3 — Configurer
 
 ```
@@ -122,7 +133,9 @@ lien d'export public, à condition qu'il soit bien partagé en Lecteur (voir
 
 Contrairement au reste, Ollama n'est **pas** conteneurisé : il tourne directement
 sur la machine hôte, comme n'importe quel programme installé normalement.
-`INSTALLER.bat` le vérifie et l'installe automatiquement à l'étape 3/6 ; en
+`INSTALLER.bat` le vérifie et l'installe automatiquement à l'étape 4/7 — il
+démarre aussi le service s'il est installé mais arrêté, et télécharge le modèle
+s'il manque ; en
 suivant les étapes manuelles ci-dessous, installez-le vous-même avant `docker
 compose up` :
 
