@@ -626,9 +626,21 @@ Docker Desktop (Windows) relaie `host.docker.internal` vers la boucle locale de
 l'hôte. Aucune variable `OLLAMA_HOST` à poser sur le poste — ce ne serait pas
 vrai sous Docker natif Linux.
 
-582 tests passent (40 sur `INSTALLER.bat` seul, dont un qui refuse toute
+584 tests passent (40 sur `INSTALLER.bat` seul, dont un qui refuse toute
 étiquette `:nom` placée dans un bloc `( ... )` — cmd.exe ne sait pas l'analyser,
 et la panne se produit alors au lancement, pas à l'écriture).
+
+*La même garde posée sur l'autre porte d'entrée.* Le chemin natif
+(`INSTALLER_NATIF.bat` → `setup/assistant.ps1`, et `scripts/install.bat`) sert
+exactement le même moteur de tableaux de bord, donc exactement la même panne
+silencieuse sans `.git` — il n'en avait aucune protection. Les deux la portent
+maintenant, chacune avec son test. Au passage, deux affirmations fausses
+corrigées dans la documentation et un commentaire de code : `setup/README.md` et
+`OBTENIR_LES_ACCES.md` annonçaient qu'Ollama s'installait tout seul **sur le
+chemin natif**, ce qui n'a jamais été vrai — seul l'installateur Docker le fait
+(`winget`) ; le natif affiche un lien et s'arrête. `Documentation/INSTALLATION.md`
+disait « copier le dossier » sans avertir que les fichiers cachés — donc `.git` —
+ne suivent pas toujours un copier-coller par l'Explorateur.
 
 ## 📊 Bilan du Produit
 

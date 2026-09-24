@@ -277,3 +277,29 @@ def test_la_preference_d_erreur_est_restauree():
     assert "$precedent = $ErrorActionPreference" in bloc
     assert "} finally {" in bloc
     assert "$ErrorActionPreference = $precedent" in bloc
+
+
+def test_l_assistant_exige_un_clone_git():
+    """Vérifié en conditions réelles, dans le conteneur : à données et
+    configuration identiques, `dac connections` répond « ✓ connected » avec un
+    .git présent, et « ✗ bruin query failed » sans. Un dossier récupéré par
+    « Download ZIP », ou copié sans ses fichiers cachés, laisserait donc
+    l'application démarrer normalement mais TOUS les tableaux de bord vides,
+    sans le moindre message d'erreur — la panne la plus coûteuse à découvrir en
+    démonstration. L'installateur Docker (INSTALLER.bat) s'en garde déjà ; le
+    chemin natif passe par cet assistant et doit s'en garder pareillement."""
+    s = _assistant()
+
+    assert "'.git'" in s
+    assert "git clone" in s
+    # La garde doit précéder tout le travail d'installation : ce qui coûte cher
+    # est de s'en apercevoir après avoir tout posé sur la machine.
+    assert s.index("'.git'") < s.index("function InstallerDac")
+
+
+def test_le_script_natif_exige_aussi_un_clone_git():
+    """Même garde, même raison, pour l'autre porte d'entrée native."""
+    contenu = (RACINE / "scripts" / "install.bat").read_bytes().decode("utf-8")
+
+    assert r'if not exist "%RACINE%\.git"' in contenu
+    assert "git clone" in contenu

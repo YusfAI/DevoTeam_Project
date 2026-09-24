@@ -33,6 +33,32 @@ echo     DevoTeam Dashboard - Installation
 echo   ============================================================
 echo.
 
+REM --- Prealable : le dossier doit etre un clone Git ---------------------------
+REM Le moteur de tableaux de bord (dac, qui appelle bruin) refuse de lancer la
+REM moindre requete s'il ne trouve pas de racine de depot Git en remontant depuis
+REM le dossier interroge. Verifie en conditions reelles, a donnees et
+REM configuration identiques : avec .git la connexion DuckDB repond
+REM « connected », sans .git elle repond « bruin query failed ». Un dossier
+REM recupere par « Download ZIP », ou copie sans ses fichiers caches, n'a pas de
+REM .git : l'application s'installerait et demarrerait normalement, mais tous les
+REM tableaux de bord resteraient vides, sans le moindre message d'erreur.
+if not exist "%RACINE%\.git" (
+    echo   [ARRET] Ce dossier n'est pas un clone Git ^(pas de .git^).
+    echo.
+    echo           Les tableaux de bord ne fonctionneraient pas : le moteur
+    echo           de requetes exige un depot Git. C'est le cas d'un dossier
+    echo           recupere par « Download ZIP », ou copie sans ses fichiers
+    echo           caches.
+    echo.
+    echo           A faire, dans une invite de commandes :
+    echo             git clone https://github.com/YusfAI/DevoTeam_Project.git
+    echo             cd DevoTeam_Project
+    echo             git checkout Version_2
+    echo.
+    set "BLOQUANT=1"
+    goto :fin
+)
+
 REM --- 1. Python -------------------------------------------------------------
 echo   [1/8] Python...
 where python >NUL 2>&1

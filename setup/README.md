@@ -43,7 +43,11 @@ saisie.
 
 - Vérifie Python et Node, et dit précisément quoi installer s'ils manquent
 - **Installe le moteur de tableaux de bord** (bruin + dac) via Git Bash
-- **Vérifie/installe Ollama et télécharge le modèle de chat** (`qwen2.5:7b-instruct-q4_K_M`)
+- **Vérifie Ollama**, démarre son service s'il est arrêté, et **télécharge le
+  modèle de chat** (`qwen2.5:7b-instruct-q4_K_M`, ~4,7 Go). Ollama lui-même reste
+  à installer à la main sur cette méthode : l'assistant affiche le lien et
+  s'arrête, puis se relance. *(L'installation Docker, elle, pose Ollama toute
+  seule via `winget`.)*
 - Crée l'environnement Python isolé et installe les dépendances aux versions épinglées
 - Compile l'interface
 - Écrit le `.env` en conservant ses commentaires

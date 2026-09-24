@@ -200,6 +200,29 @@ function VerifierPrerequis {
     Titre '1. Prerequis'
     $manque = @()
 
+    # Le dossier .git n'est pas qu'un historique ici : le moteur de tableaux de
+    # bord (dac, qui appelle bruin) refuse de lancer la moindre requete s'il ne
+    # trouve pas de racine de depot Git en remontant depuis le dossier
+    # interroge. Verifie en conditions reelles, a donnees et configuration
+    # identiques : avec .git la connexion DuckDB repond « connected », sans
+    # .git elle repond « bruin query failed ». Un dossier recupere par
+    # « Download ZIP », ou copie sans ses fichiers caches, laisserait
+    # l'application demarrer normalement mais tous les tableaux de bord vides,
+    # sans le moindre message d'erreur. On l'arrete ici.
+    if (-not (Test-Path (Join-Path $Racine '.git'))) {
+        Echec 'Ce dossier n''est pas un clone Git (pas de .git)'
+        Info 'Les tableaux de bord ne fonctionneraient pas : le moteur de'
+        Info 'requetes exige un depot Git. C''est le cas d''un dossier recupere'
+        Info 'par « Download ZIP », ou copie sans ses fichiers caches.'
+        Info ''
+        Info 'A faire, dans une invite de commandes :'
+        Info '  git clone https://github.com/YusfAI/DevoTeam_Project.git'
+        Info '  cd DevoTeam_Project'
+        Info '  git checkout Version_2'
+        return $false
+    }
+    Ok 'Clone Git complet'
+
     foreach ($outil in @(
         @{ Nom = 'python'; Etiquette = 'Python 3.11+'; Lien = 'https://www.python.org/downloads/  (cocher "Add python.exe to PATH")' },
         @{ Nom = 'npm';    Etiquette = 'Node.js LTS';  Lien = 'https://nodejs.org/' }
@@ -232,8 +255,11 @@ function VerifierPrerequis {
 }
 
 function VerifierOllama {
-    # Le modele local n'a pas de cle a saisir : il se verifie et s'installe tout
-    # seul, comme bruin/dac ci-dessus. OLLAMA_HOST et OLLAMA_MODEL (voir .env.example)
+    # Le modele local n'a pas de cle a saisir. Sur CETTE methode (native), Ollama
+    # lui-meme reste a poser a la main — on affiche le lien et on s'arrete ; seuls
+    # son service et le telechargement du modele sont automatiques. (L'installation
+    # Docker, elle, pose Ollama toute seule via winget — voir INSTALLER.bat 4/7.)
+    # OLLAMA_HOST et OLLAMA_MODEL (voir .env.example)
     # restent vides dans l'immense majorite des cas — les valeurs par defaut du code
     # (http://localhost:11434, qwen2.5:7b-instruct-q4_K_M) suffisent.
     $hote = if ($env:OLLAMA_HOST) { $env:OLLAMA_HOST } else { 'http://localhost:11434' }

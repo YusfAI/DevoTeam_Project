@@ -75,10 +75,30 @@ n'est pas déjà présent. Ça peut prendre plusieurs minutes selon la connexion
 
 ## Le jour de l'installation
 
-### Étape 1 — Copier le dossier
+### Étape 1 — Récupérer le dossier
 
-Copier le dossier complet du projet sur le poste, par exemple dans
-`C:\DevoTeam\devoteam_dashboard`.
+**Le plus sûr — `git clone`** (demande Git, installé à l'étape 2 ; si Git n'est
+pas encore là, faire l'étape 2 d'abord) :
+
+```
+git clone https://github.com/YusfAI/DevoTeam_Project.git
+cd DevoTeam_Project
+git checkout Version_2
+```
+
+> **Le dossier `.git` doit suivre — ce n'est pas qu'un historique.** Le moteur de
+> tableaux de bord (`dac`, qui appelle `bruin`) refuse de lancer une requête s'il
+> ne trouve pas de racine de dépôt Git. Vérifié en conditions réelles, à données
+> et configuration identiques : avec `.git`, la connexion DuckDB répond
+> « connected » ; sans `.git`, « bruin query failed ». Un dossier récupéré par
+> « Download ZIP », **ou copié sans ses fichiers cachés**, laisse l'application
+> démarrer normalement mais **tous les tableaux de bord vides**, sans aucun
+> message d'erreur. `scripts\install.bat` s'arrête maintenant d'emblée dans ce
+> cas.
+
+Si le dossier est copié à la main plutôt que cloné, vérifier que `.git` est bien
+présent à l'arrivée (les fichiers cachés ne suivent pas toujours un copier-coller
+par l'Explorateur).
 
 Ce qu'il ne faut **pas** copier : `.venv`, `node_modules`, `frontend/dist`,
 `__pycache__`. Ils sont propres à une machine et seront reconstruits. S'ils sont là,

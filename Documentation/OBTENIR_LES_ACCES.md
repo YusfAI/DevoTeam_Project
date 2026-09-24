@@ -53,12 +53,17 @@ bas de la feuille.
 
 ## ☐ 3. Le modèle de chat — Ollama (aucune clé, installation automatique)
 
-Rien à récupérer ici : `scripts\install.bat` et l'assistant d'installation
-détectent Ollama, l'installent s'il manque
-([ollama.com/download](https://ollama.com/download)), et téléchargent
-automatiquement le modèle (`qwen2.5:7b-instruct-q4_K_M`, ~4,7 Go) au premier
-lancement. Ça peut prendre plusieurs minutes selon la connexion — c'est
-normal, laissez-le terminer.
+Rien à récupérer ici : aucune clé, aucun compte. Les deux méthodes
+d'installation téléchargent automatiquement le modèle
+(`qwen2.5:7b-instruct-q4_K_M`, ~4,7 Go). Ça peut prendre plusieurs minutes selon
+la connexion — c'est normal, laissez-le terminer.
+
+Elles diffèrent sur Ollama lui-même :
+
+| Méthode | Ollama |
+|---|---|
+| `INSTALLER.bat` (Docker, recommandé) | **installé automatiquement** (via `winget`), et son service démarré s'il était arrêté |
+| `scripts\install.bat` (natif) | **à installer à la main** — le script affiche le lien ([ollama.com/download](https://ollama.com/download)) et s'arrête, puis se relance |
 
 Aucune clé API, aucun compte, aucun quota : le modèle tourne entièrement sur
 la machine.
