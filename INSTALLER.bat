@@ -69,7 +69,7 @@ if not exist ".git" (
     echo   [ARRET] Ce dossier n'est pas un clone Git ^(pas de .git^).
     echo.
     echo           C'est le cas si le projet a ete recupere par le bouton
-    echo           « Download ZIP » de GitHub. Les tableaux de bord ne
+    echo           " Download ZIP " de GitHub. Les tableaux de bord ne
     echo           fonctionneraient pas : le moteur de requetes exige un
     echo           depot Git.
     echo.
@@ -86,7 +86,7 @@ if not exist ".git" (
 )
 if not exist ".env.example" (
     echo.
-    echo   [ARRET] Fichier .env.example introuvable — ce dossier n'est pas
+    echo   [ARRET] Fichier .env.example introuvable - ce dossier n'est pas
     echo           une copie complete du projet. Refaites le git clone.
     echo.
     pause
@@ -152,11 +152,11 @@ del "%TEMP%\DockerDesktopInstaller.exe" >NUL 2>&1
 :docker_pose
 echo.
 echo   Docker Desktop installe. Une derniere etape MANUELLE, obligatoire :
-echo     1. Windows demande peut-etre a REDEMARRER ^(activation de WSL2^) —
+echo     1. Windows demande peut-etre a REDEMARRER ^(activation de WSL2^) -
 echo        faites-le si c'est le cas.
-echo     2. Lancez « Docker Desktop » depuis le menu Demarrer une premiere
+echo     2. Lancez " Docker Desktop " depuis le menu Demarrer une premiere
 echo        fois ^(accepter les conditions d'utilisation^).
-echo     3. Relancez ce fichier — il reprendra exactement ici, sans rien
+echo     3. Relancez ce fichier - il reprendra exactement ici, sans rien
 echo        refaire de ce qui precede.
 echo.
 pause
@@ -270,7 +270,7 @@ set /a TENTATIVES+=1
 if !TENTATIVES! GEQ 15 (
     echo.
     echo   [ARRET] Le service Ollama ne repond pas sur le port 11434.
-    echo           Lancez « Ollama » depuis le menu Demarrer, puis
+    echo           Lancez " Ollama " depuis le menu Demarrer, puis
     echo           relancez ce fichier.
     echo.
     pause
@@ -429,7 +429,7 @@ echo     VERIFICATION - les chiffres affiches sont-ils justes ?
 echo   ============================================================
 echo.
 echo   Calcule la reponse attendue depuis VOS donnees et la compare a ce
-echo   que l'application annonce reellement — execute a l'interieur du
+echo   que l'application annonce reellement - execute a l'interieur du
 echo   conteneur, aucun Python local necessaire.
 echo.
 docker compose exec -e TEST_DAC_URL=http://dac-light:8321 backend python scripts/test_fonctionnel.py
@@ -449,7 +449,7 @@ echo.
 echo     La premiere question posee au chat est plus lente que les
 echo     suivantes : le modele se charge en memoire a ce moment-la.
 echo     Sans carte graphique dediee, comptez quelques dizaines de
-echo     secondes par reponse — c'est normal, pas une panne.
+echo     secondes par reponse - c'est normal, pas une panne.
 echo.
 echo     Prochains lancements : raccourci "DevoTeam Dashboard (Docker)"
 echo     sur le Bureau.

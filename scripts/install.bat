@@ -47,7 +47,7 @@ if not exist "%RACINE%\.git" (
     echo.
     echo           Les tableaux de bord ne fonctionneraient pas : le moteur
     echo           de requetes exige un depot Git. C'est le cas d'un dossier
-    echo           recupere par « Download ZIP », ou copie sans ses fichiers
+    echo           recupere par " Download ZIP ", ou copie sans ses fichiers
     echo           caches.
     echo.
     echo           A faire, dans une invite de commandes :

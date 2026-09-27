@@ -596,3 +596,22 @@ def test_l_installateur_racine_ne_blame_plus_la_version_de_windows():
     affichees = [l for l in lignes if l.strip().lower().startswith("echo")]
 
     assert not [l for l in affichees if "Windows trop ancien" in l]
+
+
+def test_l_installateur_racine_n_affiche_que_de_l_ascii():
+    """cmd.exe lit un .bat dans la page de code OEM, quoi que fasse `chcp` :
+    un caractère non-ASCII dans le fichier sort en charabia à l'écran. Constaté
+    dans la VM de test, sur un vrai poste Windows 11 neuf — les guillemets
+    français et les tirets cadratins s'affichaient « A� Docker Desktop A� ».
+    Cosmétique, mais c'est la toute première impression que donne l'outil.
+
+    Seules les lignes AFFICHÉES sont concernées : les commentaires REM peuvent
+    garder une typographie française, ils ne sortent jamais à l'écran."""
+    for chemin in (RACINE / "INSTALLER.bat", RACINE / "scripts" / "install.bat"):
+        contenu = chemin.read_bytes().decode("utf-8")
+        fautives = [
+            ligne for ligne in contenu.splitlines()
+            if ligne.strip().lower().startswith("echo")
+            and any(ord(c) > 127 for c in ligne)
+        ]
+        assert not fautives, f"{chemin.name} affiche du non-ASCII : {fautives[:3]}"
