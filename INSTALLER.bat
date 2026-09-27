@@ -214,8 +214,17 @@ goto ollama_pose
 :ollama_sans_winget
 REM Meme raison qu'a l'etape 2/7 : winget peut tout simplement ne pas exister
 REM sur le poste. L'installeur officiel se telecharge directement.
+REM
+REM Les options silencieuses ci-dessous ne sont pas ecrites de memoire :
+REM l'executable telecharge a ete inspecte, il porte « Inno Setup Setup Data
+REM (6.7.0) » — Inno Setup documente exactement /VERYSILENT,
+REM /SUPPRESSMSGBOXES et /NORESTART. Une option fausse ouvrirait l'installeur
+REM en mode graphique, a attendre un clic que personne n'attend.
+REM
+REM Taille relevee sur le serveur (Content-Length) : 1 571 115 536 octets,
+REM soit ~1,5 Go — et non les ~700 Mo annonces jusqu'ici.
 echo         winget absent sur ce poste - telechargement direct depuis
-echo         ollama.com ^(~700 Mo, plusieurs minutes^)...
+echo         ollama.com ^(~1,5 Go, plusieurs minutes^)...
 curl -L --retry 3 --retry-all-errors -o "%TEMP%\OllamaSetup.exe" "https://ollama.com/download/OllamaSetup.exe"
 if errorlevel 1 (
     echo.
