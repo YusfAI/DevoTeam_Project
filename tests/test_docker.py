@@ -615,3 +615,19 @@ def test_l_installateur_racine_n_affiche_que_de_l_ascii():
             and any(ord(c) > 127 for c in ligne)
         ]
         assert not fautives, f"{chemin.name} affiche du non-ASCII : {fautives[:3]}"
+
+
+def test_l_installateur_racine_distingue_wsl_manquant_de_docker_eteint():
+    """Deux causes très différentes derrière « Docker ne répond pas », et un
+    seul message auparavant : « relancez Docker Desktop ». Inutile quand Docker
+    ne PEUT pas démarrer, faute de WSL2.
+
+    Constaté sur un Windows 11 neuf : l'installeur de Docker active bien les
+    fonctionnalités Windows (WSL, VirtualMachinePlatform, Hyper-V — vérifié via
+    dism, les trois « Enabled »), mais le NOYAU WSL2, qui est un téléchargement
+    séparé, manquait. Docker Desktop répondait « unable to start » sans dire
+    pourquoi, et l'installateur conseillait le mauvais geste."""
+    contenu = _installer_racine().decode("utf-8")
+
+    assert "wsl.exe --status" in contenu
+    assert "wsl --install" in contenu

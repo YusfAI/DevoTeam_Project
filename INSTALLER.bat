@@ -184,8 +184,27 @@ if !TENTATIVES!==1 (
 if !TENTATIVES! GEQ 30 (
     echo.
     echo   [ARRET] Docker Desktop ne repond toujours pas apres une minute.
-    echo           Lancez-le, attendez son icone stable dans la zone de
-    echo           notification, puis relancez ce fichier.
+    echo.
+    REM Deux causes tres differentes, qui n'appellent pas le meme geste. Sans
+    REM cette distinction, le message envoyait toujours "relancez Docker
+    REM Desktop" — inutile quand Docker ne PEUT pas demarrer faute de WSL2.
+    REM Constate sur un Windows 11 neuf : les fonctionnalites Windows etaient
+    REM bien activees par l'installeur de Docker, mais le noyau WSL2 lui-meme,
+    REM qui est un telechargement a part, manquait. Docker Desktop repondait
+    REM alors "unable to start", sans jamais dire pourquoi.
+    wsl.exe --status >NUL 2>&1
+    if errorlevel 1 (
+        echo           CAUSE PROBABLE : WSL2 n'est pas installe sur ce poste.
+        echo           Docker Desktop en depend et ne peut pas demarrer sans.
+        echo.
+        echo           Dans une invite de commandes ADMINISTRATEUR :
+        echo             wsl --install
+        echo           puis redemarrer le poste, et relancer ce fichier.
+    ) else (
+        echo           Lancez "Docker Desktop" depuis le menu Demarrer,
+        echo           attendez son icone stable dans la zone de
+        echo           notification, puis relancez ce fichier.
+    )
     echo.
     pause
     exit /b 1
