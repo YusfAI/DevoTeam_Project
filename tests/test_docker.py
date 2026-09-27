@@ -561,3 +561,38 @@ def test_l_installateur_racine_verifie_sans_exiger_de_python_local():
     # DAC vit dans un conteneur séparé : depuis l'intérieur du conteneur
     # backend, 127.0.0.1 ne le joindrait pas — il faut son nom de service.
     assert "TEST_DAC_URL=http://dac-light:8321" in contenu
+
+
+def test_l_installateur_racine_se_passe_de_winget_si_besoin():
+    """winget ne peut pas être tenu pour acquis. Constaté sur une installation
+    Windows 11 Pro 25H2 NEUVE, dans une machine virtuelle montée pour ce test :
+    « App Installer » n'était pas présent du tout, winget.exe absent du disque.
+    Sur un poste d'entreprise, la logithèque Microsoft Store est en outre
+    fréquemment bloquée par stratégie de groupe — même résultat. Sans repli,
+    l'installation « automatique » s'arrêtait là.
+
+    Le repli télécharge les installeurs officiels avec curl, livré avec
+    Windows 10/11, ce qui sort winget du chemin critique."""
+    contenu = _installer_racine().decode("utf-8")
+
+    assert "desktop.docker.com" in contenu
+    assert "ollama.com/download/OllamaSetup.exe" in contenu
+    # %2 serait lu comme un paramètre du script : l'URL Docker, qui contient
+    # %20, doit être échappée en %%20 — sinon le téléchargement part sur une
+    # adresse tronquée, et l'erreur ne dit pas pourquoi.
+    assert "Docker%%20Desktop%%20Installer.exe" in contenu
+    assert "Docker%20Desktop%20Installer.exe" not in contenu
+
+
+def test_l_installateur_racine_ne_blame_plus_la_version_de_windows():
+    """L'ancien message attribuait l'absence de winget à « Windows trop
+    ancien ». C'est un diagnostic faux — le poste de test était un Windows 11
+    25H2 neuf — et il envoyait chercher au mauvais endroit.
+
+    Contrôle sur les lignes AFFICHÉES seulement : le commentaire d'en-tête cite
+    l'ancienne formulation pour expliquer pourquoi elle a disparu, et cette
+    trace-là doit pouvoir rester."""
+    lignes = _installer_racine().decode("utf-8").splitlines()
+    affichees = [l for l in lignes if l.strip().lower().startswith("echo")]
+
+    assert not [l for l in affichees if "Windows trop ancien" in l]

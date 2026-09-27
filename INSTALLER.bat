@@ -109,34 +109,60 @@ if defined RAM_GO (
 )
 
 REM --- 2/7 : Docker est-il installe ? -----------------------------------------
+REM winget est le chemin prefere, mais il ne peut pas etre tenu pour acquis :
+REM constate sur une installation Windows 11 Pro 25H2 NEUVE, dans une machine
+REM virtuelle montee pour ce test — « App Installer » n'etait pas la du tout,
+REM winget.exe absent du disque. Et sur un poste d'entreprise, la logitheque
+REM Microsoft Store est frequemment bloquee par strategie de groupe, ce qui
+REM produit exactement le meme resultat. La version precedente s'arretait alors
+REM sur « Windows trop ancien », un diagnostic faux qui envoyait chercher au
+REM mauvais endroit. On telecharge donc l'installeur officiel directement, avec
+REM curl (livre avec Windows 10/11), ce qui retire winget du chemin critique.
 echo.
 echo   [2/7] Verification de Docker...
 where docker >NUL 2>&1
+if not errorlevel 1 goto docker_installe
+
+echo         MANQUANT - installation automatique.
+where winget >NUL 2>&1
+if errorlevel 1 goto docker_sans_winget
+echo         Installation via winget...
+winget install --id Docker.DockerDesktop -e --silent --accept-package-agreements --accept-source-agreements
+goto docker_pose
+
+:docker_sans_winget
+echo         winget absent sur ce poste ^(Microsoft Store retire ou bloque^) -
+echo         telechargement direct depuis docker.com ^(~600 Mo, plusieurs
+echo         minutes selon la connexion^)...
+REM %%20 et non %20 : dans un .bat, %2 serait lu comme un parametre du script.
+curl -L --retry 3 --retry-all-errors -o "%TEMP%\DockerDesktopInstaller.exe" "https://desktop.docker.com/win/main/amd64/Docker%%20Desktop%%20Installer.exe"
 if errorlevel 1 (
-    echo         MANQUANT. Installation automatique via winget...
-    where winget >NUL 2>&1
-    if errorlevel 1 (
-        echo.
-        echo   [ARRET] winget indisponible sur ce poste ^(Windows trop ancien^).
-        echo           Installez Docker Desktop manuellement, puis relancez :
-        echo           https://www.docker.com/products/docker-desktop/
-        echo.
-        pause
-        exit /b 1
-    )
-    winget install --id Docker.DockerDesktop -e --silent --accept-package-agreements --accept-source-agreements
     echo.
-    echo   Docker Desktop installe. Une derniere etape MANUELLE, obligatoire :
-    echo     1. Windows demande peut-etre a REDEMARRER ^(activation de WSL2^) —
-    echo        faites-le si c'est le cas.
-    echo     2. Lancez « Docker Desktop » depuis le menu Demarrer une premiere
-    echo        fois ^(accepter les conditions d'utilisation^).
-    echo     3. Relancez ce fichier — il reprendra exactement ici, sans rien
-    echo        refaire de ce qui precede.
+    echo   [ARRET] Le telechargement de Docker Desktop a echoue.
+    echo           Installez-le a la main, puis relancez ce fichier :
+    echo           https://www.docker.com/products/docker-desktop/
     echo.
     pause
     exit /b 1
 )
+echo         Installation silencieuse en cours...
+"%TEMP%\DockerDesktopInstaller.exe" install --quiet --accept-license
+del "%TEMP%\DockerDesktopInstaller.exe" >NUL 2>&1
+
+:docker_pose
+echo.
+echo   Docker Desktop installe. Une derniere etape MANUELLE, obligatoire :
+echo     1. Windows demande peut-etre a REDEMARRER ^(activation de WSL2^) —
+echo        faites-le si c'est le cas.
+echo     2. Lancez « Docker Desktop » depuis le menu Demarrer une premiere
+echo        fois ^(accepter les conditions d'utilisation^).
+echo     3. Relancez ce fichier — il reprendra exactement ici, sans rien
+echo        refaire de ce qui precede.
+echo.
+pause
+exit /b 1
+
+:docker_installe
 echo         OK
 
 REM --- 3/7 : Docker Desktop est-il DEMARRE ? ----------------------------------
@@ -176,38 +202,52 @@ echo.
 echo   [4/7] Modele de chat local ^(Ollama^)...
 set "OLLAMA_EXE=ollama"
 where ollama >NUL 2>&1
+if not errorlevel 1 goto ollama_installe
+
+echo         MANQUANT - installation automatique.
+where winget >NUL 2>&1
+if errorlevel 1 goto ollama_sans_winget
+echo         Installation via winget...
+winget install --id Ollama.Ollama -e --silent --accept-package-agreements --accept-source-agreements
+goto ollama_pose
+
+:ollama_sans_winget
+REM Meme raison qu'a l'etape 2/7 : winget peut tout simplement ne pas exister
+REM sur le poste. L'installeur officiel se telecharge directement.
+echo         winget absent sur ce poste - telechargement direct depuis
+echo         ollama.com ^(~700 Mo, plusieurs minutes^)...
+curl -L --retry 3 --retry-all-errors -o "%TEMP%\OllamaSetup.exe" "https://ollama.com/download/OllamaSetup.exe"
 if errorlevel 1 (
-    echo         MANQUANT. Installation automatique via winget...
-    where winget >NUL 2>&1
-    if errorlevel 1 (
-        echo.
-        echo   [ARRET] winget indisponible sur ce poste ^(Windows trop ancien^).
-        echo           Installez Ollama manuellement, puis relancez :
-        echo           https://ollama.com/download
-        echo.
-        pause
-        exit /b 1
-    )
-    winget install --id Ollama.Ollama -e --silent --accept-package-agreements --accept-source-agreements
-    REM Le PATH de CETTE fenetre reste celui d'avant l'installation : winget
-    REM met a jour le registre, pas les processus deja lances. On vise donc
-    REM l'executable a son emplacement connu plutot que de compter sur "where".
-    if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
-        set "OLLAMA_EXE=%LOCALAPPDATA%\Programs\Ollama\ollama.exe"
-    ) else if exist "%ProgramFiles%\Ollama\ollama.exe" (
-        set "OLLAMA_EXE=%ProgramFiles%\Ollama\ollama.exe"
-    ) else (
-        echo.
-        echo   [ARRET] Ollama installe mais introuvable. Fermez cette fenetre,
-        echo           rouvrez-en une nouvelle et relancez ce fichier.
-        echo.
-        pause
-        exit /b 1
-    )
-    echo         OK - Ollama installe
-) else (
-    echo         OK - Ollama installe
+    echo.
+    echo   [ARRET] Le telechargement d'Ollama a echoue. Installez-le a la
+    echo           main, puis relancez ce fichier : https://ollama.com/download
+    echo.
+    pause
+    exit /b 1
 )
+echo         Installation silencieuse en cours...
+"%TEMP%\OllamaSetup.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+del "%TEMP%\OllamaSetup.exe" >NUL 2>&1
+
+:ollama_pose
+REM Le PATH de CETTE fenetre reste celui d'avant l'installation : l'installeur
+REM met a jour le registre, pas les processus deja lances. On vise donc
+REM l'executable a son emplacement connu plutot que de compter sur "where".
+if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" (
+    set "OLLAMA_EXE=%LOCALAPPDATA%\Programs\Ollama\ollama.exe"
+) else if exist "%ProgramFiles%\Ollama\ollama.exe" (
+    set "OLLAMA_EXE=%ProgramFiles%\Ollama\ollama.exe"
+) else (
+    echo.
+    echo   [ARRET] Ollama installe mais introuvable. Fermez cette fenetre,
+    echo           rouvrez-en une nouvelle et relancez ce fichier.
+    echo.
+    pause
+    exit /b 1
+)
+
+:ollama_installe
+echo         OK - Ollama installe
 
 REM Installe ne veut pas dire DEMARRE : le service peut etre arrete (poste
 REM redemarre sans lancement automatique, ou installation silencieuse qui n'a
