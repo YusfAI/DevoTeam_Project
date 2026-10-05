@@ -53,6 +53,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 46 — Google Sheets lu par lien d'export public : plus aucun identifiant, ni clé API ni compte de service
 - [x] Phase 47 — Installation prouvée sur un poste nu : Ollama installé et démarré tout seul, et le piège du « Download ZIP » arrêté avant la démonstration
 - [x] Phase 48 — Installation sans `winget`, WSL2 diagnostiqué, et vérification de livraison avant le déploiement chez le directeur
+- [x] Phase 49 — Vérification finale la veille de la livraison : dépôt rangé, et ce que l'installateur ne peut pas faire à la place de la personne qui installe
 
 ## 📝 Journaux
 
@@ -721,6 +722,50 @@ widgets, un chapitre de déploiement, et une section 4.3 qui décrivait encore u
 écriture dans le Sheet que l'application ne fait plus depuis la Phase 46), et le
 guide d'installation PDF du directeur, refait d'après les étapes réelles.
 
+**Phase 49** : Terminée. Vérification finale la veille de la livraison, sur
+l'arbre exact qui part sur GitHub (clone neuf + rangement), sans aucune
+modification du code ni de la logique d'installation.
+
+*Ce qui a été refait, de zéro.* Image reconstruite sans cache, `INSTALLER.bat`
+réel : 7 étapes sur 7, 15 contrôles sur 15, « TOUT EST JUSTE » ; 633 tests au
+vert. Trois vérifications nouvelles : le **rendu dans un vrai navigateur**
+(Edge piloté par son protocole DevTools, en temps réel — une capture
+« headless » à temps virtuel ne montrait que des squelettes de chargement) ;
+le **redémarrage de Docker**, qui figure ce que vit le poste à chaque
+démarrage — l'application revient seule en 22 s, données rechargées ; et le
+**raccourci quotidien**, depuis un état arrêté — application prête vers 9 s, le
+navigateur ne s'ouvrant qu'après 15 s d'attente.
+
+*Ce que l'installateur ne peut pas faire, désormais écrit dans le guide.*
+- **Docker Desktop ne démarre pas avec Windows par défaut** (réglage « Start
+  Docker Desktop when you sign in to your computer », désactivé d'usine selon
+  la documentation de Docker). Sans lui, le raccourci échoue après chaque
+  redémarrage du poste. Le guide le fait cocher au premier lancement, et ajoute
+  un test final : redémarrer, attendre, poser une question.
+- **Windows 11 23H2 minimum** (ou Windows 10 22H2) pour Docker Desktop — les
+  documents disaient « Windows 11 » sans version.
+- **Deux raccourcis sur trois sont inutilisables sur ce poste** : ceux du mode
+  développement et du mode production natif, qui n'y trouvent ni `.venv` ni
+  Python. Le guide les fait supprimer.
+- **WSL2 quand le Microsoft Store est bloqué** : `--web-download` ; et
+  `wsl --update` si WSL est déjà là (Docker exige 2.1.5 ou plus récent).
+- Ollama, lui, se relance seul à chaque ouverture de session : son application
+  crée son propre raccourci de démarrage au premier lancement — et son
+  installeur la lance même en mode silencieux (pas de `skipifsilent` dans son
+  script Inno Setup).
+
+*Préparés et vérifiés, non appliqués — décision de livrer sans toucher au code.*
+- **Épingler bruin et dac** (bruin 0.11.771, dac 0.25.0 — le couple vérifié) :
+  ils publient plusieurs versions par jour, et l'image prend la dernière à
+  chaque construction. Vérifié dans une copie : construction sans cache,
+  installateur réel, 15/15.
+- **Barres réduites à des traits** dans les tableaux de bord composés par le
+  chat : la couleur porte sur le champ même de l'axe, DAC trace une série par
+  catégorie et les place côte à côte. Identique sous dac 0.18, 0.21 et 0.25 —
+  ce n'est pas une régression. Correctif : `stacked: true` sur ces barres (trois
+  widgets de `backend/dac_composer.py`, un de `scripts/generate_accueil.py`).
+  Vérifié dans une copie : 633 tests, 15/15, barres pleines dans le navigateur.
+
 ## 📊 Bilan du Produit
 
 L'application est **complète et fonctionnelle, exécutable de bout-en-bout**, hébergée localement, **sans aucune base de données à installer**. En développement, trois processus : `uvicorn backend.main:app --reload` (API), `dac serve --dir . --port 8321` dans `dac/` (dashboards), et `npm run dev` dans `frontend/` (UI) — `scripts/start_dev.bat` les lance d'un coup sous Windows. Pour déployer sur un autre poste, deux méthodes au choix : `INSTALLER.bat` (Docker, recommandé — un seul clic, aucun Python/Node à poser sur la machine) ou `setup\INSTALLER_NATIF.bat` (installation directe, si Docker n'est pas envisageable). Voir `README.md` pour le détail.
@@ -734,6 +779,8 @@ L'application est **complète et fonctionnelle, exécutable de bout-en-bout**, h
 - **Les retouches ne couvrent pas les valeurs dynamiques.** « En camembert » ou « par practice » sont appliqués par le code, mais « et pour le Maroc ? » repart par le modèle : la liste des pays vient des données et n'est pas connue du module de retouche. C'est délibéré — mieux vaut un appel de plus qu'un filtre pays silencieusement ignoré.
 - **Le tableau de bord de travail est partagé.** `_principal.yml` est un fichier unique côté serveur : deux personnes utilisant l'application en même temps réécriraient le même. Sans effet en usage local mono-utilisateur, bloquant pour un déploiement multi-utilisateurs — qui demanderait de toute façon l'authentification déjà listée plus bas.
 - Le mot « urgentes » seul ne pose aucun filtre de délai : il faut « urgentes (< 7 jours) » pour borner l'échéance. Comportement volontaire (ne rien deviner), mais qui surprend.
+- **Les questions au superlatif sans « par » sont lues comme un total** par le parseur rapide : « Quel pays a le plus gros budget ? » répond le budget total, alors que « Top 5 des pays par budget » répond juste. De même, « les affaires que nous avons le plus de chances de remporter au Maroc » rend une probabilité moyenne plutôt qu'une liste. Trouvé la veille de la livraison, non corrigé à ce moment-là.
+- **Barres en traits fins** dans les tableaux de bord composés par le chat (voir Phase 49) : correctif identifié et vérifié, non appliqué.
 
 ### Prochaines améliorations possibles
 *(hors scope initial du mandat)*

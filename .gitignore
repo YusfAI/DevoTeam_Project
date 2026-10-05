@@ -27,9 +27,6 @@ Thumbs.db
 out.txt
 *.log
 
-# État local du scheduler (anti-doublon des alertes email) — régénéré au besoin
-data/scheduler_state.json
-
 # Projection DuckDB pour les dashboards DAC — régénérée à chaque rafraîchissement
 # depuis le Google Sheet (backend/duckdb_export.py), jamais éditée à la main
 dac/data/*.db
@@ -43,7 +40,6 @@ dac/dashboards/_analyse_*.yml
 # artefact d'execution et non une source.
 dac/dashboards/_principal.yml
 
-logs/queries
 .bruin.yml
 # Documentation de reference installee a la demande par `dac skills install` :
 # fichier tiers, regenerable, sans interet en revue.
@@ -59,3 +55,9 @@ data/scheduler_state.json
 
 # Journaux des requêtes, écrits à l'exécution.
 logs/
+
+logs/queries
+logs/queries
+logs/queries
+logs/queries
+logs/queries

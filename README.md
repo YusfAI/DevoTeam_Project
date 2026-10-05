@@ -202,9 +202,10 @@ bout en bout le 5 octobre 2026 (clone neuf, image reconstruite sans cache, 15
 contrôles sur 15) : voir `Documentation/INSTALLATION_DOCKER.md`.
 
 Sur un poste neuf, compter **45 minutes à 1 h 30** (~9 Go de téléchargements et
-un redémarrage de Windows). Cinq conditions que l'installateur ne peut pas
-remplir à votre place — **droits administrateur, virtualisation activée dans le
-BIOS, ~20 Go libres, Internet non filtré, licence Docker Desktop validée** (payante
+trois redémarrages de Windows). Six conditions que l'installateur ne peut pas
+remplir à votre place — **Windows 11 23H2 ou plus récent (ou Windows 10 22H2),
+droits administrateur, virtualisation activée dans le BIOS, ~20 Go libres, Internet
+non filtré, licence Docker Desktop validée** (payante
 au-delà de 250 personnes ou 10 M$ de chiffre d'affaires) : voir la section « Le
 poste de destination » de `Documentation/INSTALLATION_DOCKER.md`.
 
@@ -470,7 +471,17 @@ lien" — exactement l'inverse d'un secret, rien à protéger de ce côté-là.
 ## Structure
 
 ```
+INSTALLER.bat                       installation complète en un clic (Docker) — le point d'entrée
+Installing DevoTeam Dashboard.pdf   guide d'installation pas à pas, à remettre à qui installe
+README.md                           ce document
+Demo video.url                      visite guidée de l'application, sans rien installer
+Dockerfile, docker-compose.yml      image d'exécution et les trois services
+requirements.txt                    dépendances Python, versions épinglées
+requirements-dev.txt                + outils de test et de génération des documents
+.env.example                        modèle de configuration (le vrai .env n'est jamais versionné)
+
 backend/
+  main.py                application FastAPI, endpoints, planificateur
   data_store.py          chargement Google Sheet -> DataFrame pandas (source de vérité)
   db_layer.py            requêtage pandas (chat, message texte)
   llm.py                 appel au LLM local (Ollama), validation Pydantic, anti-hallucination
@@ -487,34 +498,40 @@ backend/
   data_quality.py        rapport des lignes rejetées et des valeurs manquantes
 dac/
   .bruin.yml             connexion DuckDB (aucun secret, versionnée volontairement)
-  themes/devoteam.yml    thème aux couleurs de l'application (palette CVD comprise)
-  themes/devoteam-dark.yml  sa variante sombre, servie par un SECOND dac serve
-                         (port 8322) — un thème DAC est figé au lancement
-  dashboards/accueil.yml  section « Vue d'ensemble commerciale », PRODUITE par
-                         scripts/generate_accueil.py (étapes du pipeline et statuts
-                         dérivés de business_rules.py) — ne pas éditer à la main
-  dashboards/section_chaudes.yml   « Affaires chaudes »          dashboards/section_sante.yml     « Santé du portefeuille »    | mêmes règles,
-  dashboards/section_pipeline.yml  « Pipeline commercial »      | même générateur
-  dashboards/section_urgences.yml  « Échéances à venir »       /
-  dashboards/qualite.yml  dashboard de qualité des données, versionné
-  dashboards/_principal.yml tableau de bord de travail, réécrit à chaque question (gitignoré)
-  dashboards/_analyse_*.yml instantanés par question, pour les rouvrir (gitignorés)
-  data/devoteam.db       projection DuckDB (gitignorée, régénérée)
-frontend/              Vite + React (build servi par FastAPI en local)
-data/                  scheduler_state.json — anti-doublon du digest quotidien
-                       (état local, gitignoré, régénéré au besoin)
-tests/                 suite pytest (mock LLM local/Sheets), 633 tests
-  test_banc_de_questions.py  trente questions fréquentes, chacune vérifiée
-                         contre un calcul refait en pandas nu ET rejouée avec
-                         plusieurs ébauches du modèle (justesse + stabilité)
+  themes/                thèmes clair et sombre aux couleurs de l'application ; le
+                         sombre est servi par un SECOND dac serve (port 8322)
+  dashboards/accueil.yml          « Vue d'ensemble commerciale »  \
+  dashboards/section_chaudes.yml  « Affaires chaudes »             |  produits par
+  dashboards/section_sante.yml    « Santé du portefeuille »        |  scripts/generate_accueil.py
+  dashboards/section_pipeline.yml « Pipeline commercial »          |  — ne pas éditer à la main
+  dashboards/section_urgences.yml « Échéances à venir »           /
+  dashboards/qualite.yml          tableau de bord de qualité des données, versionné
+  dashboards/_principal.yml       tableau de bord de travail, réécrit à chaque question (gitignoré)
+  dashboards/_analyse_*.yml       instantanés par question, pour les rouvrir (gitignorés)
+  data/devoteam.db                projection DuckDB (gitignorée, régénérée)
+frontend/                Vite + React (compilé, puis servi par FastAPI)
+scripts/
+  start_docker.bat       lanceur du raccourci Bureau « DevoTeam Dashboard (Docker) »
+  start_dev.bat          mode développement (rechargement à chaud, Vite)
+  start_prod.bat         mode production sans Docker
+  start_public.bat       accès depuis une autre machine (tunnel)
+  install.bat            installation native, appelée par setup/
+  test_fonctionnel.py    « les chiffres sont-ils justes ? » — 15 contrôles sur les vraies données
+  verifier_installation.py  diagnostic maillon par maillon (feuille, colonnes, modèle…)
+  generate_accueil.py    génère les cinq sections du tableau de bord principal
+  create_shortcut.ps1, maj_env.ps1, devoteam.ico   outils de l'installateur
+setup/                   installation native assistée (sans Docker) : INSTALLER_NATIF.bat
+tests/                   suite pytest (mock LLM local/Sheets), 633 tests
+data/, logs/             état et journaux d'exécution (gitignorés, régénérés)
 Documentation/
+  README.md              index de la documentation : quel document, pour qui
+  INSTALLATION_DOCKER.md installation recommandée (INSTALLER.bat, Docker)
+  INSTALLATION.md        installation native, sans Docker
+  OBTENIR_LES_ACCES.md   ce qu'il faut préparer avant le jour de l'installation
   WORKFLOW.md            traçage concret d'une question, du prompt au dashboard affiché
-  reports/              rapport professionnel + guide technique (.docx), guide
-                        d'installation en anglais (.docx, exporté en PDF à la
-                        racine : « Installing DevoTeam Dashboard.pdf »), leur
-                        générateur et les ressources qu'il utilise (assets/)
-  planning/             brief initial, données sources et dump SQL de l'ancienne
-                        base MySQL, conservé pour référence
+  PROGRESS.md            journal de développement, phase par phase
+  reports/               rapport professionnel, guide technique et guide d'installation
+                         (.docx), leur générateur (generate_docs.py) et ses ressources
 ```
 
-Voir `PROGRESS.md` pour le détail des phases livrées et les limites connues.
+Voir `Documentation/PROGRESS.md` pour le détail des phases livrées et les limites connues.

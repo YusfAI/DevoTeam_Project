@@ -1,7 +1,7 @@
 """Génère les documents .docx au branding Devoteam — rapport professionnel, guide
 technique, et guide d'installation (anglais, exporté aussi en PDF à la racine :
 « Installing DevoTeam Dashboard.pdf ») — à partir du contenu réel du projet (code,
-tests, PROGRESS.md, INSTALLER.bat).
+tests, Documentation/PROGRESS.md, INSTALLER.bat).
 
 Script one-shot, à relancer si le contenu doit être régénéré après une évolution
 du projet. Nécessite python-docx (voir requirements-dev.txt) — pas une dépendance
@@ -570,8 +570,11 @@ def build_rapport_professionnel():
     add_table(doc,
         ["Condition", "Pourquoi"],
         [
-            ["Droits administrateur (ou un technicien présent)", "L'installation de Docker "
-             "Desktop et de son sous-système Linux (WSL2) demande une élévation."],
+            ["Droits administrateur (ou un technicien présent)", "L'installation du "
+             "sous-système Linux de Windows (WSL2), sur lequel tourne Docker Desktop, "
+             "demande une élévation."],
+            ["Windows 11 23H2 ou plus récent (ou Windows 10 22H2), 64 bits",
+             "Version minimale exigée par Docker Desktop."],
             ["Virtualisation activée dans le BIOS", "Docker Desktop en dépend."],
             ["~20 Go libres, 16 Go de RAM conseillés", "~9 Go de téléchargements ; le modèle "
              "occupe ~5 Go de mémoire."],
@@ -582,7 +585,7 @@ def build_rapport_professionnel():
         ])
     add_body(doc,
         "Durée sur un poste neuf : 45 minutes à 1 h 30, essentiellement des "
-        "téléchargements sans surveillance, plus un redémarrage.")
+        "téléchargements sans surveillance, plus trois redémarrages de Windows.")
     add_h2(doc, "Vérification de livraison (5 octobre 2026)")
     add_body(doc,
         "La version publiée a été installée depuis zéro avant d'être confiée : "
@@ -836,8 +839,8 @@ def build_guide_technique():
             ["frontend/src/", "Application Vite + React (chat, iframe DAC, hooks, styles)."],
             ["tests/", "Suite pytest — 633 tests, aucune dépendance réseau ni données réelles."],
             ["Documentation/WORKFLOW.md", "Traçage d'une question, du prompt au tableau de bord affiché."],
-            ["Documentation/reports/", "Ce guide, le rapport et leur générateur (generate_docs.py)."],
-            ["Documentation/planning/", "Brief initial du projet et données sources (archive historique, versionnée)."],
+            ["Documentation/reports/", "Ce guide, le rapport, le guide d'installation et leur générateur (generate_docs.py)."],
+            ["Documentation/PROGRESS.md", "Journal de développement : chaque phase livrée, ses choix et ses vérifications."],
         ])
 
     # --- Source de données ---
@@ -2182,7 +2185,7 @@ def build_guide_installation():
     run.font.bold = True
     run.font.color.rgb = CHARCOAL
     meta = doc.add_paragraph()
-    mrun = meta.add_run("Updated October 5, 2026  ·  Youssef Hmidi  ·  version: branch Version_2")
+    mrun = meta.add_run("Updated October 6, 2026  ·  Youssef Hmidi  ·  version: branch Version_2")
     mrun.font.size = Pt(10)
     mrun.font.color.rgb = MUTED
     _bottom_border(meta, CORAL_STRONG_HEX, size="12")
@@ -2199,8 +2202,8 @@ def build_guide_installation():
         "You only type two values: the Sheet link and the tab name.")
     add_body(doc,
         "Time needed on a brand-new PC: 45 minutes to 1 h 30, mostly unattended "
-        "downloads (about 9 GB in total), plus one or two Windows restarts. Only Git "
-        "has to be installed by hand.")
+        "downloads (about 9 GB in total), plus three Windows restarts. Only Git has to "
+        "be installed by hand.")
 
     add_h1(doc, "Before you start")
     add_h2(doc, "A. Check the PC")
@@ -2210,9 +2213,10 @@ def build_guide_installation():
     add_table(doc,
         ["Requirement", "Why", "How to check"],
         [
-            ["Windows 10 (22H2) or 11, 64-bit", "Required by Docker Desktop", "Run winver"],
+            ["Windows 11 23H2 or later, or Windows 10 22H2 — 64-bit",
+             "Minimum required by Docker Desktop", "Run winver"],
             ["Administrator rights (or IT support on hand)",
-             "Installing Docker Desktop and WSL2 shows Windows admin (UAC) prompts",
+             "Installing WSL2, which Docker Desktop runs on, requires them",
              "\"Run as administrator\" must work on this PC"],
             ["Virtualization enabled in BIOS", "Docker Desktop runs on WSL2, which needs it",
              "Task Manager › Performance › CPU › \"Virtualization: Enabled\""],
@@ -2254,7 +2258,11 @@ def build_guide_installation():
                    "\"Run as administrator\".")
     _etape(doc, 2, "Run the command below, then restart the PC.")
     add_code_block(doc, "wsl --install --no-distribution")
-    add_body(doc, "If WSL2 is already there, the command just says so: it is safe to run.")
+    add_bullet(doc, "run instead wsl --install --no-distribution --web-download, which "
+                    "downloads from GitHub rather than the Store (often blocked on company PCs).",
+               lead="If it reports an error about the Microsoft Store:")
+    add_bullet(doc, "run wsl --update instead — Docker Desktop needs WSL 2.1.5 or later.",
+               lead="If WSL is already installed:")
 
     add_h1(doc, "Step 3 — Get the project files")
     add_body(doc,
@@ -2282,12 +2290,13 @@ def build_guide_installation():
             ["1/7", "Checks the folder is a real git clone; shows the RAM", "Nothing"],
             ["2/7", "Installs Docker Desktop if missing (via winget, or a direct download "
              "from docker.com, ~600 MB)",
-             "Accept the admin prompt. The installer then STOPS on purpose — see the box "
-             "below"],
+             "Accept the Windows prompt if one appears. The installer then STOPS on "
+             "purpose — see the box below"],
             ["3/7", "Waits up to one minute for Docker Desktop to answer",
              "Nothing, unless it stops (see Troubleshooting)"],
             ["4/7", "Installs Ollama if missing (~1.5 GB), starts it, downloads the AI model "
-             "(~4.7 GB)", "Wait — several minutes"],
+             "(~4.7 GB)", "Wait — several minutes. An Ollama window may open: just "
+             "minimize it"],
             ["5/7", "Asks for the Sheet link, then the tab name",
              "Paste the link, press Enter; type the exact tab name, press Enter. Enter alone "
              "keeps the value shown in [brackets]"],
@@ -2296,12 +2305,17 @@ def build_guide_installation():
              "Read the last block of text"],
         ], widths=[1.4, 7.6, 7.6])
     add_h3(doc, "The first run stops after installing Docker — this is expected")
-    _etape(doc, 1, "If Windows asks to restart, restart.")
-    _etape(doc, 2, "Open \"Docker Desktop\" from the Start menu, accept its terms (signing in "
-                   "to a Docker account can be skipped), and wait until it shows the engine "
-                   "as running.")
-    _etape(doc, 3, "Double-click INSTALLER.bat again. It resumes where it stopped and never "
-                   "redoes finished work — the same is true after any interruption.")
+    _etape(doc, 1, "Restart Windows, even if it does not ask: the installer then sees the "
+                   "newly installed Docker.")
+    _etape(doc, 2, "Open \"Docker Desktop\" from the Start menu. Accept its terms if asked; "
+                   "signing in to a Docker account can be skipped.")
+    _etape(doc, 3, "In Docker Desktop: Settings (gear icon) › General › tick \"Start Docker "
+                   "Desktop when you sign in to your computer\" › Apply. This setting is OFF "
+                   "by default: without it, the app is unavailable after every restart until "
+                   "someone opens Docker Desktop by hand.")
+    _etape(doc, 4, "Wait until Docker Desktop shows the engine as running, then double-click "
+                   "INSTALLER.bat again. It resumes where it stopped and never redoes finished "
+                   "work — the same is true after any interruption.")
 
     add_h1(doc, "Step 5 — Check the result")
     add_body(doc,
@@ -2316,14 +2330,32 @@ def build_guide_installation():
         "Then ask the chat one question. The first answer is the slowest, because the "
         "model loads into memory; without a dedicated graphics card, a few tens of seconds "
         "per answer is normal, not a failure.")
+    add_h3(doc, "Tidy the Desktop")
+    add_body(doc,
+        "The installer creates three DevoTeam shortcuts. Keep only \"DevoTeam Dashboard "
+        "(Docker)\". Delete \"DevoTeam Dashboard\" and \"DevoTeam Dashboard (Production)\": "
+        "they are for the developer's machine and only show errors on this PC.")
+
+    add_h1(doc, "Step 6 — Restart once and check")
+    add_body(doc,
+        "The test that matters for everyday use — it proves everything comes back on its "
+        "own after a restart:")
+    _etape(doc, 1, "Restart Windows and sign in.")
+    _etape(doc, 2, "Wait one or two minutes: Docker Desktop and Ollama start by themselves, "
+                   "then the app.")
+    _etape(doc, 3, "Double-click \"DevoTeam Dashboard (Docker)\". The app opens in the "
+                   "browser at http://127.0.0.1:8000.")
+    _etape(doc, 4, "Ask a question in the chat and check that an answer and a dashboard come "
+                   "back.")
+    add_body(doc, "If all four work, the installation is finished.")
 
     add_h1(doc, "Using it day to day")
     add_bullet(doc, "Double-click the \"DevoTeam Dashboard (Docker)\" shortcut on the Desktop. "
                     "The app opens at http://127.0.0.1:8000 after about 15 seconds.")
-    add_bullet(doc, "Docker Desktop must be running: if the shortcut reports an error, open "
-                    "Docker Desktop from the Start menu first, wait, and try again. Once Docker "
-                    "runs, the app restarts by itself and keeps running after the window is "
-                    "closed.")
+    add_bullet(doc, "Docker Desktop starts with Windows (setting from Step 4) and the app "
+                    "starts with it; it keeps running after the shortcut's window is closed. "
+                    "If the shortcut reports an error, open Docker Desktop from the Start menu, "
+                    "wait until it runs, and try again.")
     add_bullet(doc, "To stop everything (rarely needed): in a Command Prompt, "
                     "cd C:\\DevoTeam\\DevoTeam_Project then docker compose down.")
     add_bullet(doc, "To update later: in the same folder, git pull then "
@@ -2340,13 +2372,18 @@ def build_guide_installation():
             ["[ARRET] Docker Desktop ne repond toujours pas, with \"WSL2 n'est pas installe\" — "
              "or Docker Desktop says \"WSL needs updating\" / \"unable to start\"",
              "WSL2 kernel missing or outdated",
-             "Admin Command Prompt: wsl --install --no-distribution (or wsl --update), "
+             "Admin Command Prompt: wsl --install --no-distribution (add --web-download "
+             "if it mentions the Microsoft Store), or wsl --update if WSL is installed; "
              "restart, re-run INSTALLER.bat"],
             ["[ARRET] Docker Desktop ne repond toujours pas, without the WSL2 line",
              "Docker Desktop not started yet", "Open Docker Desktop from the Start menu, wait, "
              "re-run INSTALLER.bat"],
             ["Docker Desktop: \"Virtualization support not detected\"",
              "Virtualization disabled in BIOS", "IT enables Intel VT-x / AMD-V (\"SVM\") in BIOS"],
+            ["Shortcut: \"[ARRET] Le demarrage a echoue\"",
+             "Docker Desktop is not running (typically right after a restart)",
+             "Open Docker Desktop, wait until it runs, try again; tick the start-at-sign-in "
+             "setting (Step 4)"],
             ["[ARRET] Un des ports 8000 / 8321 / 8322 est deja utilise",
              "Another program uses that port", "Close it (netstat -ano | findstr \"8000 8321 "
              "8322\" shows which), re-run"],

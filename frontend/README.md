@@ -1,16 +1,31 @@
-# React + Vite
+# Interface — DevoTeam Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Application Vite + React : le chat, l'historique des analyses et le cadre qui
+affiche les tableaux de bord Bruin DAC (iframe, ports 8321 et 8322 pour le thème
+sombre).
 
-Currently, two official plugins are available:
+## Commandes
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```
+npm install          # une fois
+npm run dev          # développement, http://127.0.0.1:5173 (proxy vers le backend :8000)
+npm run build        # compile dans dist/, servi ensuite par le backend sur :8000
+```
 
-## React Compiler
+En installation Docker, rien à lancer ici : le service `frontend-build` de
+`docker-compose.yml` compile l'interface à chaque démarrage.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Organisation
 
-## Expanding the Oxlint configuration
+```
+src/
+  App.jsx            disposition générale : chat à gauche, tableau de bord à droite
+  api.js             appels au backend (/dashboard, /health, /sheets/sync)
+  dac.js             adresses des tableaux de bord et passage des filtres par l'URL
+  components/        chat, bandeau d'alertes, cadre du tableau de bord, historique, thème
+  hooks/             historique de conversation persistant, thème clair/sombre
+  styles/            jetons de design (tokens.css) et styles globaux
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+La palette de graphiques de `styles/tokens.css` doit rester identique à celle des
+thèmes `dac/themes/*.yml` — un test (`tests/test_palette.py`) le vérifie.

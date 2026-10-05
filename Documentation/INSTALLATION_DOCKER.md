@@ -10,8 +10,9 @@ installé sur le poste : `setup\INSTALLER_NATIF.bat`.)
 
 **Durée sur un poste neuf : compter 45 minutes à 1 h 30**, dont l'essentiel en
 téléchargements sans surveillance (~9 Go au total : Docker Desktop ~600 Mo,
-Ollama ~1,5 Go, le modèle de chat ~4,7 Go, les images Docker ~1,6 Go), plus un
-redémarrage de Windows. Le build de l'image seul, sans aucun cache, a pris
+Ollama ~1,5 Go, le modèle de chat ~4,7 Go, les images Docker ~1,6 Go), plus trois
+redémarrages de Windows (après WSL2, après Docker Desktop, puis la vérification
+finale). Le build de l'image seul, sans aucun cache, a pris
 6 min 40 lors de la vérification du 5 octobre 2026. Sur un poste où Docker et
 Ollama sont déjà là, 10 minutes suffisent.
 
@@ -24,8 +25,8 @@ rien contre ces cinq conditions. Chacune suffit à bloquer une installation.
 
 | Condition | Pourquoi | Comment vérifier |
 |---|---|---|
-| **Windows 10 (22H2) ou 11, 64 bits** | Exigence de Docker Desktop | `winver` |
-| **Droits administrateur** sur le poste (ou un technicien présent) | L'installation de Docker Desktop et de WSL2 demande une élévation (fenêtre UAC) | Clic droit sur un programme → « Exécuter en tant qu'administrateur » doit être possible |
+| **Windows 11 23H2 ou plus récent, ou Windows 10 22H2 — 64 bits** | Version minimale exigée par Docker Desktop | `winver` |
+| **Droits administrateur** sur le poste (ou un technicien présent) | L'installation de WSL2, sur lequel tourne Docker Desktop, demande une élévation (fenêtre UAC) — Docker Desktop lui-même s'installe désormais par utilisateur, sans elle | Clic droit sur un programme → « Exécuter en tant qu'administrateur » doit être possible |
 | **Virtualisation activée** dans le BIOS/UEFI | Docker Desktop tourne sur WSL2, qui en dépend | Gestionnaire des tâches → Performances → Processeur → « Virtualisation : Activé » |
 | **~20 Go libres** sur `C:` et **16 Go de RAM** conseillés | ~9 Go téléchargés, puis images et modèle décompressés ; le modèle occupe ~5 Go de RAM | Explorateur → Ce PC ; `INSTALLER.bat` affiche aussi la RAM détectée |
 | **Accès Internet sans filtrage** vers `github.com`, `docker.com`, `docker.io`, `ollama.com`, `getbruin.com`, `pypi.org`, `npmjs.org`, `docs.google.com` | Un proxy d'entreprise qui bloque l'un d'eux fait échouer l'étape correspondante | Ouvrir ces sites dans le navigateur du poste |
@@ -51,8 +52,13 @@ wsl --install --no-distribution
 ```
 
 puis **redémarrer** le poste. `--no-distribution` installe WSL2 sans y ajouter
-de distribution Ubuntu, dont Docker n'a pas besoin. Si WSL2 est déjà présent, la
-commande le signale simplement — sans risque à rejouer.
+de distribution Ubuntu, dont Docker n'a pas besoin.
+
+- Si la commande signale une erreur liée au **Microsoft Store** (souvent bloqué
+  sur un poste d'entreprise) : `wsl --install --no-distribution --web-download`,
+  qui télécharge depuis GitHub.
+- Si WSL est **déjà installé** : `wsl --update` à la place — Docker Desktop exige
+  WSL 2.1.5 ou plus récent.
 
 ---
 
@@ -66,14 +72,41 @@ exactement là où il s'était arrêté :
 | Étape | Ce qu'il fait | Ce qu'on fait soi-même |
 |---|---|---|
 | 1/7 | Vérifie que le dossier est un vrai clone Git (`.git`) ; affiche la RAM | Rien — s'il s'arrête ici, refaire le `git clone` |
-| 2/7 | Installe **Docker Desktop** s'il manque : via `winget` s'il existe, sinon téléchargement direct de l'installeur officiel sur docker.com (`curl`, livré avec Windows) | Accepter la fenêtre UAC. Le script **s'arrête ensuite volontairement** : redémarrer si Windows le demande, **lancer Docker Desktop** une première fois (accepter ses conditions ; la connexion à un compte Docker peut être ignorée), puis **relancer `INSTALLER.bat`** |
+| 2/7 | Installe **Docker Desktop** s'il manque : via `winget` s'il existe, sinon téléchargement direct de l'installeur officiel sur docker.com (`curl`, livré avec Windows) | Accepter la fenêtre Windows si elle apparaît. Le script **s'arrête ensuite volontairement** : voir « Après l'installation de Docker Desktop » juste en dessous |
 | 3/7 | Attend jusqu'à une minute que Docker Desktop réponde ; sinon, distingue **WSL2 absent** (donne la commande `wsl --install`) de Docker simplement pas lancé | Le cas échéant : `wsl --install` dans une invite **administrateur**, redémarrer, relancer |
-| 4/7 | Installe **Ollama** s'il manque (`winget`, sinon ollama.com), démarre son service, télécharge le modèle `qwen2.5:7b-instruct-q4_K_M` (~4,7 Go) | Attendre |
+| 4/7 | Installe **Ollama** s'il manque (`winget`, sinon ollama.com), démarre son service, télécharge le modèle `qwen2.5:7b-instruct-q4_K_M` (~4,7 Go) | Attendre. Une fenêtre Ollama peut s'ouvrir : la réduire. Ollama se relancera seul à chaque ouverture de session |
 | 5/7 | Crée `.env` et **demande en console** l'identifiant (ou le lien complet) de la feuille, puis le nom de l'onglet | Coller le lien, taper le nom exact de l'onglet — Entrée conserve la valeur affichée entre crochets |
 | 6/7 | Vérifie que les ports 8000/8321/8322 sont libres, construit l'image et démarre les trois services | Attendre (plusieurs minutes la première fois) |
 | 7/7 | Crée les raccourcis du Bureau, attend que l'application réponde, ouvre le navigateur, puis exécute `scripts/test_fonctionnel.py` **à l'intérieur du conteneur** | Lire le dernier bloc : il doit afficher **« TOUT EST JUSTE »** |
 
 Aucune clé API, aucun compte de service, aucun fichier JSON, aucun Python local.
+
+### Après l'installation de Docker Desktop (l'arrêt volontaire de l'étape 2/7)
+
+1. **Redémarrer Windows**, même sans demande : le prochain lancement de
+   l'installateur voit alors Docker Desktop.
+2. Lancer **Docker Desktop** depuis le menu Démarrer ; accepter ses conditions
+   si elles s'affichent (la connexion à un compte Docker peut être ignorée).
+3. Dans Docker Desktop : **Settings** (roue crantée) › **General** › cocher
+   **« Start Docker Desktop when you sign in to your computer »** › **Apply**.
+   Ce réglage est **désactivé par défaut** : sans lui, l'application reste
+   injoignable après chaque redémarrage du poste, tant que personne n'a ouvert
+   Docker Desktop à la main.
+4. Attendre que Docker Desktop indique son moteur démarré, puis **relancer
+   `INSTALLER.bat`**.
+
+### Après « TOUT EST JUSTE »
+
+- **Ranger le Bureau** : l'installateur crée trois raccourcis DevoTeam. Ne
+  garder que **« DevoTeam Dashboard (Docker) »** ; supprimer « DevoTeam
+  Dashboard » et « DevoTeam Dashboard (Production) », destinés au poste du
+  développeur — sur ce poste, ils n'affichent que des erreurs
+  (« Environnement isolé introuvable (.venv) »).
+- **Redémarrer une fois et vérifier** — le test qui compte pour l'usage
+  quotidien : redémarrer Windows, attendre une à deux minutes (Docker Desktop
+  et Ollama démarrent seuls, puis l'application), double-cliquer sur
+  « DevoTeam Dashboard (Docker) », poser une question dans le chat. Si la
+  réponse et le tableau de bord arrivent, l'installation est terminée.
 
 **Vérifié de bout en bout le 5 octobre 2026** : clone neuf de la branche
 `Version_2` depuis GitHub, image reconstruite **sans aucun cache**, puis
@@ -83,7 +116,7 @@ JUSTE »**, et une génération réelle du modèle de chat depuis le conteneur v
 Ollama étaient déjà installés ; les branches « poste nu » (installation de
 Docker Desktop et d'Ollama sans `winget`, diagnostic WSL2) ont été éprouvées
 auparavant sur un Windows 11 Pro 25H2 neuf, en machine virtuelle (voir
-`PROGRESS.md`, phases 47 et 48).
+[`PROGRESS.md`](PROGRESS.md), phases 47 et 48).
 
 Les étapes 1 à 5 ci-dessous détaillent ce que ce fichier fait automatiquement —
 utile pour comprendre ou dépanner, pas nécessaire à suivre à la main si
@@ -322,7 +355,8 @@ que si une dépendance ou le moteur de tableaux de bord lui-même a changé.
 | Le chat répond « Impossible de joindre Ollama… » ou « Service IA local indisponible » | Ollama pas installé ou pas démarré sur l'hôte | Lancer « Ollama » depuis le menu Démarrer (ou relancer `INSTALLER.bat`, qui démarre le service) — il tourne sur la machine hôte, jamais dans un conteneur |
 | Le chat répond « Modèle … introuvable localement » | Le téléchargement du modèle n'a pas abouti | `ollama pull qwen2.5:7b-instruct-q4_K_M` |
 | `'docker' n'est pas reconnu…` juste après l'installation de Docker | La fenêtre a été ouverte avant l'installation : son `PATH` est ancien | Fermer la fenêtre, redémarrer Windows si demandé, relancer `INSTALLER.bat` |
-| `[ARRET] Docker Desktop ne repond toujours pas` + « WSL2 n'est pas installé », ou Docker Desktop qui affiche « WSL needs updating » / « unable to start » | Le noyau WSL2 manque ou est trop ancien (téléchargement à part de Docker) | `wsl --install --no-distribution` (ou `wsl --update` s'il est déjà installé) dans une invite **administrateur**, redémarrer, relancer `INSTALLER.bat` |
+| `[ARRET] Docker Desktop ne repond toujours pas` + « WSL2 n'est pas installé », ou Docker Desktop qui affiche « WSL needs updating » / « unable to start » | Le noyau WSL2 manque ou est trop ancien (téléchargement à part de Docker) | `wsl --install --no-distribution` (ajouter `--web-download` si l'erreur cite le Microsoft Store ; `wsl --update` s'il est déjà installé) dans une invite **administrateur**, redémarrer, relancer `INSTALLER.bat` |
+| Le raccourci affiche `[ARRET] Le demarrage a echoue`, typiquement juste après un redémarrage | Docker Desktop n'est pas lancé | Lancer Docker Desktop, attendre son moteur, relancer le raccourci ; cocher « Start Docker Desktop when you sign in to your computer » (Settings › General) pour que ça n'arrive plus |
 | Docker Desktop affiche « Virtualization support not detected » | Virtualisation désactivée dans le BIOS/UEFI | L'activer dans le BIOS (Intel VT-x / AMD-V, souvent « SVM Mode ») — geste d'un technicien sur un poste d'entreprise |
 | `[ARRET] Un des ports 8000 / 8321 / 8322 est deja utilise` | Un autre programme (ou une installation native encore ouverte) occupe le port | `netstat -ano \| findstr "8000 8321 8322"` pour l'identifier, le fermer, relancer |
 | Le téléchargement de Docker, d'Ollama ou de l'image échoue | Proxy ou pare-feu d'entreprise | Vérifier l'accès aux sites listés dans « Le poste de destination » ; relancer `INSTALLER.bat`, qui reprend là où il s'était arrêté |

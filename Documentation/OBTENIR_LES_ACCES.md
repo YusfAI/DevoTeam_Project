@@ -72,14 +72,15 @@ la machine.
 
 ## ☐ 4. Le poste de destination (obligatoire pour la méthode Docker)
 
-Rien à « obtenir » ici, mais cinq conditions à confirmer **avant** de se déplacer
+Rien à « obtenir » ici, mais six conditions à confirmer **avant** de se déplacer
 — `INSTALLER.bat` installe tous les logiciels lui-même, il ne peut rien contre
 celles-ci. Détail et manière de vérifier :
 [`INSTALLATION_DOCKER.md`](INSTALLATION_DOCKER.md), section « Le poste de
 destination ».
 
-- **Droits administrateur** sur le poste, ou un technicien présent (Docker
-  Desktop et WSL2 demandent une élévation).
+- **Windows 11 23H2 ou plus récent** (ou Windows 10 22H2), 64 bits — `winver`.
+- **Droits administrateur** sur le poste, ou un technicien présent (WSL2, sur
+  lequel tourne Docker Desktop, demande une élévation).
 - **Virtualisation activée** dans le BIOS (Gestionnaire des tâches →
   Performances → Processeur → « Virtualisation : Activé »).
 - **~20 Go libres** sur `C:` ; **16 Go de RAM** conseillés.
