@@ -62,7 +62,7 @@ Elles diffèrent sur Ollama lui-même :
 
 | Méthode | Ollama |
 |---|---|
-| `INSTALLER.bat` (Docker, recommandé) | **installé automatiquement** (via `winget`), et son service démarré s'il était arrêté |
+| `INSTALLER.bat` (Docker, recommandé) | **installé automatiquement** (via `winget`, ou téléchargé directement sur ollama.com si `winget` manque — ~1,5 Go), et son service démarré s'il était arrêté |
 | `scripts\install.bat` (natif) | **à installer à la main** — le script affiche le lien ([ollama.com/download](https://ollama.com/download)) et s'arrête, puis se relance |
 
 Aucune clé API, aucun compte, aucun quota : le modèle tourne entièrement sur
@@ -70,7 +70,31 @@ la machine.
 
 ---
 
-## ☐ 4. Mot de passe d'application Gmail (facultatif)
+## ☐ 4. Le poste de destination (obligatoire pour la méthode Docker)
+
+Rien à « obtenir » ici, mais cinq conditions à confirmer **avant** de se déplacer
+— `INSTALLER.bat` installe tous les logiciels lui-même, il ne peut rien contre
+celles-ci. Détail et manière de vérifier :
+[`INSTALLATION_DOCKER.md`](INSTALLATION_DOCKER.md), section « Le poste de
+destination ».
+
+- **Droits administrateur** sur le poste, ou un technicien présent (Docker
+  Desktop et WSL2 demandent une élévation).
+- **Virtualisation activée** dans le BIOS (Gestionnaire des tâches →
+  Performances → Processeur → « Virtualisation : Activé »).
+- **~20 Go libres** sur `C:` ; **16 Go de RAM** conseillés.
+- **Accès Internet non filtré** vers github.com, docker.com, ollama.com,
+  getbruin.com, pypi.org, npmjs.org, docs.google.com.
+- **Licence Docker Desktop** validée : gratuite seulement sous 250 personnes et
+  10 M$ de chiffre d'affaires — Devoteam dépasse ces seuils.
+
+Et un seul logiciel à poser à la main, avant tout le reste :
+**Git pour Windows** ([git-scm.com/download/win](https://git-scm.com/download/win),
+options par défaut).
+
+---
+
+## ☐ 5. Mot de passe d'application Gmail (facultatif)
 
 Uniquement si vous voulez le rappel quotidien par email des échéances à 7 jours.
 Sans lui, l'application fonctionne intégralement, seul ce rappel ne part pas.
@@ -94,7 +118,8 @@ une virgule dans `ALERT_RECIPIENT_EMAIL` (ex.
 | 1 | La feuille partagée en Lecteur, « toute personne disposant du lien » | *(rien à coller — juste à avoir fait)* |
 | 2 | Lien de la feuille + nom exact de l'onglet | `.env` → `GOOGLE_SHEET_ID` / `GOOGLE_SHEET_TAB` |
 | 3 | Ollama + le modèle | *(rien à faire — installé automatiquement)* |
-| 4 *(optionnel)* | Mot de passe d'application Gmail | `.env` → `GMAIL_APP_PASSWORD` |
+| 4 | Poste vérifié (admin, virtualisation, disque, Internet, licence Docker) + Git installé | *(rien à coller — juste à avoir fait)* |
+| 5 *(optionnel)* | Mot de passe d'application Gmail | `.env` → `GMAIL_APP_PASSWORD` |
 
 Une fois sur place, `INSTALLER.bat` (à la racine — recommandé, via Docker) ou
 `setup\INSTALLER_NATIF.bat` (alternative sans Docker) vous demandera ces mêmes

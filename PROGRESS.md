@@ -52,6 +52,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 45 — Migration Google Gemini → LLM local (Ollama), et Google Sheets lu par simple clé API au lieu d'un compte de service
 - [x] Phase 46 — Google Sheets lu par lien d'export public : plus aucun identifiant, ni clé API ni compte de service
 - [x] Phase 47 — Installation prouvée sur un poste nu : Ollama installé et démarré tout seul, et le piège du « Download ZIP » arrêté avant la démonstration
+- [x] Phase 48 — Installation sans `winget`, WSL2 diagnostiqué, et vérification de livraison avant le déploiement chez le directeur
 
 ## 📝 Journaux
 
@@ -641,6 +642,84 @@ chemin natif**, ce qui n'a jamais été vrai — seul l'installateur Docker le f
 (`winget`) ; le natif affiche un lien et s'arrête. `Documentation/INSTALLATION.md`
 disait « copier le dossier » sans avertir que les fichiers cachés — donc `.git` —
 ne suivent pas toujours un copier-coller par l'Explorateur.
+
+**Phase 48** : Terminée. Deux volets : ce que la machine virtuelle Windows 11 Pro
+25H2 neuve, montée pour simuler le poste du directeur, a révélé ; puis une
+vérification de livraison complète, faite avant de se déplacer.
+
+*`winget` peut tout simplement ne pas exister.* Sur la VM neuve, « App
+Installer » était absent, `winget.exe` introuvable sur le disque — et sur un
+poste d'entreprise, le Microsoft Store bloqué par stratégie de groupe produit le
+même résultat. L'installation « automatique » s'arrêtait dès l'étape 2/7 sur un
+diagnostic faux (« Windows trop ancien »). `winget` reste le chemin préféré quand
+il est là ; sinon les installeurs officiels de Docker Desktop et d'Ollama sont
+téléchargés directement avec `curl`, livré avec Windows 10/11. L'URL Docker
+contient `%20`, échappé en `%%20` — sans quoi cmd.exe lirait `%2` comme un
+paramètre du script. Les options silencieuses d'Ollama (`/VERYSILENT
+/SUPPRESSMSGBOXES /NORESTART`) ne sont pas écrites de mémoire : l'exécutable
+porte « Inno Setup Setup Data (6.7.0) », qui les documente. Sa taille réelle,
+relevée sur le serveur, est de ~1,5 Go et non ~700 Mo.
+
+*WSL2 : les fonctionnalités Windows ne suffisent pas.* L'installeur de Docker
+Desktop active bien WSL, VirtualMachinePlatform et Hyper-V (vérifié par `dism`),
+mais le **noyau** WSL2 est un téléchargement à part, et il manquait : Docker
+Desktop répondait « unable to start » sans dire pourquoi, et l'installateur
+conseillait de relancer Docker — un geste sans effet. Il distingue maintenant
+les deux cas et donne, quand WSL2 manque, la commande exacte (`wsl --install`,
+en administrateur).
+
+*Un détail d'affichage, mais c'est la première impression.* cmd.exe lit un
+`.bat` dans la page de code OEM quoi que fasse `chcp 65001` : guillemets
+français et tirets cadratins sortaient en caractères parasites. Les lignes
+affichées sont passées en ASCII ; les commentaires `REM` gardent leur
+typographie. Un test garde la distinction.
+
+*La vérification de livraison (5 octobre 2026).* Objectif : savoir, avant le
+jour J, si la version publiée s'installe — pas celle de la machine de
+développement. Méthode et résultats :
+
+- **Ce que le directeur recevra** : clone neuf de `origin/Version_2` depuis
+  GitHub (dépôt public, branche à jour, aucun commit local non poussé), dans un
+  dossier vierge.
+- **Image reconstruite sans aucun cache** (`docker compose build --no-cache
+  --pull`) : 6 min 40, sans erreur — Python 3.14, dépendances épinglées, bruin
+  0.11.771 et dac 0.25.0 téléchargés le jour même, pilote DuckDB préchauffé.
+- **`INSTALLER.bat` réel**, exécuté sur ce clone : 7 étapes sur 7, **15
+  contrôles sur 15, « TOUT EST JUSTE »**. Le chemin conteneur →
+  `host.docker.internal` → Ollama a aussi été éprouvé par une génération réelle
+  depuis le conteneur, le test fonctionnel ne touchant jamais au modèle (voir
+  Phase 47).
+- **Saisie d'un lien complet** (`…/edit?usp=sharing&ouid=…#gid=0`) : écrit tel
+  quel dans `.env` par `scripts/maj_env.ps1`, relu intact par `docker compose`
+  (le `#` collé n'y est pas pris pour un commentaire), l'identifiant extrait par
+  `_extraire_identifiant`.
+- **Suite complète : 633 tests passent.** Un seul échec apparent, qui n'en est
+  pas un : `test_written_dashboard_is_valid_yaml_with_the_expected_shape` échoue
+  quand le dépôt est sur `D:` et le dossier temporaire de pytest sur `C:` —
+  `os.replace` ne traverse pas les disques. Le test redirige le dossier des
+  dashboards mais pas `.dac_tmp/` ; en usage réel les deux sont dans le dépôt.
+  Avec `--basetemp` sur le même disque, tout passe.
+
+Ce que cette vérification **ne couvre pas**, dit franchement : elle a tourné
+sur un poste où Docker Desktop et Ollama étaient déjà installés. Les branches
+« poste nu » (installation sans `winget`, diagnostic WSL2) ont été exercées
+dans la VM, mais une exécution complète de bout en bout sur un poste vierge,
+jusqu'à « TOUT EST JUSTE », reste à faire. D'où les préconisations ajoutées à la
+documentation, qui ne changent rien à la logique de l'installateur : préparer
+WSL2 en amont (`wsl --install --no-distribution`, en administrateur, puis
+redémarrer) ; vérifier droits administrateur, virtualisation, disque, accès
+Internet et licence Docker Desktop avant de se déplacer ; cloner directement la
+branche `Version_2` (`main`, branche par défaut, est une version antérieure qui
+demande encore une clé Gemini).
+
+*Documentation remise d'aplomb au passage* — tous formats : `README.md`,
+`INSTALLATION_DOCKER.md` (durée réelle de 45 min à 1 h 30 sur un poste neuf et
+non 5 à 10 minutes, conditions du poste, tableau des sept étapes, messages
+d'erreur réels du chat), `OBTENIR_LES_ACCES.md`, `INSTALLATION.md`,
+`setup/README.md`, le rapport et le guide technique `.docx` (633 tests, 32
+widgets, un chapitre de déploiement, et une section 4.3 qui décrivait encore une
+écriture dans le Sheet que l'application ne fait plus depuis la Phase 46), et le
+guide d'installation PDF du directeur, refait d'après les étapes réelles.
 
 ## 📊 Bilan du Produit
 

@@ -6,7 +6,7 @@
 # théorique : pandas 3, pydantic 2 et fastapi ont chacun introduit des ruptures
 # majeures pendant la vie de ce projet.
 #
-# Ces versions sont celles sur lesquelles les 379 tests passent. Pour les faire
+# Ces versions sont celles sur lesquelles les 633 tests passent (5 octobre 2026). Pour les faire
 # évoluer : monter UNE dépendance à la fois, relancer `pytest tests/ -q`, et ne
 # valider que si tout est vert.
 #

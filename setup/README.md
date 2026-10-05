@@ -47,7 +47,8 @@ saisie.
   modèle de chat** (`qwen2.5:7b-instruct-q4_K_M`, ~4,7 Go). Ollama lui-même reste
   à installer à la main sur cette méthode : l'assistant affiche le lien et
   s'arrête, puis se relance. *(L'installation Docker, elle, pose Ollama toute
-  seule via `winget`.)*
+  seule — via `winget`, ou par téléchargement direct sur ollama.com si `winget`
+  manque.)*
 - Crée l'environnement Python isolé et installe les dépendances aux versions épinglées
 - Compile l'interface
 - Écrit le `.env` en conservant ses commentaires

@@ -1,0 +1,6 @@
+# Les .bat sont lus par cmd.exe, qui exige des fins de ligne Windows (CRLF) :
+# en LF, ses goto et ses etiquettes peuvent echouer selon la taille du fichier.
+# Git pour Windows convertit deja par defaut (core.autocrlf=true) ; cette regle
+# tient meme si le poste qui clone a ete installe avec d'autres options.
+*.bat text eol=crlf
+*.cmd text eol=crlf

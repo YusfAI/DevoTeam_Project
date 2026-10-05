@@ -58,7 +58,7 @@ données à installer, sans dépendance à une API cloud pour le LLM.
 - **Sections versionnées** : le tableau de bord principal est un jeu de dashboards
   YAML relus en revue (`dac/dashboards/accueil.yml` et `section_*.yml`), avec filtres
   interactifs de période et de practice. Chacune porte en sous-titre la question à
-  laquelle elle répond. 28 widgets au total, répartis ainsi :
+  laquelle elle répond. 32 widgets au total, répartis ainsi :
 
   | Section | Widgets | Question |
   |---|--:|---|
@@ -66,7 +66,7 @@ données à installer, sans dépendance à une API cloud pour le LLM.
   | Affaires chaudes | 9 | Que reste-t-il à aller chercher ? |
   | Santé du portefeuille | 4 | Que pèse ce qui est encore en jeu ? |
   | Pipeline commercial | 3 | Où en sont les affaires ouvertes, et où perd-on du monde ? |
-  | Échéances à venir | 1 | Quelles échéances tombent dans les sept jours ? |
+  | Échéances à venir | 5 | Quelles échéances tombent dans les sept jours ? |
 - **Un banc de questions plutôt qu'une impression** : trente questions fréquentes
   sont rejouées à chaque exécution de la suite. Chacune est vérifiée deux fois — sa
   réponse contre un calcul refait en pandas nu, et sa STABILITÉ en la repassant avec
@@ -102,7 +102,7 @@ données à installer, sans dépendance à une API cloud pour le LLM.
 - **Taille d'affichage réglable** : Bruin DAC n'expose aucun jeton de typographie, un
   réglage de zoom (90 % à 140 %) sur le cadre produit le même effet et se souvient du
   choix.
-- **Chaque visuel s'explique** : une phrase courte sous le titre de chacun des 28
+- **Chaque visuel s'explique** : une phrase courte sous le titre de chacun des 32
   widgets des sections, vérifiée par un test (moins de 100 caractères). Le
   raisonnement long vit en commentaire YAML, pour la revue.
 - **Affaires chaudes** : une affaire qu'on va *probablement* gagner et qui n'est
@@ -177,17 +177,36 @@ Git. Un dossier issu d'un ZIP s'installe et démarre normalement, mais laisse
 **tous les tableaux de bord vides**. `INSTALLER.bat` s'arrête désormais dès son
 étape 1/7 dans ce cas, avec la commande exacte à lancer.
 
-**Recommandé — double-cliquer sur `INSTALLER.bat`, à la racine du projet.**
+**Recommandé — double-cliquer sur `INSTALLER.bat`, à la racine du projet**, après
+avoir récupéré le projet ainsi (Git pour Windows installé au préalable, options
+par défaut ; dossier hors OneDrive, par exemple `C:\DevoTeam\`) :
+
+```
+git clone --branch Version_2 https://github.com/YusfAI/DevoTeam_Project.git
+```
+
+La branche **`Version_2`** est indispensable : `main`, la branche par défaut du
+dépôt, est une version plus ancienne qui demande encore une clé d'API Gemini.
 
 Un seul fichier, un seul clic. Il ne demande que ce qu'il ne peut pas deviner à
 votre place — l'identifiant de la feuille Google et son onglet, demandés en
 console, aucune clé API ni fichier de compte de service à déposer — et
 automatise tout le reste :
-vérifie Docker, construit l'image, démarre les trois services, crée le raccourci
-du Bureau, puis **prouve que les chiffres affichés sont justes** en exécutant
+installe Docker Desktop et Ollama s'ils manquent (via `winget`, ou par
+téléchargement direct de l'installeur officiel si `winget` est absent),
+télécharge le modèle de chat, construit l'image, démarre les trois services, crée
+le raccourci du Bureau, puis **prouve que les chiffres affichés sont justes** en exécutant
 `scripts/test_fonctionnel.py` directement à l'intérieur du conteneur — aucune
-installation Python locale n'est nécessaire pour cette vérification. Testé de
-bout en bout sur ce dépôt : voir `Documentation/INSTALLATION_DOCKER.md`.
+installation Python locale n'est nécessaire pour cette vérification. Vérifié de
+bout en bout le 5 octobre 2026 (clone neuf, image reconstruite sans cache, 15
+contrôles sur 15) : voir `Documentation/INSTALLATION_DOCKER.md`.
+
+Sur un poste neuf, compter **45 minutes à 1 h 30** (~9 Go de téléchargements et
+un redémarrage de Windows). Cinq conditions que l'installateur ne peut pas
+remplir à votre place — **droits administrateur, virtualisation activée dans le
+BIOS, ~20 Go libres, Internet non filtré, licence Docker Desktop validée** (payante
+au-delà de 250 personnes ou 10 M$ de chiffre d'affaires) : voir la section « Le
+poste de destination » de `Documentation/INSTALLATION_DOCKER.md`.
 
 ```
 INSTALLER.bat                          installe tout, puis vérifie — un clic
@@ -230,13 +249,16 @@ Logiciel à installer, selon la méthode :
 - **Installation Docker (recommandée)** : [git](https://git-scm.com/download/win)
   est le seul prérequis manuel — il sert à récupérer le projet, et son dossier
   `.git` reste nécessaire ensuite (voir « Installer sur un autre poste »).
-  `INSTALLER.bat` installe tout le reste lui-même (via `winget`) :
+  `INSTALLER.bat` installe tout le reste lui-même (via `winget`, ou par
+  téléchargement direct si `winget` est absent) :
   [Docker Desktop](https://www.docker.com/products/docker-desktop/) et
   [Ollama](https://ollama.com/download).
 - **Installation native** : Python 3.11+, Node.js 18+ / npm, et le moteur de
   tableaux de bord (voir `Documentation/INSTALLATION.md`).
 
-Les deux méthodes installent aussi Ollama (modèle de chat local) automatiquement.
+Ollama lui-même s'installe automatiquement avec `INSTALLER.bat` (Docker) ; avec
+la méthode native, l'assistant donne le lien et s'arrête, puis télécharge le
+modèle une fois Ollama installé.
 
 ## Installation
 
@@ -386,7 +408,7 @@ Trois différences avec le mode développement, chacune pour une raison :
 - **Un seul worker.** Le jeu de données vit en mémoire dans le processus
   (`backend/data_store.py`) et un planificateur y tourne. Avec plusieurs workers,
   chacun garderait sa propre copie des données ET relancerait le planificateur :
-  emails d'alerte en double, écritures concurrentes dans le Google Sheet. Le
+  emails d'alerte en double, rafraîchissements concurrents des données. Le
   goulot d'étranglement n'est de toute façon pas le backend (0,03 s par question)
   mais l'inférence du modèle local (plusieurs secondes sur CPU, sans GPU dédié) —
   plusieurs workers ne la paralléliseraient pas, Ollama sert un seul modèle à la fois.
@@ -399,8 +421,10 @@ deux scripts ne peuvent pas dériver l'un vers l'autre sans faire échouer les t
 > l'authentification (l'API est ouverte à qui atteint le port), la limitation de
 > débit (aucun quota cloud à surveiller depuis le passage au LLM local, mais rien
 > n'empêche plusieurs utilisateurs de saturer le même modèle Ollama en même temps)
-> et l'épinglage des dépendances (`requirements.txt` n'en fixe aucune version). Les
-> services
+> et l'épinglage du moteur de tableaux de bord : les dépendances Python sont
+> épinglées dans `requirements.txt`, mais `bruin`/`dac` sont installés dans leur
+> dernière version à chaque construction de l'image (vérifié le 5 octobre 2026 avec
+> dac 0.25.0 et bruin 0.11.771). Les services
 > n'écoutent que sur la boucle locale, ce qui rend l'absence d'authentification
 > sans conséquence tant qu'on ne les expose pas.
 
@@ -479,13 +503,15 @@ dac/
 frontend/              Vite + React (build servi par FastAPI en local)
 data/                  scheduler_state.json — anti-doublon du digest quotidien
                        (état local, gitignoré, régénéré au besoin)
-tests/                 suite pytest (mock LLM local/Sheets), 489 tests
+tests/                 suite pytest (mock LLM local/Sheets), 633 tests
   test_banc_de_questions.py  trente questions fréquentes, chacune vérifiée
                          contre un calcul refait en pandas nu ET rejouée avec
                          plusieurs ébauches du modèle (justesse + stabilité)
 Documentation/
   WORKFLOW.md            traçage concret d'une question, du prompt au dashboard affiché
-  reports/              rapport professionnel + guide technique (.docx), leur
+  reports/              rapport professionnel + guide technique (.docx), guide
+                        d'installation en anglais (.docx, exporté en PDF à la
+                        racine : « Installing DevoTeam Dashboard.pdf »), leur
                         générateur et les ressources qu'il utilise (assets/)
   planning/             brief initial, données sources et dump SQL de l'ancienne
                         base MySQL, conservé pour référence

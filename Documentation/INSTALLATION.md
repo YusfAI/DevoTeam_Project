@@ -86,6 +86,10 @@ cd DevoTeam_Project
 git checkout Version_2
 ```
 
+> `git checkout Version_2` est indispensable : la branche par défaut (`main`) est
+> une version plus ancienne, antérieure au modèle de chat local, qui ne suit pas
+> cette procédure. `git branch` doit afficher `* Version_2`.
+
 > **Le dossier `.git` doit suivre — ce n'est pas qu'un historique.** Le moteur de
 > tableaux de bord (`dac`, qui appelle `bruin`) refuse de lancer une requête s'il
 > ne trouve pas de racine de dépôt Git. Vérifié en conditions réelles, à données
@@ -104,7 +108,8 @@ Ce qu'il ne faut **pas** copier : `.venv`, `node_modules`, `frontend/dist`,
 `__pycache__`. Ils sont propres à une machine et seront reconstruits. S'ils sont là,
 l'installation les remplacera de toute façon.
 
-Ne copiez **jamais** votre `.env` : ce poste utilisera sa propre clé.
+Ne copiez **jamais** votre `.env` : il contient votre mot de passe d'application
+Gmail s'il est renseigné, et ce poste aura sa propre configuration.
 
 ### Étape 2 — Installer les prérequis
 

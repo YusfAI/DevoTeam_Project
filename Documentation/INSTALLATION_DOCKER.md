@@ -8,37 +8,86 @@ chemins avec espaces, `PATH` de `bruin` introuvable, PowerShell qui prend un
 message de progression pour une erreur. (Alternative si Docker ne peut pas être
 installé sur le poste : `setup\INSTALLER_NATIF.bat`.)
 
-Compter 5 à 10 minutes la première fois (téléchargement des images).
+**Durée sur un poste neuf : compter 45 minutes à 1 h 30**, dont l'essentiel en
+téléchargements sans surveillance (~9 Go au total : Docker Desktop ~600 Mo,
+Ollama ~1,5 Go, le modèle de chat ~4,7 Go, les images Docker ~1,6 Go), plus un
+redémarrage de Windows. Le build de l'image seul, sans aucun cache, a pris
+6 min 40 lors de la vérification du 5 octobre 2026. Sur un poste où Docker et
+Ollama sont déjà là, 10 minutes suffisent.
+
+---
+
+## Le poste de destination — à vérifier avant de se déplacer
+
+`INSTALLER.bat` installe tous les logiciels lui-même ; il ne peut en revanche
+rien contre ces cinq conditions. Chacune suffit à bloquer une installation.
+
+| Condition | Pourquoi | Comment vérifier |
+|---|---|---|
+| **Windows 10 (22H2) ou 11, 64 bits** | Exigence de Docker Desktop | `winver` |
+| **Droits administrateur** sur le poste (ou un technicien présent) | L'installation de Docker Desktop et de WSL2 demande une élévation (fenêtre UAC) | Clic droit sur un programme → « Exécuter en tant qu'administrateur » doit être possible |
+| **Virtualisation activée** dans le BIOS/UEFI | Docker Desktop tourne sur WSL2, qui en dépend | Gestionnaire des tâches → Performances → Processeur → « Virtualisation : Activé » |
+| **~20 Go libres** sur `C:` et **16 Go de RAM** conseillés | ~9 Go téléchargés, puis images et modèle décompressés ; le modèle occupe ~5 Go de RAM | Explorateur → Ce PC ; `INSTALLER.bat` affiche aussi la RAM détectée |
+| **Accès Internet sans filtrage** vers `github.com`, `docker.com`, `docker.io`, `ollama.com`, `getbruin.com`, `pypi.org`, `npmjs.org`, `docs.google.com` | Un proxy d'entreprise qui bloque l'un d'eux fait échouer l'étape correspondante | Ouvrir ces sites dans le navigateur du poste |
+
+> **Licence Docker Desktop** : gratuit pour un usage personnel, l'enseignement ou
+> une entreprise de moins de 250 personnes **et** de moins de 10 M$ de chiffre
+> d'affaires annuel ; au-delà, un abonnement Docker payant est exigé. Devoteam
+> dépasse ces seuils : à faire valider par qui gère les licences logicielles
+> avant d'installer sur un poste de l'entreprise.
+
+### Recommandé : préparer WSL2 avant de lancer l'installateur
+
+Sur un Windows neuf, l'installeur de Docker Desktop active les fonctionnalités
+Windows nécessaires, mais pas toujours le **noyau** WSL2, qui se télécharge à
+part : Docker Desktop refuse alors de démarrer (« unable to start »), constaté
+sur un Windows 11 neuf. `INSTALLER.bat` sait le diagnostiquer, mais au prix d'un
+aller-retour de plus. Le prévenir prend cinq minutes, dans une invite de
+commandes **ouverte en administrateur** (menu Démarrer → `cmd` → clic droit →
+« Exécuter en tant qu'administrateur ») :
+
+```
+wsl --install --no-distribution
+```
+
+puis **redémarrer** le poste. `--no-distribution` installe WSL2 sans y ajouter
+de distribution Ubuntu, dont Docker n'a pas besoin. Si WSL2 est déjà présent, la
+commande le signale simplement — sans risque à rejouer.
 
 ---
 
 ## En un clic : `INSTALLER.bat`
 
 Après avoir récupéré le projet (étape 2 ci-dessous), **double-cliquer sur
-`INSTALLER.bat`, à la racine** : c'est tout, il installe même Docker Desktop et
-Ollama tout seul (via `winget`) s'ils manquent — vérifie/installe **Docker
-Desktop**, vérifie/installe **Ollama** (le modèle de chat, qui tourne sur la
-machine hôte — voir plus bas) et télécharge son modèle, **demande en console**
-(pas de Bloc-notes, aucune clé API) l'identifiant de la feuille et son onglet,
-construit l'image, démarre les trois services, crée le raccourci du Bureau,
-puis **exécute `scripts/test_fonctionnel.py` directement à l'intérieur du
-conteneur** — la preuve que les chiffres affichés sont justes, sans qu'aucun
-Python ne soit installé sur ce poste.
+`INSTALLER.bat`, à la racine**. Il enchaîne sept étapes, chacune vérifiant
+d'abord si elle est déjà faite — le relancer après une interruption reprend
+exactement là où il s'était arrêté :
 
-> Seule exception qui reste manuelle : si Windows demande un **redémarrage**
-> pour activer WSL2 (nécessaire à Docker), il faut le faire, puis lancer Docker
-> Desktop une première fois depuis le menu Démarrer (accepter les conditions
-> d'utilisation) avant de relancer `INSTALLER.bat`. Il reprend alors exactement
-> là où il s'était arrêté.
+| Étape | Ce qu'il fait | Ce qu'on fait soi-même |
+|---|---|---|
+| 1/7 | Vérifie que le dossier est un vrai clone Git (`.git`) ; affiche la RAM | Rien — s'il s'arrête ici, refaire le `git clone` |
+| 2/7 | Installe **Docker Desktop** s'il manque : via `winget` s'il existe, sinon téléchargement direct de l'installeur officiel sur docker.com (`curl`, livré avec Windows) | Accepter la fenêtre UAC. Le script **s'arrête ensuite volontairement** : redémarrer si Windows le demande, **lancer Docker Desktop** une première fois (accepter ses conditions ; la connexion à un compte Docker peut être ignorée), puis **relancer `INSTALLER.bat`** |
+| 3/7 | Attend jusqu'à une minute que Docker Desktop réponde ; sinon, distingue **WSL2 absent** (donne la commande `wsl --install`) de Docker simplement pas lancé | Le cas échéant : `wsl --install` dans une invite **administrateur**, redémarrer, relancer |
+| 4/7 | Installe **Ollama** s'il manque (`winget`, sinon ollama.com), démarre son service, télécharge le modèle `qwen2.5:7b-instruct-q4_K_M` (~4,7 Go) | Attendre |
+| 5/7 | Crée `.env` et **demande en console** l'identifiant (ou le lien complet) de la feuille, puis le nom de l'onglet | Coller le lien, taper le nom exact de l'onglet — Entrée conserve la valeur affichée entre crochets |
+| 6/7 | Vérifie que les ports 8000/8321/8322 sont libres, construit l'image et démarre les trois services | Attendre (plusieurs minutes la première fois) |
+| 7/7 | Crée les raccourcis du Bureau, attend que l'application réponde, ouvre le navigateur, puis exécute `scripts/test_fonctionnel.py` **à l'intérieur du conteneur** | Lire le dernier bloc : il doit afficher **« TOUT EST JUSTE »** |
 
-Testé de bout en bout sur ce dépôt : trois exécutions réelles, la dernière
-propre — 15 contrôles sur 15, « TOUT EST JUSTE ».
+Aucune clé API, aucun compte de service, aucun fichier JSON, aucun Python local.
+
+**Vérifié de bout en bout le 5 octobre 2026** : clone neuf de la branche
+`Version_2` depuis GitHub, image reconstruite **sans aucun cache**, puis
+`INSTALLER.bat` réel — 7 étapes sur 7, **15 contrôles sur 15, « TOUT EST
+JUSTE »**, et une génération réelle du modèle de chat depuis le conteneur via
+`host.docker.internal`. Cette vérification a tourné sur un poste où Docker et
+Ollama étaient déjà installés ; les branches « poste nu » (installation de
+Docker Desktop et d'Ollama sans `winget`, diagnostic WSL2) ont été éprouvées
+auparavant sur un Windows 11 Pro 25H2 neuf, en machine virtuelle (voir
+`PROGRESS.md`, phases 47 et 48).
 
 Les étapes 1 à 5 ci-dessous détaillent ce que ce fichier fait automatiquement —
 utile pour comprendre ou dépanner, pas nécessaire à suivre à la main si
 `INSTALLER.bat` s'est bien déroulé.
-
----
 
 ---
 
@@ -50,10 +99,14 @@ détaillée avec les liens exacts : [`OBTENIR_LES_ACCES.md`](OBTENIR_LES_ACCES.m
 1. La feuille de calcul **partagée en Lecteur, à « toute personne disposant du
    lien »** — aucune clé API, aucun compte de service, aucun fichier JSON à
    déposer : la lecture se fait par le lien d'export public du Sheet.
-2. **L'identifiant de la feuille** et le **nom EXACT de son onglet** — un nom
-   incorrect ne produit aucune erreur, il charge silencieusement le premier
-   onglet de la feuille à la place.
-3. **Docker Desktop** et **Ollama** — rien à préparer à l'avance : `INSTALLER.bat`
+2. **Le lien de la feuille** (ou son identifiant) et le **nom EXACT de son
+   onglet** — un nom incorrect ne produit aucune erreur, il charge
+   silencieusement le premier onglet de la feuille à la place.
+3. **Git pour Windows** — le seul logiciel à installer à la main, avant tout le
+   reste : [git-scm.com/download/win](https://git-scm.com/download/win), options
+   par défaut (elles convertissent les fins de ligne au format Windows, dont les
+   `.bat` ont besoin).
+4. **Docker Desktop** et **Ollama** — rien à préparer à l'avance : `INSTALLER.bat`
    installe les deux automatiquement s'ils manquent (voir l'étape 1 et « Le
    modèle de chat » plus bas).
 
@@ -62,10 +115,12 @@ pour le détail des autres points.
 
 ## Étape 1 — Docker Desktop
 
-`INSTALLER.bat` l'installe automatiquement (via `winget`) s'il n'est pas déjà
-présent — rien à faire à l'avance dans la plupart des cas. Pour l'installer
-vous-même avant de lancer le script (ou si `winget` n'est pas disponible sur ce
-poste) :
+`INSTALLER.bat` l'installe automatiquement s'il n'est pas déjà présent — via
+`winget` quand il existe, sinon en téléchargeant l'installeur officiel
+directement sur docker.com (`winget` peut tout simplement manquer : absent d'un
+Windows 11 neuf, constaté en machine virtuelle, et souvent bloqué par stratégie
+de groupe sur un poste d'entreprise). Pour l'installer vous-même avant de lancer
+le script :
 
 [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
 
@@ -75,17 +130,27 @@ redémarrage peut être nécessaire. `INSTALLER.bat` le rappelle si l'installati
 automatique vient de se terminer : redémarrer si demandé, lancer Docker Desktop
 une première fois depuis le menu Démarrer, puis relancer le script.
 
-> Docker Desktop est gratuit pour un usage personnel ou dans une petite
-> entreprise ; au-delà d'un certain effectif, Docker facture un abonnement. À
-> vérifier auprès de qui gère les licences logicielles de l'entreprise avant de
-> déployer sur le poste d'un tiers.
+> Licence : voir l'encadré « Licence Docker Desktop » en tête de page — à
+> faire valider avant d'installer sur un poste de l'entreprise.
 
 ## Étape 2 — Récupérer le projet
 
+Dans une invite de commandes (menu Démarrer → `cmd`), depuis un dossier
+**hors OneDrive** — par exemple `C:\DevoTeam\` :
+
 ```
-git clone https://github.com/<votre-organisation>/DevoTeam_Project.git
+git clone --branch Version_2 https://github.com/YusfAI/DevoTeam_Project.git
 cd DevoTeam_Project
 ```
+
+> **La branche `Version_2` n'est pas un détail.** La branche par défaut du dépôt
+> (`main`) est une version plus ancienne, antérieure au modèle de chat local :
+> elle demande une clé d'API Google Gemini et ne suit pas cette procédure.
+> `--branch Version_2` équivaut à `git clone` suivi de `git checkout Version_2` ;
+> pour vérifier, `git branch` doit afficher `* Version_2`.
+>
+> **Hors OneDrive** : un dossier synchronisé peut verrouiller ou mettre en
+> ligne-seulement des fichiers que l'application réécrit à chaque question.
 
 > **`git clone` — surtout pas « Download ZIP ».** Le dossier `.git` n'est pas
 > qu'un historique ici : le moteur de tableaux de bord (`dac`, qui appelle
@@ -143,14 +208,16 @@ compose up` :
 https://ollama.com/download
 ```
 
-Puis téléchargez le modèle (une fois, ~4,7 Go) :
+L'installeur d'Ollama pèse lui-même ~1,5 Go. Puis téléchargez le modèle (une
+fois, ~4,7 Go) :
 
 ```
 ollama pull qwen2.5:7b-instruct-q4_K_M
 ```
 
 Sans ça, tout le reste de l'application fonctionne normalement — seul le chat
-répond « Ollama injoignable ».
+répond « Impossible de joindre Ollama… » (ou « Modèle … introuvable
+localement » si seul le modèle manque).
 
 ## Étape 4 — Lancer
 
@@ -248,11 +315,17 @@ que si une dépendance ou le moteur de tableaux de bord lui-même a changé.
 | `ports are not available` au lancement | Un port (8000/8321/8322) est déjà pris par une installation native encore active | Fermer les fenêtres de l'installation native, ou changer les ports publiés dans `docker-compose.yml` |
 | Page blanche, `StaticFiles` en erreur dans les journaux | `frontend-build` a échoué | `docker compose logs frontend-build` |
 | Tableaux de bord vides, aucune erreur | Statuts de la feuille non reconnus | Voir `Documentation/INSTALLATION.md`, section correspondante — identique en Docker |
+| « Sheet introuvable (404) » dans les journaux backend | Identifiant de feuille mal recopié | Relancer `INSTALLER.bat` et coller le lien complet de la feuille depuis le navigateur |
 | « Réponse inattendue de Google (pas du CSV) » dans les journaux backend | Feuille pas encore partagée en Lecteur, toute personne disposant du lien | Repartager depuis Google Sheets, puis `docker compose exec backend python scripts/verifier_installation.py` |
 | Les chiffres semblent faux, aucune erreur affichée | `GOOGLE_SHEET_TAB` ne correspond à aucun onglet réel — Google charge silencieusement le premier onglet à la place | Vérifier l'orthographe exacte dans `.env` |
 | Le chat répond mais aucun tableau de bord chat-généré ne s'affiche | Écriture atomique en échec (`EXDEV`) | Ne devrait plus arriver — signe que `docker-compose.yml` a été modifié pour monter un sous-dossier séparément (voir la note technique ci-dessous) |
-| Le chat répond « Ollama injoignable » | Ollama pas installé, pas démarré, ou modèle non téléchargé sur l'hôte | `ollama serve` doit tourner sur la machine hôte (pas dans un conteneur), et `ollama pull qwen2.5:7b-instruct-q4_K_M` doit avoir réussi |
-| `docker: command not found` dans un terminal | Docker Desktop pas démarré | Le lancer depuis le menu Démarrer, attendre l'icône verte dans la zone de notification |
+| Le chat répond « Impossible de joindre Ollama… » ou « Service IA local indisponible » | Ollama pas installé ou pas démarré sur l'hôte | Lancer « Ollama » depuis le menu Démarrer (ou relancer `INSTALLER.bat`, qui démarre le service) — il tourne sur la machine hôte, jamais dans un conteneur |
+| Le chat répond « Modèle … introuvable localement » | Le téléchargement du modèle n'a pas abouti | `ollama pull qwen2.5:7b-instruct-q4_K_M` |
+| `'docker' n'est pas reconnu…` juste après l'installation de Docker | La fenêtre a été ouverte avant l'installation : son `PATH` est ancien | Fermer la fenêtre, redémarrer Windows si demandé, relancer `INSTALLER.bat` |
+| `[ARRET] Docker Desktop ne repond toujours pas` + « WSL2 n'est pas installé », ou Docker Desktop qui affiche « WSL needs updating » / « unable to start » | Le noyau WSL2 manque ou est trop ancien (téléchargement à part de Docker) | `wsl --install --no-distribution` (ou `wsl --update` s'il est déjà installé) dans une invite **administrateur**, redémarrer, relancer `INSTALLER.bat` |
+| Docker Desktop affiche « Virtualization support not detected » | Virtualisation désactivée dans le BIOS/UEFI | L'activer dans le BIOS (Intel VT-x / AMD-V, souvent « SVM Mode ») — geste d'un technicien sur un poste d'entreprise |
+| `[ARRET] Un des ports 8000 / 8321 / 8322 est deja utilise` | Un autre programme (ou une installation native encore ouverte) occupe le port | `netstat -ano \| findstr "8000 8321 8322"` pour l'identifier, le fermer, relancer |
+| Le téléchargement de Docker, d'Ollama ou de l'image échoue | Proxy ou pare-feu d'entreprise | Vérifier l'accès aux sites listés dans « Le poste de destination » ; relancer `INSTALLER.bat`, qui reprend là où il s'était arrêté |
 
 ---
 

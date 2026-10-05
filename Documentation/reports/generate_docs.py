@@ -1,5 +1,7 @@
-"""Génère les deux documents .docx (rapport professionnel + guide technique) au
-branding Devoteam, à partir du contenu réel du projet (code, tests, PROGRESS.md).
+"""Génère les documents .docx au branding Devoteam — rapport professionnel, guide
+technique, et guide d'installation (anglais, exporté aussi en PDF à la racine :
+« Installing DevoTeam Dashboard.pdf ») — à partir du contenu réel du projet (code,
+tests, PROGRESS.md, INSTALLER.bat).
 
 Script one-shot, à relancer si le contenu doit être régénéré après une évolution
 du projet. Nécessite python-docx (voir requirements-dev.txt) — pas une dépendance
@@ -106,7 +108,7 @@ def add_cover(doc, doc_label, title, subtitle):
 
     meta = doc.add_paragraph()
     meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    mrun = meta.add_run("DevoTeam Dashboard — Projet interne  |  Août 2026  |  Youssef Hmidi")
+    mrun = meta.add_run("DevoTeam Dashboard — Projet interne  |  Octobre 2026  |  Youssef Hmidi")
     mrun.font.size = Pt(10)
     mrun.font.color.rgb = MUTED
     doc.add_page_break()
@@ -198,7 +200,9 @@ def add_numbered(doc, text, lead=None):
     return p
 
 
-def add_table(doc, headers, rows):
+def add_table(doc, headers, rows, widths=None):
+    """widths : largeurs de colonnes en cm (facultatif) — sans elles, Word partage
+    la largeur à parts égales, ce qui gaspille la place d'une colonne courte."""
     table = doc.add_table(rows=1, cols=len(headers))
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -218,6 +222,15 @@ def add_table(doc, headers, rows):
             run.font.size = Pt(9.5)
             if r_i % 2 == 1:
                 shade_cell(cells[i], "FAFAF8")
+    # Une ligne coupée par un saut de page laisse sa fin orpheline en haut de la
+    # page suivante, sans en-tête ni contexte.
+    for row in table.rows:
+        row._tr.get_or_add_trPr().append(OxmlElement("w:cantSplit"))
+    if widths:
+        table.autofit = False
+        for row in table.rows:
+            for i, w in enumerate(widths):
+                row.cells[i].width = Cm(w)
     doc.add_paragraph()
     return table
 
@@ -277,6 +290,7 @@ def build_rapport_professionnel():
         "Stack technique",
         "Sécurité et fiabilité",
         "Preuve de fonctionnement — alertes deadlines",
+        "Déploiement sur un nouveau poste",
         "État d'avancement et roadmap",
         "Conclusion",
     ])
@@ -500,7 +514,7 @@ def build_rapport_professionnel():
              "(alertes deadlines, rafraîchissement des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (629 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
+            ["Tests", "pytest (633 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
              "(mocks), garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -519,7 +533,7 @@ def build_rapport_professionnel():
                      "explicite — il n'écrit jamais lui-même de requête.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "629 tests automatisés couvrent la compréhension du langage, le requêtage des "
+    add_bullet(doc, "633 tests automatisés couvrent la compréhension du langage, le requêtage des "
                      "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -537,10 +551,53 @@ def build_rapport_professionnel():
     add_image_block(doc, EMAIL_PROOF, 6.3,
                      caption="Email d'alerte reçu dans la boîte de réception — preuve de bon fonctionnement.")
 
+    # --- Déploiement ---
+    add_h1(doc, "9. Déploiement sur un nouveau poste")
+    add_body(doc,
+        "L'application s'installe sur un poste Windows par un seul fichier, "
+        "INSTALLER.bat, à double-cliquer. Il installe lui-même Docker Desktop (qui "
+        "fait tourner l'application dans des conteneurs isolés) et Ollama (le modèle "
+        "de langage, exécuté localement), télécharge le modèle, construit et démarre "
+        "l'application, crée un raccourci sur le Bureau, puis vérifie que les chiffres "
+        "affichés sont justes en les recalculant indépendamment depuis le Google "
+        "Sheet. La personne qui installe ne saisit que deux valeurs : le lien de la "
+        "feuille et le nom de son onglet.")
+    add_body(doc,
+        "Seul Git doit être installé au préalable, pour récupérer le projet. Le "
+        "script est rejouable : interrompu (par un redémarrage de Windows, par "
+        "exemple), il reprend exactement là où il s'était arrêté.")
+    add_h2(doc, "Conditions à réunir sur le poste")
+    add_table(doc,
+        ["Condition", "Pourquoi"],
+        [
+            ["Droits administrateur (ou un technicien présent)", "L'installation de Docker "
+             "Desktop et de son sous-système Linux (WSL2) demande une élévation."],
+            ["Virtualisation activée dans le BIOS", "Docker Desktop en dépend."],
+            ["~20 Go libres, 16 Go de RAM conseillés", "~9 Go de téléchargements ; le modèle "
+             "occupe ~5 Go de mémoire."],
+            ["Accès Internet non filtré", "GitHub, Docker, Ollama, Bruin, PyPI, npm et Google "
+             "doivent être joignables pendant l'installation."],
+            ["Licence Docker Desktop", "Gratuite sous 250 personnes et 10 M$ de chiffre "
+             "d'affaires ; au-delà, abonnement payant — à valider pour Devoteam."],
+        ])
+    add_body(doc,
+        "Durée sur un poste neuf : 45 minutes à 1 h 30, essentiellement des "
+        "téléchargements sans surveillance, plus un redémarrage.")
+    add_h2(doc, "Vérification de livraison (5 octobre 2026)")
+    add_body(doc,
+        "La version publiée a été installée depuis zéro avant d'être confiée : "
+        "dossier récupéré depuis GitHub comme le ferait un nouveau poste, image "
+        "reconstruite sans aucun cache, installateur réel exécuté de bout en bout. "
+        "Résultat : sept étapes sur sept, quinze contrôles de justesse sur quinze "
+        "(« TOUT EST JUSTE »), et la suite de 633 tests automatisés au vert. Les "
+        "branches propres à un poste vierge (installation de Docker et d'Ollama sans "
+        "le gestionnaire de paquets de Windows, diagnostic du sous-système WSL2) ont "
+        "été éprouvées sur un Windows 11 neuf en machine virtuelle.")
+
     # --- État d'avancement et roadmap ---
     add_h1(doc, "10. État d'avancement et roadmap")
     add_body(doc, "L'application est complète et fonctionnelle de bout en bout, en hébergement local. "
-                   "Vingt-et-une phases de développement ont été livrées, de la mise en place du "
+                   "Quarante-huit phases de développement ont été livrées, de la mise en place du "
                    "backend jusqu'à la génération automatique de tableaux de bord complets à partir "
                    "d'une question — en passant par la suppression de la base de données au profit "
                    "d'une lecture directe du Google Sheet.", bold=False)
@@ -606,6 +663,7 @@ def build_guide_technique():
         "Questions d'entretien probables",
         "Les deux modes d'exécution",
         "Limites connues",
+        "Déploiement sur un poste neuf (Docker, INSTALLER.bat)",
     ])
 
     # --- Vue d'ensemble ---
@@ -771,12 +829,12 @@ def build_guide_technique():
             ["backend/data_quality.py", "Rapport des lignes rejetées et des valeurs manquantes."],
             ["dac/.bruin.yml", "Connexion DuckDB de DAC (aucun identifiant, versionnée volontairement)."],
             ["dac/dashboards/accueil.yml", "Section « Vue d'ensemble commerciale » (11 widgets), produite par scripts/generate_accueil.py, versionnée et relue en revue."],
-            ["dac/dashboards/section_*.yml", "Les quatre autres sections du tableau de bord principal (affaires chaudes, santé du portefeuille, pipeline, échéances) — 17 widgets, même générateur."],
+            ["dac/dashboards/section_*.yml", "Les quatre autres sections du tableau de bord principal (affaires chaudes, santé du portefeuille, pipeline, échéances) — 21 widgets, même générateur."],
             ["backend/overview_match.py", "Décide si une section répond déjà à la question posée, et laquelle ; sa table est prouvée par les tests."],
             ["dac/dashboards/_principal.yml", "Tableau de bord de travail, réécrit par chaque question (éphémère, hors suivi git)."],
             ["dac/dashboards/_analyse_*.yml", "Instantané figé par question, pour les rouvrir (éphémère, hors suivi git)."],
             ["frontend/src/", "Application Vite + React (chat, iframe DAC, hooks, styles)."],
-            ["tests/", "Suite pytest — 629 tests, aucune dépendance réseau ni données réelles."],
+            ["tests/", "Suite pytest — 633 tests, aucune dépendance réseau ni données réelles."],
             ["Documentation/WORKFLOW.md", "Traçage d'une question, du prompt au tableau de bord affiché."],
             ["Documentation/reports/", "Ce guide, le rapport et leur générateur (generate_docs.py)."],
             ["Documentation/planning/", "Brief initial du projet et données sources (archive historique, versionnée)."],
@@ -858,17 +916,19 @@ def build_guide_technique():
         "les quatre dernières portaient un type d'opportunité dans la colonne statut. "
         "Aucune n'est plus perdue aujourd'hui.")
 
-    add_h2(doc, "4.3 Écriture retour dans le Sheet")
+    add_h2(doc, "4.3 Aucune écriture retour dans le Sheet")
     add_body(doc,
-        "Le module écrit dans le Sheet deux choses seulement : l'identifiant des "
-        "nouvelles lignes, et les quatre colonnes calculées — pour que l'utilisateur "
-        "voie le résultat sans ouvrir l'application. Toutes ces cellules sont envoyées "
-        "en un SEUL appel groupé : sur ~360 lignes × 4 colonnes, un appel par cellule "
-        "représenterait plus d'un millier d'allers-retours réseau.")
+        "L'application ne fait que LIRE le Sheet. Les versions antérieures y "
+        "réécrivaient l'identifiant des nouvelles lignes et les quatre colonnes "
+        "calculées, en un seul appel groupé ; cette écriture a disparu avec le "
+        "passage au lien d'export public (section 12.3), qui ne la permet de toute "
+        "façon pas. Une ligne sans identifiant en reçoit un en mémoire à chaque "
+        "chargement, jamais renvoyé vers Google, et les colonnes calculées ne vivent "
+        "que dans les tableaux de bord.")
     add_body(doc,
-        "Volontairement, aucune suppression : retirer une ligne du Sheet la fait "
-        "simplement disparaître du chargement suivant, et rien n'est jamais effacé "
-        "ailleurs.")
+        "Conséquence voulue : aucune suppression ni modification possible du côté de "
+        "l'application. Retirer une ligne du Sheet la fait simplement disparaître du "
+        "chargement suivant, et rien n'est jamais effacé ailleurs.")
 
     add_h2(doc, "4.4 État local (hors Sheet)")
     add_body(doc,
@@ -1654,7 +1714,7 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "15. Tests automatisés")
     add_body(doc,
-        "629 tests pytest, sans dépendance réseau ni données réelles : le client du "
+        "633 tests pytest, sans dépendance réseau ni données réelles : le client du "
         "modèle local (Ollama) et l'appel HTTP au lien d'export du Sheet sont "
         "simulés (monkeypatch), et les données sont un petit DataFrame construit "
         "dans le test. La suite tourne donc hors ligne, en quelques secondes.")
@@ -1816,9 +1876,10 @@ def build_guide_technique():
     # --- Limites ---
     add_h1(doc, "17. Les deux modes d'exécution")
     add_body(doc,
-        "L'application se lance de deux façons, et se tromper est silencieux. Un "
-        "raccourci de Bureau existe pour chacune (scripts/create_shortcut.ps1 les "
-        "crée toutes les deux).")
+        "Sur le poste du développeur, l'application se lance de deux façons, et se "
+        "tromper est silencieux. Un raccourci de Bureau existe pour chacune "
+        "(scripts/create_shortcut.ps1 les crée, avec un troisième pour Docker — "
+        "section 19, le mode à utiliser sur tout autre poste).")
     add_table(doc,
         ["", "Développement", "Production"],
         [
@@ -1840,8 +1901,8 @@ def build_guide_technique():
         "donc si npm run build échoue. Enfin un seul worker, parce que le jeu de "
         "données vit en mémoire dans le processus et qu'un planificateur y tourne : "
         "plusieurs workers garderaient chacun leur copie des données ET relanceraient "
-        "le planificateur — emails d'alerte en double, écritures concurrentes dans le "
-        "Google Sheet.")
+        "le planificateur — emails d'alerte en double, rafraîchissements concurrents "
+        "des données.")
     add_cue(doc,
         "tests/test_lanceurs.py confronte les deux scripts : ils ne peuvent pas "
         "dériver l'un vers l'autre sans faire échouer les tests.")
@@ -1862,11 +1923,10 @@ def build_guide_technique():
                      "frontend) au lieu d'un seul. scripts/start_dev.bat les lance ensemble, mais "
                      "un tableau de bord vide dans l'iframe signifie presque toujours que le "
                      "serveur DAC n'est pas démarré.")
-    add_bullet(doc, "Le mode sombre ne s'applique pas à la zone tableau de bord. L'identité "
-                     "Devoteam, elle, y est appliquée par un thème dédié (couleurs et palette de "
-                     "graphiques reprises de l'application), mais ce thème est un paramètre du "
-                     "serveur de tableaux de bord, fixé à son lancement : il ne peut donc pas "
-                     "suivre le bouton clair/sombre du navigateur, qui ne concerne que le chat.")
+    add_bullet(doc, "Un thème DAC est fixé au lancement du serveur : le mode sombre des "
+                     "tableaux de bord demande donc un SECOND serveur DAC (port 8322), qui "
+                     "double la mémoire et les requêtes de démarrage à froid. S'il ne tourne pas, "
+                     "l'affichage reprend le thème clair plutôt que de rester vide.")
 
     add_bullet(doc, "La toute première requête d'un widget prend environ 12 secondes (démarrage à "
                      "froid du moteur de requête), puis ~400 ms. Sensible uniquement au premier "
@@ -1887,6 +1947,72 @@ def build_guide_technique():
     add_bullet(doc, "Le mot « urgentes » seul ne pose aucun filtre de délai : il faut « urgentes "
                      "(< 7 jours) » pour borner l'échéance. Comportement volontaire — ne rien "
                      "deviner — mais qui surprend au premier essai.")
+
+    # --- Déploiement ---
+    add_h1(doc, "19. Déploiement sur un poste neuf (Docker, INSTALLER.bat)")
+    add_body(doc,
+        "Une troisième façon de lancer l'application, et la seule recommandée sur un "
+        "autre poste que celui du développeur : trois conteneurs (backend, dac-light, "
+        "dac-dark) plus un conteneur ponctuel (frontend-build) qui compile l'interface "
+        "à chaque démarrage. Le modèle de langage, lui, tourne sur la machine hôte, "
+        "jamais dans un conteneur. Tout est orchestré par INSTALLER.bat, en sept "
+        "étapes idempotentes : chacune vérifie d'abord si elle est déjà faite.")
+    add_table(doc,
+        ["Étape", "Ce qu'elle fait", "Point délicat traité"],
+        [
+            ["1/7 Dossier", "Exige un .git ; affiche la RAM.",
+             "bruin refuse toute requête sans racine de dépôt Git : un « Download ZIP » "
+             "laisserait tous les tableaux de bord vides, sans erreur."],
+            ["2/7 Docker", "Installe Docker Desktop s'il manque, puis s'arrête "
+             "volontairement (redémarrage, premier lancement).",
+             "winget peut manquer (Windows neuf, Store bloqué) : repli sur l'installeur "
+             "officiel téléchargé par curl ; %20 échappé en %%20 dans l'URL."],
+            ["3/7 Démarrage", "Attend jusqu'à une minute que Docker réponde.",
+             "Distingue WSL2 absent (wsl --install) de Docker simplement pas lancé."],
+            ["4/7 Ollama", "Installe, démarre le service, télécharge le modèle.",
+             "PATH de la fenêtre non rafraîchi après installation : exécutable visé à son "
+             "emplacement connu ; options Inno Setup vérifiées sur l'exécutable."],
+            ["5/7 .env", "Demande le lien de la feuille et l'onglet (set /p).",
+             "Écriture ligne par ligne par scripts/maj_env.ps1, sans BOM ; un lien "
+             "complet (?, &, #) passe intact jusqu'au conteneur."],
+            ["6/7 Build", "Vérifie les ports 8000/8321/8322, docker compose up -d --build.",
+             "Un port déjà pris est signalé avant le message de bas niveau de Docker."],
+            ["7/7 Finition", "Raccourcis, attente active de /health, navigateur, "
+             "test fonctionnel dans le conteneur.",
+             "TEST_DAC_URL=http://dac-light:8321 : 127.0.0.1 désignerait le conteneur "
+             "backend lui-même."],
+        ])
+    add_body(doc,
+        "Trois choix de docker-compose.yml portent l'essentiel de la fiabilité. Un "
+        "montage unique du dépôt (.:/app) : os.replace, utilisé pour écrire les "
+        "tableaux de bord de façon atomique, échoue en EXDEV entre deux montages "
+        "distincts, même sur le même disque. Deux adresses par serveur DAC : le nom de "
+        "service pour le backend, 127.0.0.1 pour le navigateur de l'hôte. Et "
+        "OLLAMA_HOST forcé vers host.docker.internal, quel que soit le .env.")
+    add_h2(doc, "19.1 Vérification de livraison du 5 octobre 2026")
+    add_body(doc,
+        "Clone neuf de la branche Version_2 depuis GitHub ; docker compose build "
+        "--no-cache --pull (6 min 40, sans erreur, bruin 0.11.771 et dac 0.25.0 "
+        "téléchargés le jour même) ; INSTALLER.bat réel : 7/7 étapes, 15/15 contrôles, "
+        "« TOUT EST JUSTE » ; génération réelle du modèle depuis le conteneur via "
+        "host.docker.internal ; 633 tests au vert. Cette exécution a eu lieu sur un "
+        "poste où Docker Desktop et Ollama étaient déjà installés ; les branches "
+        "« poste nu » ont été exercées séparément sur un Windows 11 neuf en machine "
+        "virtuelle.")
+    add_h2(doc, "19.2 Risques résiduels")
+    add_bullet(doc, "bruin et dac ne sont pas épinglés : l'image installe leur dernière "
+                     "version à chaque construction. Une version incompatible publiée entre "
+                     "la vérification et l'installation passerait inaperçue jusqu'au test "
+                     "fonctionnel final, qui la signalerait.")
+    add_bullet(doc, "L'image de base python:3.14-slim-bookworm suit les correctifs de "
+                     "Python 3.14 : risque faible, les dépendances étant épinglées.")
+    add_bullet(doc, "La branche par défaut du dépôt (main) est une version antérieure, qui "
+                     "demande encore une clé Gemini : le clone doit viser Version_2.")
+    add_bullet(doc, "Licence Docker Desktop payante au-delà de 250 personnes ou 10 M$ de "
+                     "chiffre d'affaires.")
+    add_bullet(doc, "Un poste d'entreprise peut refuser les droits administrateur, la "
+                     "virtualisation ou l'accès aux sites de téléchargement : l'installateur "
+                     "le signale, mais ne peut pas le contourner.")
 
     out_path = os.path.join(DOC_DIR, "Guide_Technique_DevoTeam_Dashboard.docx")
     doc.save(out_path)
@@ -2003,8 +2129,8 @@ def build_presentation_script():
     add_h1(doc, "Les chiffres à retenir")
     add_bullet(doc, "1 question = 1 tableau de bord complet, généré automatiquement.")
     add_bullet(doc, "9 types de visualisations choisis automatiquement selon la question.")
-    add_bullet(doc, "629 tests automatisés, aucune dépendance à des données réelles.")
-    add_bullet(doc, "47 phases de développement livrées, de bout en bout, en autonomie.")
+    add_bullet(doc, "633 tests automatisés, aucune dépendance à des données réelles.")
+    add_bullet(doc, "48 phases de développement livrées, de bout en bout, en autonomie.")
     add_bullet(doc, "0 base de données à administrer — le Google Sheet est la source de vérité.")
     add_bullet(doc, "0 hallucination tolérée : donnée non fiable = question posée en retour, jamais un chiffre inventé.")
 
@@ -2022,6 +2148,260 @@ def build_presentation_script():
     return out_path
 
 
+# ---------- Document 4 : guide d'installation du directeur (anglais) ----------
+
+def _etape(doc, numero, texte):
+    """Étape numérotée en clair : le style « List Number » de Word continue la
+    numérotation d'une liste à l'autre (1, 2 puis 3, 4, 5), quand chaque liste de
+    ce guide doit repartir à 1."""
+    p = doc.add_paragraph()
+    p.paragraph_format.left_indent = Cm(0.9)
+    p.paragraph_format.first_line_indent = Cm(-0.6)
+    r = p.add_run("%d.  " % numero)
+    r.bold = True
+    r.font.color.rgb = CORAL_STRONG
+    p.add_run(texte)
+    return p
+
+
+def build_guide_installation():
+    """Guide pas à pas pour installer l'application sur un poste neuf, destiné à
+    une personne qui ne code pas. En anglais, comme sa première version.
+
+    Chaque étape y est celle qu'INSTALLER.bat exécute réellement (vérifié de bout
+    en bout le 5 octobre 2026) : le corriger ici sans relire INSTALLER.bat, c'est
+    recommencer l'erreur de la version précédente, qui menait droit à la panne.
+    Exporté en PDF à la racine du dépôt par exporter_pdf() (Word requis).
+    """
+    doc = new_document()
+    doc.add_picture(LOGO, width=Inches(1.5))
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(10)
+    run = p.add_run("Installing DevoTeam Dashboard")
+    run.font.size = Pt(24)
+    run.font.bold = True
+    run.font.color.rgb = CHARCOAL
+    meta = doc.add_paragraph()
+    mrun = meta.add_run("Updated October 5, 2026  ·  Youssef Hmidi  ·  version: branch Version_2")
+    mrun.font.size = Pt(10)
+    mrun.font.color.rgb = MUTED
+    _bottom_border(meta, CORAL_STRONG_HEX, size="12")
+
+    add_h1(doc, "Overview")
+    add_body(doc,
+        "DevoTeam Dashboard is a conversational sales dashboard: type a question in plain "
+        "French, get a dashboard back, powered by a local AI model (no API key, no "
+        "subscription) reading live data from a Google Sheet.")
+    add_body(doc,
+        "This guide installs it with Docker, the recommended method. One script, "
+        "INSTALLER.bat, installs Docker Desktop, the local AI model (Ollama) and the app, "
+        "starts everything, then checks by itself that the numbers shown are correct. "
+        "You only type two values: the Sheet link and the tab name.")
+    add_body(doc,
+        "Time needed on a brand-new PC: 45 minutes to 1 h 30, mostly unattended "
+        "downloads (about 9 GB in total), plus one or two Windows restarts. Only Git "
+        "has to be installed by hand.")
+
+    add_h1(doc, "Before you start")
+    add_h2(doc, "A. Check the PC")
+    add_body(doc,
+        "The installer handles all the software, but it cannot fix these. Check them "
+        "before the installation day: each one alone is enough to block it.")
+    add_table(doc,
+        ["Requirement", "Why", "How to check"],
+        [
+            ["Windows 10 (22H2) or 11, 64-bit", "Required by Docker Desktop", "Run winver"],
+            ["Administrator rights (or IT support on hand)",
+             "Installing Docker Desktop and WSL2 shows Windows admin (UAC) prompts",
+             "\"Run as administrator\" must work on this PC"],
+            ["Virtualization enabled in BIOS", "Docker Desktop runs on WSL2, which needs it",
+             "Task Manager › Performance › CPU › \"Virtualization: Enabled\""],
+            ["~20 GB free on C:, 16 GB RAM recommended",
+             "~9 GB of downloads; the AI model uses ~5 GB of RAM", "File Explorer › This PC"],
+            ["Unfiltered internet access",
+             "A company proxy blocking one of these sites stops the matching step",
+             "Open github.com, docker.com, ollama.com, getbruin.com, pypi.org, "
+             "npmjs.org and docs.google.com in the browser"],
+            ["Docker Desktop license approved",
+             "Free only under 250 employees AND under $10M annual revenue; Devoteam is "
+             "above, so a paid Docker subscription applies", "Ask whoever manages software licenses"],
+        ], widths=[5.0, 6.0, 5.6])
+    add_h2(doc, "B. Share the Google Sheet")
+    add_body(doc,
+        "Open the Sheet › Share › under \"General access\", choose \"Anyone with the "
+        "link\", role Viewer › Done.")
+    add_body(doc,
+        "The app only ever reads: it cannot write to the Sheet, edit anything, or reach "
+        "any other Google data. Note that anyone who obtains the link can read the Sheet.")
+    add_h2(doc, "C. Have these two values ready")
+    add_bullet(doc, "the Sheet's link, copied from the browser address bar;", lead="Link:")
+    add_bullet(doc, "the name of the tab holding the data, exactly as shown at the bottom of "
+                    "the Sheet. A wrong name raises NO error: Google silently returns the first "
+                    "tab instead. Copy-paste it rather than retyping it.", lead="Tab name:")
+
+    add_h1(doc, "Step 1 — Install Git")
+    add_body(doc,
+        "Download Git for Windows from git-scm.com/download/win and install it, keeping "
+        "all the default options (they keep the Windows line endings the installer "
+        "scripts need).")
+
+    add_h1(doc, "Step 2 — Prepare WSL2 (recommended, 5 minutes)")
+    add_body(doc,
+        "On a new PC, Docker Desktop may refuse to start because a Windows component "
+        "(the WSL2 kernel) is missing — this happened on a fresh Windows 11 during "
+        "testing. Installing it first avoids an extra round trip:")
+    _etape(doc, 1, "Start menu › type cmd › right-click \"Command Prompt\" › "
+                   "\"Run as administrator\".")
+    _etape(doc, 2, "Run the command below, then restart the PC.")
+    add_code_block(doc, "wsl --install --no-distribution")
+    add_body(doc, "If WSL2 is already there, the command just says so: it is safe to run.")
+
+    add_h1(doc, "Step 3 — Get the project files")
+    add_body(doc,
+        "Open a normal Command Prompt (Start menu › cmd) and run, one line at a time:")
+    add_code_block(doc,
+        "mkdir C:\\DevoTeam\n"
+        "cd C:\\DevoTeam\n"
+        "git clone --branch Version_2 https://github.com/YusfAI/DevoTeam_Project.git")
+    add_bullet(doc, "the default branch (main) is an older version that still asks for a "
+                    "Gemini API key and does not follow this guide.", lead="--branch Version_2 is required:")
+    add_bullet(doc, "the .git folder that git clone creates is needed for the dashboards to "
+                    "work. A folder from GitHub's \"Download ZIP\" starts normally but leaves "
+                    "every dashboard empty. The installer stops at its first step in that case.",
+               lead="Use git clone, never \"Download ZIP\":")
+    add_bullet(doc, "a synced folder can lock files the app rewrites on every question. "
+                    "C:\\DevoTeam is fine.", lead="Not inside OneDrive:")
+
+    add_h1(doc, "Step 4 — Run the installer")
+    add_body(doc,
+        "Open C:\\DevoTeam\\DevoTeam_Project and double-click INSTALLER.bat. Press a key "
+        "at the first screen; from there it runs through seven steps:")
+    add_table(doc,
+        ["Step", "What it does", "What you do"],
+        [
+            ["1/7", "Checks the folder is a real git clone; shows the RAM", "Nothing"],
+            ["2/7", "Installs Docker Desktop if missing (via winget, or a direct download "
+             "from docker.com, ~600 MB)",
+             "Accept the admin prompt. The installer then STOPS on purpose — see the box "
+             "below"],
+            ["3/7", "Waits up to one minute for Docker Desktop to answer",
+             "Nothing, unless it stops (see Troubleshooting)"],
+            ["4/7", "Installs Ollama if missing (~1.5 GB), starts it, downloads the AI model "
+             "(~4.7 GB)", "Wait — several minutes"],
+            ["5/7", "Asks for the Sheet link, then the tab name",
+             "Paste the link, press Enter; type the exact tab name, press Enter. Enter alone "
+             "keeps the value shown in [brackets]"],
+            ["6/7", "Builds and starts the app", "Wait — about 10 minutes the first time"],
+            ["7/7", "Creates the Desktop shortcuts, opens the browser, checks the numbers",
+             "Read the last block of text"],
+        ], widths=[1.4, 7.6, 7.6])
+    add_h3(doc, "The first run stops after installing Docker — this is expected")
+    _etape(doc, 1, "If Windows asks to restart, restart.")
+    _etape(doc, 2, "Open \"Docker Desktop\" from the Start menu, accept its terms (signing in "
+                   "to a Docker account can be skipped), and wait until it shows the engine "
+                   "as running.")
+    _etape(doc, 3, "Double-click INSTALLER.bat again. It resumes where it stopped and never "
+                   "redoes finished work — the same is true after any interruption.")
+
+    add_h1(doc, "Step 5 — Check the result")
+    add_body(doc,
+        "The browser opens http://127.0.0.1:8000 just before the final check, which "
+        "recalculates the dashboard numbers independently from the Sheet and compares "
+        "them with what the app shows. Wait for the end of the text in the black window:")
+    add_bullet(doc, "the installation is complete and correct.",
+               lead="\"15 controle(s) reussi(s), 0 echec(s)\" and \"TOUT EST JUSTE\" →")
+    add_bullet(doc, "do not present the app yet. Scroll up to see which check failed, and see "
+                    "Troubleshooting.", lead="Anything else →")
+    add_body(doc,
+        "Then ask the chat one question. The first answer is the slowest, because the "
+        "model loads into memory; without a dedicated graphics card, a few tens of seconds "
+        "per answer is normal, not a failure.")
+
+    add_h1(doc, "Using it day to day")
+    add_bullet(doc, "Double-click the \"DevoTeam Dashboard (Docker)\" shortcut on the Desktop. "
+                    "The app opens at http://127.0.0.1:8000 after about 15 seconds.")
+    add_bullet(doc, "Docker Desktop must be running: if the shortcut reports an error, open "
+                    "Docker Desktop from the Start menu first, wait, and try again. Once Docker "
+                    "runs, the app restarts by itself and keeps running after the window is "
+                    "closed.")
+    add_bullet(doc, "To stop everything (rarely needed): in a Command Prompt, "
+                    "cd C:\\DevoTeam\\DevoTeam_Project then docker compose down.")
+    add_bullet(doc, "To update later: in the same folder, git pull then "
+                    "docker compose up -d --build. The .env settings file is never overwritten.")
+
+    add_h1(doc, "Troubleshooting")
+    add_body(doc, "Messages from the app and the installer are in French; they are quoted "
+                  "exactly as they appear.")
+    add_table(doc,
+        ["You see", "Likely cause", "Fix"],
+        [
+            ["[ARRET] Ce dossier n'est pas un clone Git", "Folder came from \"Download ZIP\" "
+             "or a copy", "Delete the folder and redo Step 3"],
+            ["[ARRET] Docker Desktop ne repond toujours pas, with \"WSL2 n'est pas installe\" — "
+             "or Docker Desktop says \"WSL needs updating\" / \"unable to start\"",
+             "WSL2 kernel missing or outdated",
+             "Admin Command Prompt: wsl --install --no-distribution (or wsl --update), "
+             "restart, re-run INSTALLER.bat"],
+            ["[ARRET] Docker Desktop ne repond toujours pas, without the WSL2 line",
+             "Docker Desktop not started yet", "Open Docker Desktop from the Start menu, wait, "
+             "re-run INSTALLER.bat"],
+            ["Docker Desktop: \"Virtualization support not detected\"",
+             "Virtualization disabled in BIOS", "IT enables Intel VT-x / AMD-V (\"SVM\") in BIOS"],
+            ["[ARRET] Un des ports 8000 / 8321 / 8322 est deja utilise",
+             "Another program uses that port", "Close it (netstat -ano | findstr \"8000 8321 "
+             "8322\" shows which), re-run"],
+            ["A download fails (Docker, Ollama, model, build)", "Company proxy or firewall, "
+             "or a network hiccup", "Check the sites listed in \"Before you start\"; re-run — "
+             "it resumes"],
+            ["Empty dashboards; \"Reponse inattendue de Google (pas du CSV)\"",
+             "Sheet not shared as \"Anyone with the link\"", "Fix the sharing (part B), re-run "
+             "INSTALLER.bat"],
+            ["\"Sheet introuvable (404)\"", "Wrong Sheet ID", "Re-run INSTALLER.bat and paste the "
+             "full link from the browser"],
+            ["Dashboards work but figures look wrong, no error", "Tab name does not match a "
+             "real tab", "Re-run INSTALLER.bat, type the tab name exactly"],
+            ["Chat: \"Impossible de joindre Ollama...\" or \"Service IA local indisponible\"",
+             "Ollama not running", "Open \"Ollama\" from the Start menu (or re-run "
+             "INSTALLER.bat)"],
+            ["Chat: \"Modele ... introuvable localement\"", "AI model download did not finish",
+             "In a Command Prompt: ollama pull qwen2.5:7b-instruct-q4_K_M"],
+            ["Anything else", "—", "Take a screenshot of the whole window and send it to "
+             "Youssef: the exact wording pinpoints the cause"],
+        ], widths=[6.2, 4.4, 6.0])
+    # Le paragraphe vide qu'add_table pose après chaque tableau suffisait à lui
+    # seul à créer une dernière page blanche. Word exige un paragraphe après un
+    # tableau en fin de document : on le réduit plutôt que de le supprimer.
+    fin = doc.paragraphs[-1].paragraph_format
+    fin.space_before = fin.space_after = Pt(0)
+    fin.line_spacing = Pt(1)
+
+    out_path = os.path.join(DOC_DIR, "Installing_DevoTeam_Dashboard.docx")
+    doc.save(out_path)
+    return out_path
+
+
+def exporter_pdf(docx_path, pdf_path):
+    """Exporte un .docx en PDF par Microsoft Word (COM, via PowerShell).
+
+    Word plutôt qu'une bibliothèque Python : c'est le rendu que le destinataire
+    verrait en ouvrant le .docx, tableaux et puces compris. Sans Word, le .docx
+    reste produit et le PDF est à exporter à la main (Fichier › Enregistrer sous).
+    """
+    import subprocess
+    script = (
+        "$w = New-Object -ComObject Word.Application; $w.Visible = $false; "
+        "try { $d = $w.Documents.Open('%s', $false, $true); "
+        "$d.SaveAs2('%s', 17); $d.Close($false) } finally { $w.Quit() }"
+        % (docx_path.replace("'", "''"), pdf_path.replace("'", "''"))
+    )
+    resultat = subprocess.run(["powershell", "-NoProfile", "-Command", script],
+                              capture_output=True, text=True)
+    if resultat.returncode != 0 or not os.path.exists(pdf_path):
+        print("PDF non exporté (Word indisponible ?) :", resultat.stderr.strip())
+        return None
+    return pdf_path
+
+
 if __name__ == "__main__":
     # build_presentation_script() n'est volontairement PAS appelée ici : son .docx a été
     # retiré du dépôt (il ne servait plus), et le régénérer à chaque exécution le ferait
@@ -2029,5 +2409,12 @@ if __name__ == "__main__":
     # explicitement suffit à reproduire le document si le besoin revient.
     p1 = build_rapport_professionnel()
     p2 = build_guide_technique()
+    p3 = build_guide_installation()
     print("Généré :", p1)
     print("Généré :", p2)
+    print("Généré :", p3)
+    # Le guide d'installation se lit en PDF, à la racine : c'est le fichier qu'on
+    # remet à la personne qui installe, pas un document de travail.
+    p4 = exporter_pdf(p3, os.path.join(ROOT, "Installing DevoTeam Dashboard.pdf"))
+    if p4:
+        print("Exporté :", p4)
