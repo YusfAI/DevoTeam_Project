@@ -2,9 +2,28 @@ import { useMemo, useRef, useState } from 'react'
 import ChatPanel from './components/ChatPanel'
 import DashboardPanel from './components/DashboardPanel'
 import AlertBanner from './components/AlertBanner'
+import DataSourcePanel from './components/DataSourcePanel'
 import { useTheme } from './hooks/useTheme'
 import { useChatHistory } from './hooks/useChatHistory'
-import { postDashboardQuery, postSheetsSync } from './api'
+import { postDashboardQuery } from './api'
+
+// Le compte rendu d'une relecture du Sheet, tel qu'il s'affiche dans le chat. Une
+// lecture en échec dit POURQUOI (feuille non partagée, connexion…) au lieu de
+// renvoyer aux journaux du serveur, que personne ne lit devant l'écran.
+function messageDeLecture(resume) {
+  if (resume.fatal_error) return `Lecture du Google Sheet impossible : ${resume.fatal_error}`
+  const parts = [
+    `${resume.total_rows ?? 0} ligne(s) chargée(s)`,
+    `${resume.new_ids_assigned ?? 0} nouvel(le)(s)`,
+    `${resume.skipped ?? 0} ignorée(s)`,
+  ]
+  let texte = `Synchronisation Google Sheets terminée : ${parts.join(', ')}.`
+  const aCorriger = resume.repairs?.length || 0
+  if (aCorriger) {
+    texte += ` ${aCorriger} cellule(s) à corriger dans la feuille — voir « Santé des données ».`
+  }
+  return texte
+}
 
 const WELCOME_MESSAGE = {
   id: 0,
@@ -18,8 +37,10 @@ export default function App() {
   const { messages, addMessage, dashboard, setDashboard, lastIntent, setLastIntent, clearHistory } =
     useChatHistory(WELCOME_MESSAGE)
   const [loading, setLoading] = useState(false)
-  const [syncingSheets, setSyncingSheets] = useState(false)
   const [dashboardKey, setDashboardKey] = useState(0)
+  // La fenêtre « Source de données » : fermée (null), ou ouverte sur l'un de ses deux
+  // onglets — 'sante' depuis l'en-tête du tableau de bord, 'lier' depuis le chat.
+  const [dataPanel, setDataPanel] = useState(null)
   // Ouvert depuis l'en-tête du tableau de bord, affiché par-dessus le chat : l'état
   // est partagé par les deux panneaux, il vit donc ici plutôt que dans l'un d'eux.
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -104,26 +125,27 @@ export default function App() {
     setDashboardKey(0)
   }
 
-  async function handleSyncSheets() {
-    if (syncingSheets) return
-    setSyncingSheets(true)
-    try {
-      const summary = await postSheetsSync()
-      const parts = [
-        `${summary.total_rows ?? 0} ligne(s) chargée(s)`,
-        `${summary.new_ids_assigned ?? 0} nouvel(le)(s)`,
-        `${summary.skipped ?? 0} ignorée(s)`,
-      ]
-      let text = `Synchronisation Google Sheets terminée : ${parts.join(', ')}.`
-      if (summary.errors?.length) {
-        text += ` ${summary.errors.length} ligne(s) à corriger — voir les logs serveur pour le détail.`
-      }
-      addMessage({ type: 'sync', text })
-    } catch (err) {
-      addMessage({ type: 'error', text: err.message || 'Échec de la synchronisation Google Sheets.' })
-    } finally {
-      setSyncingSheets(false)
-    }
+  // Une relecture (« Relire la feuille maintenant ») : compte rendu dans le chat, et
+  // le tableau de bord affiché est rechargé pour montrer les nouvelles valeurs.
+  function handleSheetReread(resume) {
+    addMessage({ type: resume.fatal_error ? 'error' : 'sync', text: messageDeLecture(resume) })
+    setDashboardKey((k) => k + 1)
+  }
+
+  // Une autre feuille vient d'être liée. Le contexte de conversation est abandonné :
+  // ses filtres (un pays, un client…) désignaient des valeurs de l'ANCIENNE feuille.
+  // Retour à la vue d'ensemble, recalculée sur les nouvelles données.
+  function handleSourceChanged({ diagnostic, etat }) {
+    const lignes = etat?.lignes?.chargees ?? diagnostic?.lignes?.chargees ?? 0
+    addMessage({
+      type: 'sync',
+      text:
+        `Nouvelle feuille liée — onglet « ${diagnostic.source.tab} », ${lignes} ligne(s) chargée(s). ` +
+        'Le chat, les alertes et les tableaux de bord utilisent désormais cette feuille.',
+    })
+    setLastIntent(null)
+    setDashboard(null)
+    setDashboardKey((k) => k + 1)
   }
 
   return (
@@ -140,8 +162,7 @@ export default function App() {
           theme={theme}
           onToggleTheme={toggleTheme}
           onClearHistory={handleClearHistory}
-          onSyncSheets={handleSyncSheets}
-          syncingSheets={syncingSheets}
+          onOpenLinkSheet={() => setDataPanel('lier')}
           inputRef={inputRef}
           historyOpen={historyOpen}
           onCloseHistory={() => setHistoryOpen(false)}
@@ -153,8 +174,18 @@ export default function App() {
           onOpenSection={handleOpenSection}
           historyOpen={historyOpen}
           onToggleHistory={() => setHistoryOpen((open) => !open)}
+          onOpenDataHealth={() => setDataPanel('sante')}
         />
       </div>
+      {dataPanel && (
+        <DataSourcePanel
+          vue={dataPanel}
+          onChangerVue={setDataPanel}
+          onClose={() => setDataPanel(null)}
+          onRelu={handleSheetReread}
+          onSourceChangee={handleSourceChanged}
+        />
+      )}
     </div>
   )
 }

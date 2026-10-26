@@ -3,8 +3,10 @@ import json
 import logging
 from contextlib import asynccontextmanager
 
+from urllib.parse import urlparse
+
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -29,6 +31,8 @@ from .dac_composer import (
 )
 # pyrefly: ignore [missing-import]
 from .overview_match import overview_answers
+# pyrefly: ignore [missing-import]
+from .data_source import diagnostiquer, enregistrer_source, etat_actuel, onglets_de
 
 logger = logging.getLogger(__name__)
 
@@ -422,6 +426,74 @@ async def trigger_sheets_sync():
     automatique toutes les 15 minutes — utile pour voir un ajout/une modification
     immédiatement sans attendre le prochain passage planifié."""
     return _refresh_data()
+
+
+# --- Source de données : « Santé des données » et « Lier une feuille Google » ---
+#
+# Déclarées en `def` et non `async def` : elles lisent Google Sheets, ce qui prend
+# une à plusieurs secondes. FastAPI exécute une route synchrone dans un fil à part ;
+# une route `async` aurait bloqué tout le serveur — chat compris — pendant la lecture.
+
+class SourceRequest(BaseModel):
+    sheet: str
+    tab: str | None = None
+
+
+class OngletsRequest(BaseModel):
+    sheet: str
+
+
+def _depuis_ce_poste(request: Request) -> None:
+    """Refuse un changement de feuille demandé par une page d'une autre origine.
+
+    L'API n'écoute que sur la boucle locale, mais n'importe quel site ouvert dans le
+    navigateur du poste peut lui envoyer une requête : sans ce contrôle, une page
+    piégée pourrait substituer sa propre feuille aux données de l'entreprise. Un
+    navigateur joint toujours l'en-tête Origin à ce genre de requête ; un outil en
+    ligne de commande ne le fait pas, et reste accepté.
+    """
+    origine = request.headers.get("origin")
+    if origine and urlparse(origine).hostname not in ("127.0.0.1", "localhost"):
+        raise HTTPException(
+            status_code=403,
+            detail="Le changement de feuille ne se fait que depuis le poste qui héberge l'application.")
+
+
+@app.get("/data/source")
+def data_source_status():
+    """« Santé des données » : la feuille en service, sa dernière lecture, ce qu'elle
+    contient, un aperçu, et l'état du moteur qui dessine les tableaux de bord."""
+    etat = etat_actuel()
+    dac_repond = _dac_is_reachable()
+    echec = _dac_query_failure() if dac_repond else None
+    etat["tableaux_de_bord"] = {"ok": dac_repond and not echec, "repond": dac_repond,
+                                "detail": echec}
+    return etat
+
+
+@app.post("/data/source/onglets")
+def data_source_tabs(req: OngletsRequest):
+    """Les onglets de la feuille collée, pour les proposer au lieu de les faire taper."""
+    return onglets_de(req.sheet)
+
+
+@app.post("/data/source/test")
+def data_source_test(req: SourceRequest):
+    """Lit une feuille candidate comme l'application la lirait — sans rien changer."""
+    return diagnostiquer(req.sheet, req.tab)
+
+
+@app.post("/data/source")
+def data_source_link(req: SourceRequest, request: Request):
+    """Lie une autre feuille : re-testée ici (jamais sur la foi du navigateur), puis
+    inscrite dans .env et chargée aussitôt — chat, alertes et tableaux de bord."""
+    _depuis_ce_poste(request)
+    diagnostic = diagnostiquer(req.sheet, req.tab)
+    if diagnostic["statut"] == "erreur":
+        raise HTTPException(status_code=422, detail=diagnostic["erreur"])
+    enregistrer_source(diagnostic["source"]["sheet_id"], diagnostic["source"]["tab"])
+    _refresh_data()
+    return {"diagnostic": diagnostic, "etat": data_source_status()}
 
 
 # Doit rester la DERNIÈRE route déclarée : sert le build React (frontend/dist) sur "/"

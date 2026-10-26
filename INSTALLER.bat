@@ -480,7 +480,8 @@ echo     Sans carte graphique dediee, comptez quelques dizaines de
 echo     secondes par reponse - c'est normal, pas une panne.
 echo.
 echo     Prochains lancements : raccourci "DevoTeam Dashboard (Docker)"
-echo     sur le Bureau.
+echo     sur le Bureau. Pour tout arreter et liberer la memoire :
+echo     raccourci "Arreter DevoTeam Dashboard".
 echo.
 pause
 endlocal

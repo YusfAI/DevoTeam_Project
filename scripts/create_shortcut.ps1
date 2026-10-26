@@ -1,4 +1,4 @@
-# Crée (ou met à jour) le raccourci « DevoTeam Dashboard » sur le Bureau.
+﻿# Crée (ou met à jour) le raccourci « DevoTeam Dashboard » sur le Bureau.
 #
 # Un raccourci vit hors du dépôt : sur une machine neuve, ou après un déplacement du
 # projet, il n'existe pas ou pointe dans le vide. Ce script le rétablit à partir du
@@ -24,23 +24,42 @@ $icone = Join-Path $racine 'scripts\devoteam.ico'
 # le frontend par Vite ; le mode production compile le frontend et le fait servir par
 # le backend lui-même, sur un seul port. Devant un public, c'est le second qu'on veut
 # — un rechargement à chaud au mauvais moment coupe une requête en cours.
+#
+# `Natif` : ces deux-là supposent une installation native (.venv, Node, moteur de
+# tableaux de bord posés sur le poste). Sur un poste installé par Docker seul, ils
+# n'affichaient que des erreurs (« Environnement isolé introuvable (.venv) ») — le
+# guide d'installation demandait de les supprimer à la main, et chaque nouvelle
+# exécution de ce script les recréait. Ils ne sont désormais créés que si
+# l'installation native existe.
 $raccourcis = @(
     @{
         Nom = 'DevoTeam Dashboard.lnk'
         Cible = Join-Path $racine 'scripts\start_dev.bat'
-        Description = 'Mode developpement : backend rechargé à chaud, frontend Vite, ouvre http://localhost:5173'
+        Description = 'Mode développement : backend rechargé à chaud, frontend Vite, ouvre http://localhost:5173'
+        Natif = $true
     },
     @{
         Nom = 'DevoTeam Dashboard (Production).lnk'
         Cible = Join-Path $racine 'scripts\start_prod.bat'
         Description = 'Mode production : frontend compilé et servi par le backend, ouvre http://127.0.0.1:8000'
+        Natif = $true
     },
     @{
         Nom = 'DevoTeam Dashboard (Docker).lnk'
         Cible = Join-Path $racine 'scripts\start_docker.bat'
-        Description = 'Demarre les conteneurs Docker (docker compose up -d), ouvre http://127.0.0.1:8000'
+        Description = 'Démarre l''application (conteneurs Docker) et ouvre http://127.0.0.1:8000'
+    },
+    # Le pendant du précédent : tout arrêter, ports et mémoire compris, sans terminal.
+    # Icône « marche/arrêt » de Windows, pour qu'on ne le confonde pas avec un
+    # raccourci de démarrage, qui portent tous le logo Devoteam.
+    @{
+        Nom = 'Arrêter DevoTeam Dashboard.lnk'
+        Cible = Join-Path $racine 'scripts\stop.bat'
+        Description = 'Arrête l''application et libère ses ports (8000, 8321, 8322) et la mémoire du modèle de chat'
+        Icone = "$env:SystemRoot\System32\shell32.dll,27"
     }
 )
+$installationNative = Test-Path (Join-Path $racine '.venv\Scripts\python.exe')
 
 # OneDrive redirige souvent le Bureau : [Environment]::GetFolderPath suit cette
 # redirection, là où un chemin construit à la main sur $env:USERPROFILE la manquerait
@@ -49,6 +68,10 @@ $bureau = [Environment]::GetFolderPath('Desktop')
 $shell = New-Object -ComObject WScript.Shell
 
 foreach ($r in $raccourcis) {
+    if ($r.Natif -and -not $installationNative) {
+        Write-Host "Ignore (pas d'installation native sur ce poste) : $($r.Nom)"
+        continue
+    }
     if (-not (Test-Path $r.Cible)) {
         throw "Lanceur introuvable : $($r.Cible)"
     }
@@ -59,7 +82,9 @@ foreach ($r in $raccourcis) {
     $raccourci.WorkingDirectory = Join-Path $racine 'scripts'
     $raccourci.Description = $r.Description
 
-    if (Test-Path $icone) {
+    if ($r.Icone) {
+        $raccourci.IconLocation = $r.Icone
+    } elseif (Test-Path $icone) {
         $raccourci.IconLocation = "$icone,0"
     }
 

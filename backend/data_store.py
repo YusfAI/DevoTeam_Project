@@ -26,11 +26,13 @@ import logging
 import os
 import re
 import threading
-from datetime import date, datetime
+import time
+from datetime import date, datetime, timezone
+from pathlib import Path
 
 import pandas as pd
 import requests
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
 from .schema_and_whitelist import KNOWN_VALUES
 
@@ -38,6 +40,34 @@ from .schema_and_whitelist import KNOWN_VALUES
 # base (lue par db_layer et alerts) et doit pouvoir fonctionner seule, y compris
 # quand elle est importée directement par un script ou un test sans passer par main.py.
 load_dotenv()
+
+# Le fichier .env à la racine du dépôt — celui qu'écrivent INSTALLER.bat et le
+# bouton « Lier une feuille Google » de l'interface (backend/data_source.py).
+ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+SOURCE_KEYS = ("GOOGLE_SHEET_ID", "GOOGLE_SHEET_TAB")
+
+
+def prendre_la_source_du_fichier_env(chemin: Path = ENV_PATH) -> None:
+    """Fait primer la feuille inscrite dans .env sur celle de l'environnement.
+
+    `load_dotenv()` ne remplace jamais une variable déjà définie — et sous Docker,
+    elles le sont TOUTES : `env_file: .env` les fige à la création du conteneur.
+    Une feuille liée depuis l'interface (écrite dans .env) était donc oubliée au
+    redémarrage suivant du conteneur, qui reprenait l'ancienne en silence. Seules
+    ces deux clés sont concernées : les autres (OLLAMA_HOST, DAC_URL…) sont
+    imposées par docker-compose.yml et ne doivent surtout pas être écrasées.
+    """
+    try:
+        valeurs = dotenv_values(chemin)
+    except OSError:
+        return
+    for cle in SOURCE_KEYS:
+        valeur = (valeurs.get(cle) or "").strip()
+        if valeur:
+            os.environ[cle] = valeur
+
+
+prendre_la_source_du_fichier_env()
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +138,11 @@ _last_refresh_summary: dict = {}
 
 _SHEETS_EXPORT_TIMEOUT_SECONDS = 20
 
+_AIDE_PARTAGE = (
+    "Google refuse l'accès à cette feuille : elle doit être partagée. Dans Google "
+    "Sheets : Partager › Accès général › « Toute personne disposant du lien », rôle "
+    "Lecteur. L'application ne fait que lire, elle ne peut rien modifier.")
+
 # GOOGLE_SHEET_ID accepte aussi bien l'identifiant nu que le lien complet collé
 # depuis le navigateur — recopier "la partie entre /d/ et /edit" est une
 # manipulation inutile à demander, et une source d'erreur de plus le jour de
@@ -120,9 +155,33 @@ def _extraire_identifiant(valeur: str) -> str:
     return correspondance.group(1) if correspondance else valeur.strip()
 
 
-def fetch_sheet_values() -> list[list[str]]:
+class SourceError(ValueError):
+    """La feuille n'a pas pu être lue. Le message reste technique (journaux, tests) ;
+    `aide` dit la même chose à la personne devant l'interface, avec le geste à faire."""
+
+    def __init__(self, message: str, aide: str):
+        super().__init__(message)
+        self.aide = aide
+
+
+def expliquer_echec(exc: Exception) -> str:
+    """Ce qu'on peut dire à l'utilisateur d'un échec de lecture, quel qu'il soit."""
+    if isinstance(exc, SourceError):
+        return exc.aide
+    if isinstance(exc, (requests.exceptions.ConnectionError, requests.exceptions.Timeout)):
+        return ("Google Sheets est injoignable : vérifiez la connexion Internet du "
+                "poste, puis relancez la lecture.")
+    return "Lecture impossible : %s" % exc
+
+
+def fetch_sheet_values(sheet_id: str | None = None,
+                       tab_name: str | None = None) -> list[list[str]]:
     """Lit toutes les valeurs de l'onglet configuré via le lien d'export CSV public
     du Sheet (le même mécanisme que Fichier > Télécharger > CSV, exposé en URL).
+
+    `sheet_id` / `tab_name` permettent de lire une AUTRE feuille que celle
+    configurée — pour la tester avant de la lier (backend/data_source.py). Sans
+    eux, c'est la feuille de .env qui est lue, comme partout ailleurs.
 
     Lecture seule, sans clé API ni fichier de compte de service : le Sheet doit
     être partagé en « Lecteur — toute personne disposant du lien », faute de quoi
@@ -134,10 +193,13 @@ def fetch_sheet_values() -> list[list[str]]:
     attendues (_load_from_sheet, juste après) reste le seul filet de sécurité
     contre un onglet mal nommé qui ressemblerait quand même au bon.
     """
-    sheet_id = os.getenv("GOOGLE_SHEET_ID")
-    tab_name = os.getenv("GOOGLE_SHEET_TAB", "opportunities")
+    sheet_id = sheet_id or os.getenv("GOOGLE_SHEET_ID")
+    tab_name = tab_name or os.getenv("GOOGLE_SHEET_TAB") or "opportunities"
     if not sheet_id:
-        raise ValueError("GOOGLE_SHEET_ID manquant dans .env")
+        raise SourceError(
+            "GOOGLE_SHEET_ID manquant dans .env",
+            "Aucune feuille n'est liée à l'application : utilisez « Lier une "
+            "feuille Google » pour en choisir une.")
     sheet_id = _extraire_identifiant(sheet_id)
 
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq"
@@ -146,9 +208,14 @@ def fetch_sheet_values() -> list[list[str]]:
         timeout=_SHEETS_EXPORT_TIMEOUT_SECONDS,
     )
     if resp.status_code == 404:
-        raise ValueError(
-            "Sheet introuvable (404) — vérifier GOOGLE_SHEET_ID dans .env."
-        )
+        raise SourceError(
+            "Sheet introuvable (404) — vérifier GOOGLE_SHEET_ID dans .env.",
+            "Feuille introuvable : ce lien ne correspond à aucune feuille Google "
+            "Sheets. Copiez-le à nouveau depuis la barre d'adresse du navigateur.")
+    if resp.status_code in (401, 403):
+        raise SourceError(
+            "Accès refusé par Google (%d) — le Sheet doit être partagé en lecture."
+            % resp.status_code, _AIDE_PARTAGE)
     resp.raise_for_status()
 
     # Un Sheet privé (ou l'identifiant d'un document qui n'est pas un Sheet) ne
@@ -157,11 +224,11 @@ def fetch_sheet_values() -> list[list[str]]:
     # distinguer ce cas du CSV attendu.
     content_type = resp.headers.get("Content-Type", "")
     if "text/csv" not in content_type:
-        raise ValueError(
+        raise SourceError(
             "Réponse inattendue de Google (pas du CSV) — le Sheet doit être "
             "partagé en « Lecteur, toute personne disposant du lien » ; vérifier "
-            "aussi GOOGLE_SHEET_ID dans .env."
-        )
+            "aussi GOOGLE_SHEET_ID dans .env.",
+            _AIDE_PARTAGE)
 
     texte = resp.content.decode("utf-8")
     return list(csv.reader(io.StringIO(texte)))
@@ -344,24 +411,43 @@ def _parse_row(headers: list, values: list) -> tuple[dict, list]:
 
 
 def _load_from_sheet() -> tuple[list[dict], dict]:
-    """Lit le Sheet (lecture seule, clé API) et valide chaque ligne, en attribuant
-    un id aux lignes qui n'en ont pas. Renvoie (lignes valides, résumé)."""
+    """Lit le Sheet (lecture seule, lien d'export public) et valide chaque ligne, en
+    attribuant un id aux lignes qui n'en ont pas. Renvoie (lignes valides, résumé)."""
+    return analyser_valeurs(fetch_sheet_values())
+
+
+def analyser_valeurs(all_values: list[list[str]]) -> tuple[list[dict], dict]:
+    """Valide des valeurs déjà lues — sans rien toucher au cache de l'application.
+
+    Séparé de la lecture pour qu'une feuille candidate puisse être examinée avant
+    d'être liée (backend/data_source.py) exactement comme la feuille en service le
+    sera : mêmes colonnes exigées, mêmes réparations, mêmes rejets.
+    """
     # "errors" reste la liste lisible affichee a l'utilisateur ; "issues" en est la
     # version structuree, exploitee par backend/data_quality.py pour regrouper les
     # rejets par cause plutot que de reanalyser des phrases deja formatees.
     summary = {"total_rows": 0, "skipped": 0, "new_ids_assigned": 0, "errors": [],
-               "issues": [], "repairs": []}
+               "issues": [], "repairs": [],
+               "columns_found": [], "columns_missing": [], "columns_unrecognized": []}
 
-    all_values = fetch_sheet_values()
     if not all_values:
         return [], summary
 
     headers = [_nom_canonique(h) for h in all_values[0]]
+    # Ce que l'en-tête contient vraiment, pour le diagnostic de l'interface : une
+    # colonne mal nommée ne fait rien échouer à elle seule, elle est juste ignorée —
+    # il faut donc pouvoir la montrer pour qu'on la reconnaisse.
+    summary["columns_found"] = [c for c in SHEET_COLUMNS if c in headers]
+    summary["columns_unrecognized"] = [
+        brut.strip() for brut, canon in zip(all_values[0], headers)
+        if brut.strip() and canon not in SHEET_COLUMNS and canon not in DATA_COLUMNS
+    ]
     # "id" est la SEULE colonne facultative : une feuille métier réelle n'en a pas
     # forcément une (elle n'a jamais eu besoin de s'auto-numéroter). Toutes les
     # autres restent obligatoires — les rendre facultatives masquerait une vraie
     # feuille mal formée derrière des colonnes silencieusement vides.
     missing_headers = [c for c in SHEET_COLUMNS if c != "id" and c not in headers]
+    summary["columns_missing"] = missing_headers
     if missing_headers:
         msg = f"Colonnes manquantes dans l'en-tête du Sheet : {', '.join(missing_headers)}"
         logger.error("Chargement des données : %s", msg)
@@ -433,16 +519,34 @@ def refresh_dataframe() -> dict:
     démarrage, toutes les 15 minutes (scheduler), et à la demande (POST /sheets/sync).
     Renvoie un résumé du chargement pour affichage (frontend, logs)."""
     global _cached_df, _last_refresh_summary
+    # Quand, combien de temps, et quelle feuille : sans ces trois informations, un
+    # diagnostic (« la lecture marche-t-elle ? ») ne peut rien affirmer — un chiffre
+    # juste peut dater d'il y a deux heures, ou venir d'une autre feuille.
+    debut = time.monotonic()
+    contexte = {
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "source": {
+            "sheet_id": _extraire_identifiant(os.getenv("GOOGLE_SHEET_ID") or ""),
+            "tab": os.getenv("GOOGLE_SHEET_TAB") or "opportunities",
+        },
+    }
     try:
         rows, summary = _load_from_sheet()
-    except Exception:
+    except Exception as exc:
         logger.exception("Chargement des données : impossible de lire le Sheet.")
+        # La CAUSE est remontée, pas seulement « voir les logs » : sans elle,
+        # l'interface ne pouvait pas dire qu'il suffisait de partager la feuille.
+        explication = expliquer_echec(exc)
         summary = {"total_rows": 0, "skipped": 0, "new_ids_assigned": 0, "issues": [],
-                    "repairs": [],
-                    "errors": ["Lecture du Sheet impossible — voir les logs."]}
+                    "repairs": [], "columns_found": [], "columns_missing": [],
+                    "columns_unrecognized": [], "fatal_error": explication,
+                    "errors": ["Lecture du Sheet impossible — %s" % explication]}
+        summary.update(contexte, duration_ms=round((time.monotonic() - debut) * 1000))
         _last_refresh_summary = summary
         return summary
 
+    summary.update(contexte, duration_ms=round((time.monotonic() - debut) * 1000),
+                   fatal_error=None)
     df = pd.DataFrame(rows, columns=list(DATA_COLUMNS))
     with _cache_lock:
         _cached_df = df

@@ -1,537 +1,483 @@
 # DevoTeam Dashboard
 
-Dashboard commercial conversationnel : l'utilisateur pose une question en langage
-naturel dans un chat (ex. *"montre-moi le budget par pays pour Risk Advisory"*), un
-LLM **local** (Ollama + Qwen2.5-7B-Instruct, aucune clé API, aucun quota) extrait une
-intention structurée et validée, celle-ci est traduite en requête sur les données
-chargées depuis Google Sheets, et la réponse s'affiche sous forme d'un **dashboard
-complet** (plusieurs graphiques, KPI et tableaux partageant les filtres de la
-question), rendu par Bruin DAC. Une alerte quotidienne (email + bannière) prévient
-aussi des opportunités dont l'échéance approche.
+**Tableau de bord commercial conversationnel.** On pose une question en français —
+*« montre-moi le budget par pays pour Risk Advisory »* — et l'application répond
+par un tableau de bord complet : chiffres clés, graphiques et détail, tous filtrés
+sur la question. Les données viennent d'une feuille Google Sheets, lue en direct ;
+le modèle de langage tourne **sur le poste**, sans clé d'API ni abonnement.
 
-Stack : **FastAPI** (backend) + **Google Sheets + pandas** (source de données,
-chargée en mémoire) + **Ollama** (LLM local, `qwen2.5:7b-instruct-q4_K_M` par défaut)
-+ **Bruin DAC + DuckDB** (dashboards « as code ») + **Vite/React** (frontend) +
-**APScheduler** (tâches planifiées). Hébergement local uniquement, sans base de
-données à installer, sans dépendance à une API cloud pour le LLM.
+[▶ Voir la démonstration](https://app.arcade.software/flows/0JEAJAGmgCqMbVXfQo2R/view)
+(sans rien installer — le lien est aussi dans `Demo video.url`)
 
-## Fonctionnalités
+---
 
-- Chat en français libre, avec contexte multi-tour, dates relatives et requêtes de
-  comparaison ("compare la France et le Maroc") ; l'historique de conversation persiste
-  entre les rechargements de page (localStorage).
-- **Un seul cadre, cinq sections** : le tableau de bord principal est découpé en
-  cinq pages — offres remises, affaires chaudes, santé du portefeuille, pipeline,
-  échéances — qu'une barre d'onglets fait défiler. Chaque question transforme ce
-  même cadre (5 à 7 widgets — totaux du périmètre, graphique principal, angle
-  complémentaire, pipeline, détail, tous filtrés à l'identique), et un bouton
-  « ← Tableau de bord principal » ramène au point de départ depuis n'importe où. Au
-  rechargement de la page, retour à la vue d'ensemble. Voir
-  `Documentation/WORKFLOW.md` pour le traçage complet.
-- **Une question déjà traitée n'écrit rien** : si une section porte exactement la
-  réponse, elle s'ouvre filtrée comme demandé au lieu qu'un tableau de bord soit
-  composé. La table de correspondance est *prouvée*, jamais supposée : un test
-  exécute les deux moteurs et rejette toute entrée dont le chiffre ou le nombre de
-  lignes diffère de ce que le chat vient d'annoncer (`tests/test_reutilisation_fidele.py`).
-- **Transitions en fondu** : deux cadres se superposent le temps d'un changement, le
-  nouveau ne devenant visible qu'une fois chargé. L'écran n'est jamais vidé ; un fil
-  d'attente en tête indique le travail en cours.
-- **« Ajoute … » complète au lieu de remplacer** : « ajoute le budget par pays »
-  place un widget de plus sur le tableau de bord affiché. Un ajout déjà présent est
-  signalé comme tel plutôt qu'annoncé à tort.
-- **Tout se pilote par la phrase tapée** : « en camembert », « top 5 », « par
-  practice », « sans filtre » ajustent le dashboard affiché en héritant du contexte,
-  sans appel au modèle et sans bouton à cliquer. Une demande dont un seul mot n'est
-  pas compris repart par le chemin complet plutôt que d'hériter d'un filtre que
-  l'utilisateur n'a pas redemandé. L'application dit à chaque fois ce qui a changé
-  (« axe : pays → practice ; filtres retirés »), ou que la demande n'a rien changé.
-- **Historique des analyses** : ouvert depuis l'en-tête du tableau de bord, un volet
-  groupé par jour rassemble toutes les questions posées et signale celle qui est
-  affichée ; chacune rouvre le tableau de bord qu'elle avait produit.
-- **Affaires perdues exclues par défaut** : les statuts d'échec (Offre perdue,
-  Infructueux, NO GO, Hors scope, Non shortlisté) — 66 M DT sur 170 M DT — sortent de tous
-  les chiffres et de tous les graphiques, sauf si la question porte explicitement sur
-  un statut. Un « budget total » incluant les affaires mortes n'aide pas à décider.
-- **Type de graphique arbitré sur les données**, pas sur les mots : un camembert
-  demandé sur 19 pays devient des barres, et l'explication s'affiche sous le
-  graphique. Une moyenne ne forme jamais des parts d'un tout.
-- **Sections versionnées** : le tableau de bord principal est un jeu de dashboards
-  YAML relus en revue (`dac/dashboards/accueil.yml` et `section_*.yml`), avec filtres
-  interactifs de période et de practice. Chacune porte en sous-titre la question à
-  laquelle elle répond. 32 widgets au total, répartis ainsi :
+## Sommaire
 
-  | Section | Widgets | Question |
-  |---|--:|---|
-  | Vue d'ensemble commerciale | 11 | Combien d'offres remises, par practice, et que sont-elles devenues ? |
-  | Affaires chaudes | 9 | Que reste-t-il à aller chercher ? |
-  | Santé du portefeuille | 4 | Que pèse ce qui est encore en jeu ? |
-  | Pipeline commercial | 3 | Où en sont les affaires ouvertes, et où perd-on du monde ? |
-  | Échéances à venir | 5 | Quelles échéances tombent dans les sept jours ? |
-- **Un banc de questions plutôt qu'une impression** : trente questions fréquentes
-  sont rejouées à chaque exécution de la suite. Chacune est vérifiée deux fois — sa
-  réponse contre un calcul refait en pandas nu, et sa STABILITÉ en la repassant avec
-  plusieurs ébauches plausibles du modèle. C'est ce second axe qui tient le défaut
-  « bonne réponse parfois, mauvaise d'autres fois » : si le chiffre dépend de
-  l'humeur du modèle, le banc le dit.
-- **Les termes métier sont tranchés par le code** : « offres remises » vaut cinq
-  statuts ET une échéance déjà passée (147, comme le tableau de bord — le chat en
-  comptait 167) ; « offres gagnées » vaut les deux statuts d'issue favorable, dans un
-  sens comme dans l'autre. La phrase de réponse les NOMME au lieu d'énumérer leur
-  mécanique.
-- **L'issue d'une offre remise** est un axe à part entière : gagnée, perdue, en
-  attente — trois cas, là où une répartition par statut brut en donnait cinq, les
-  gagnées coupées en deux et les perdues noyées dans le reste.
-- **Périodes en mois nommés** : « entre novembre 2025 et à date actuelle », « depuis
-  janvier 2026 », « en mars 2026 ». Ces tournures n'étaient reconnues par aucune
-  règle : la période était purement perdue et la réponse portait sur tout le
-  portefeuille sans que rien ne le signale.
-- **Mode sombre jusque dans les graphiques** : les tableaux de bord suivent le thème,
-  via un second serveur DAC (un thème DAC est figé au lancement du processus). Ce
-  serveur est facultatif — s'il ne tourne pas, l'affichage reprend le thème clair.
-- **Période choisie à la main** : deux champs de date nommés, « Date de debut » et
-  « Date de fin », chacun ouvrant le calendrier du navigateur. Vider l'un lève cette
-  borne et garde l'autre. Les valeurs passent dans l'URL, donc un dashboard filtré se
-  partage par lien.
-- **Montants en dinars (DT)** : l'unité figure sur chaque libellé — nom de KPI,
-  titre d'axe, en-tête de colonne — et dans les réponses du chat. Le format
-  `currency` de DAC n'est plus utilisé : il applique un `$`.
-- **Palette revalidée** : huit teintes qui passent tous les contrôles du validateur
-  daltonien sans avertissement, contraste compris — les trois teintes claires de la
-  version précédente passaient sous 3:1. Un test empêche la régression et vérifie que
-  l'application et les dashboards n'utilisent pas deux palettes différentes.
-- **Taille d'affichage réglable** : Bruin DAC n'expose aucun jeton de typographie, un
-  réglage de zoom (90 % à 140 %) sur le cadre produit le même effet et se souvient du
-  choix.
-- **Chaque visuel s'explique** : une phrase courte sous le titre de chacun des 32
-  widgets des sections, vérifiée par un test (moins de 100 caractères). Le
-  raisonnement long vit en commentaire YAML, pour la revue.
-- **Affaires chaudes** : une affaire qu'on va *probablement* gagner et qui n'est
-  *pas encore* gagnée — statut « Offre remise », **ou** probabilité de gain dans
-  [80 %, 100 %[. Une réunion : l'un des deux critères suffit. La borne haute est
-  exclue parce que 100 % n'est pas une prévision dans ces données mais un constat —
-  les 88 lignes à 1,0 sont toutes « Offre gagnée » ou « Offre signée ». Six KPI
-  (chaque valeur suivie de sa part du portefeuille actif), un graphique en barres,
-  un camembert des proportions et le détail complet des huit métriques. « Affaire
-  chaude » et « offre pondérée » sont deux noms du même concept et résolvent vers la
-  même définition (`business_rules.hot_deal_sql` / `hot_deal_mask`, dérivées des
-  mêmes constantes pour les deux moteurs).
-- **« Offre remise » est un terme métier, pas un statut** : le statut décrit l'état
-  *courant*, donc une offre partie chez le client et gagnée depuis n'y figure plus.
-  Compter ce seul statut donnait 4 offres là où 57 avaient été déposées. La
-  définition (`business_rules.SUBMITTED_STATUSES`) vaut aussi bien pour le dashboard
-  que pour le chat.
-- 9 types de rendu : barres, courbes, aires, camemberts (pourcentage affiché sur
-  chaque part), cartes KPI, tableaux, entonnoir de vente, nuage de points et carte de
-  chaleur. Les catégories d'un graphique ont chacune leur couleur, la même d'un
-  graphique à l'autre du même tableau de bord.
-- Alertes deadlines : email quotidien (Gmail SMTP) + bannière dans le dashboard pour
-  les opportunités actives (statuts clos exclus) à échéance ≤ 7 jours. Rattrapée
-  automatiquement au redémarrage si le serveur était éteint pile à l'heure planifiée.
-- Anti-hallucination : ce qui n'est pas compris est **dit**, jamais remplacé par une
-  approximation. Cinq contrôles, chacun né d'une réponse fausse observée :
-  - valeur de filtre inconnue → « Valeur « Atlantide » non reconnue »
-  - axe d'analyse inexistant → « budget par couleur de cheveux » nomme les axes réels
-  - période hors des données → « Aucune donnée pour 2030. Les échéances vont de 2025 à 2026 »
-  - mesure absente (taux de réussite) → refus explicite + la mesure la plus proche
-  - clé de filtre hors périmètre → refus plutôt qu'un filtre ignoré en silence
+1. [Ce que fait l'application](#ce-que-fait-lapplication)
+2. [Installation](#installation)
+3. [Utilisation au quotidien](#utilisation-au-quotidien)
+4. [La feuille Google Sheets](#la-feuille-google-sheets)
+5. [Configuration](#configuration)
+6. [Architecture](#architecture)
+7. [Développement](#développement)
+8. [Dépannage](#dépannage)
+9. [Structure du dépôt](#structure-du-dépôt)
+10. [Documentation](#documentation)
+11. [Sécurité et limites connues](#sécurité-et-limites-connues)
 
-  Chacun de ces cas renvoyait auparavant le total du portefeuille (103 900 001 DT)
-  comme s'il répondait à la question. **Le LLM n'écrit jamais de SQL** — il ne produit
-  qu'une intention validée, traduite ensuite par du code ; et l'axe, l'agrégation et
-  le périmètre d'une définition métier sont réimposés par le code même quand il en
-  propose d'autres.
-- Axes d'analyse : pays, practice, statut, **client**, **partenaire**, mois, année,
-  source de financement, type d'opportunité. Les deux derniers arrivés existaient déjà
-  dans les données — leur absence de la whitelist rendait « budget par client »
-  inrépondable, et la question repartait avec le total général.
-- Somme ou moyenne : « budget moyen par pays » calcule bien une moyenne, dans les deux
-  moteurs, et le libellé la nomme (« Budget moyen ») pour qu'aucun total ne puisse se
-  lire comme une moyenne ni l'inverse.
-- Google Sheets comme source de données unique : l'application lit directement le
-  Sheet (via pandas), en mémoire, rafraîchi toutes les 15 minutes + au démarrage +
-  sur demande (`POST /sheets/sync`). Lecture seule, via le lien d'export public du
-  Sheet (aucune clé API, aucun compte de service) — le Sheet sert de formulaire
-  d'ajout/modification d'opportunités côté utilisateur, plus simple à éditer qu'une
-  base de données, mais l'application n'y écrit jamais elle-même. Une
-  cellule illisible (statut inconnu, date invalide, montant non numérique) coûte la
-  cellule, jamais la ligne : elle est remplacée par « Non renseigné » et l'opportunité
-  est conservée avec son budget, son échéance et son client. Chaque remplacement est
-  recensé — colonne, valeur d'origine, numéro de ligne — dans `GET /data/quality` et
-  le dashboard « Qualité des données », sans quoi tolérer reviendrait à corrompre les
-  données en silence.
+---
 
-## Démonstration
+## Ce que fait l'application
 
-Une visite guidée de l'application, sans rien installer :
-**[Voir la démonstration](https://app.arcade.software/flows/0JEAJAGmgCqMbVXfQo2R/view)**
+| | |
+|---|---|
+| **Un tableau de bord par question** | Chaque question compose 5 à 7 visuels cohérents — totaux, graphique principal, angle complémentaire, pipeline, détail — tous filtrés à l'identique. |
+| **Cinq sections prêtes à l'emploi** | Offres remises, Affaires chaudes, Portefeuille, Pipeline, Échéances : 32 visuels versionnés, chacun avec sa phrase d'explication et ses filtres de période et de practice. |
+| **Des retouches en toutes lettres** | « en camembert », « top 5 », « par practice », « ajoute le budget par pays »… modifient le tableau de bord affiché, et l'application dit ce qui a changé. |
+| **Aucun chiffre inventé** | Le modèle de langage ne fait que *comprendre* la question ; le calcul est fait par du code. Une valeur inconnue, un axe inexistant ou une période hors des données sont signalés, jamais remplacés par une approximation. |
+| **Alertes d'échéance** | Bandeau dans l'application et email quotidien (8 h) pour les opportunités actives dont l'échéance tombe dans les 7 jours. |
+| **Santé des données** | Un bouton dit si la lecture du Google Sheet fonctionne, avec les chiffres clés, les cellules à corriger dans la feuille et un aperçu des lignes. |
+| **Changer de feuille sans terminal** | Un bouton pour lier une autre feuille Google : ses onglets sont proposés, elle est testée avant d'être utilisée. |
+| **Arrêt propre** | Une icône sur le Bureau arrête l'application et libère ses ports et la mémoire du modèle. |
 
-Le même lien est dans `Demo video.url`, à la racine : un double-clic l'ouvre dans le
-navigateur, pour qui reçoit le dossier sans passer par ce fichier.
+Autres détails : historique des analyses (rouvrir une analyse passée), mode clair et
+sombre jusque dans les graphiques, zoom du tableau de bord, ouverture dans un onglet
+pour imprimer ou enregistrer en PDF, montants en dinars (DT), palette lisible par les
+daltoniens.
 
-## Installer sur un autre poste
-
-**Récupérer le projet avec `git clone`, jamais avec « Download ZIP ».** Le
-dossier `.git` est nécessaire au fonctionnement, pas seulement à l'historique :
-le moteur de tableaux de bord refuse de lancer une requête sans racine de dépôt
-Git. Un dossier issu d'un ZIP s'installe et démarre normalement, mais laisse
-**tous les tableaux de bord vides**. `INSTALLER.bat` s'arrête désormais dès son
-étape 1/7 dans ce cas, avec la commande exacte à lancer.
-
-**Recommandé — double-cliquer sur `INSTALLER.bat`, à la racine du projet**, après
-avoir récupéré le projet ainsi (Git pour Windows installé au préalable, options
-par défaut ; dossier hors OneDrive, par exemple `C:\DevoTeam\`) :
-
-```
-git clone --branch Version_2 https://github.com/YusfAI/DevoTeam_Project.git
-```
-
-La branche **`Version_2`** est indispensable : `main`, la branche par défaut du
-dépôt, est une version plus ancienne qui demande encore une clé d'API Gemini.
-
-Un seul fichier, un seul clic. Il ne demande que ce qu'il ne peut pas deviner à
-votre place — l'identifiant de la feuille Google et son onglet, demandés en
-console, aucune clé API ni fichier de compte de service à déposer — et
-automatise tout le reste :
-installe Docker Desktop et Ollama s'ils manquent (via `winget`, ou par
-téléchargement direct de l'installeur officiel si `winget` est absent),
-télécharge le modèle de chat, construit l'image, démarre les trois services, crée
-le raccourci du Bureau, puis **prouve que les chiffres affichés sont justes** en exécutant
-`scripts/test_fonctionnel.py` directement à l'intérieur du conteneur — aucune
-installation Python locale n'est nécessaire pour cette vérification. Vérifié de
-bout en bout le 5 octobre 2026 (clone neuf, image reconstruite sans cache, 15
-contrôles sur 15) : voir `Documentation/INSTALLATION_DOCKER.md`.
-
-Sur un poste neuf, compter **45 minutes à 1 h 30** (~9 Go de téléchargements et
-trois redémarrages de Windows). Six conditions que l'installateur ne peut pas
-remplir à votre place — **Windows 11 23H2 ou plus récent (ou Windows 10 22H2),
-droits administrateur, virtualisation activée dans le BIOS, ~20 Go libres, Internet
-non filtré, licence Docker Desktop validée** (payante
-au-delà de 250 personnes ou 10 M$ de chiffre d'affaires) : voir la section « Le
-poste de destination » de `Documentation/INSTALLATION_DOCKER.md`.
-
-```
-INSTALLER.bat                          installe tout, puis vérifie — un clic
-docker compose up -d                   les lancements suivants (ou le raccourci Bureau)
-```
-
-En faisant tourner Python, Node et le moteur de tableaux de bord dans des
-conteneurs plutôt que directement sur la machine, cette méthode élimine toute une
-classe de pannes propres à Windows rencontrées avec l'installation native
-(chemins avec espaces, `PATH` de `bruin`, PowerShell qui prend un message de
-progression pour une erreur) — chacune développeur-visible, aucune utilisateur-visible.
-
-**Alternative native**, si Docker ne peut pas être installé sur le poste :
-double-cliquer sur `setup\INSTALLER_NATIF.bat`. Un assistant conduit
-l'installation de bout en bout, installe Python/Node/le moteur de tableaux de bord
-directement sur la machine. Voir `setup/README.md` et
-`Documentation/INSTALLATION.md` pour la procédure détaillée et manuelle.
-
-Dans les deux cas, le script de vérification contrôle chaque maillon séparément —
-feuille (lecture), colonnes, valeurs inconnues, modèle local, interface compilée
-— parce qu'une installation ratée ne se signale pas : l'application démarre, la
-page s'ouvre, et les tableaux de bord restent vides.
-
-## Prérequis
-
-Dans les deux méthodes, obligatoires :
-- Une feuille Google Sheets partagée en Lecteur, « toute personne disposant du
-  lien » (voir "Google Sheets" ci-dessous — l'application ne fonctionne pas sans
-  données) — aucune clé API, aucun compte de service, aucun fichier JSON à
-  déposer
-- [Ollama](https://ollama.com/download) avec le modèle `qwen2.5:7b-instruct-q4_K_M`
-  (aucune clé API — installation et téléchargement automatiques via l'assistant)
-- (Optionnel, pour les alertes email) un compte Gmail avec un
-  [mot de passe d'application](https://myaccount.google.com/apppasswords)
-
-Fiche avec les liens exacts pour obtenir ces éléments :
-`Documentation/OBTENIR_LES_ACCES.md`.
-
-Logiciel à installer, selon la méthode :
-- **Installation Docker (recommandée)** : [git](https://git-scm.com/download/win)
-  est le seul prérequis manuel — il sert à récupérer le projet, et son dossier
-  `.git` reste nécessaire ensuite (voir « Installer sur un autre poste »).
-  `INSTALLER.bat` installe tout le reste lui-même (via `winget`, ou par
-  téléchargement direct si `winget` est absent) :
-  [Docker Desktop](https://www.docker.com/products/docker-desktop/) et
-  [Ollama](https://ollama.com/download).
-- **Installation native** : Python 3.11+, Node.js 18+ / npm, et le moteur de
-  tableaux de bord (voir `Documentation/INSTALLATION.md`).
-
-Ollama lui-même s'installe automatiquement avec `INSTALLER.bat` (Docker) ; avec
-la méthode native, l'assistant donne le lien et s'arrête, puis télécharge le
-modèle une fois Ollama installé.
+---
 
 ## Installation
 
-```bash
-# Backend
-pip install -r requirements.txt      # ou requirements-dev.txt pour lancer les tests
+### Méthode recommandée : `INSTALLER.bat` (Docker)
 
-# Config
-cp .env.example .env                 # remplir GOOGLE_SHEET_ID (voir "Google Sheets"
-                                      # ci-dessous) + GMAIL_SENDER/GMAIL_APP_PASSWORD/
-                                      # ALERT_RECIPIENT_EMAIL si tu veux activer les
-                                      # alertes email (sinon elles sont simplement
-                                      # ignorées avec un avertissement dans les logs).
-                                      # OLLAMA_HOST/OLLAMA_MODEL peuvent rester vides
-                                      # (valeurs par défaut du code).
+Un seul fichier installe tout — Docker Desktop, le modèle de langage (Ollama),
+l'application — puis vérifie que les chiffres affichés sont justes. Il ne demande
+que le lien de la feuille Google et le nom de son onglet.
 
-# Modèle local (aucune clé API)
-ollama pull qwen2.5:7b-instruct-q4_K_M
+**Avant de commencer**, sur le poste :
 
-# Frontend
-cd frontend && npm install
+- Windows 11 23H2 ou plus récent (ou Windows 10 22H2), 64 bits ;
+- droits administrateur, virtualisation activée dans le BIOS ;
+- ~20 Go libres, 16 Go de RAM conseillés ;
+- un accès Internet non filtré (≈ 9 Go à télécharger) ;
+- une licence Docker Desktop si l'entreprise dépasse 250 personnes ou 10 M$ de CA ;
+- **Git pour Windows** ([git-scm.com](https://git-scm.com/download/win), options par défaut) ;
+- la feuille Google partagée en **Lecteur — « toute personne disposant du lien »**.
+
+**Puis :**
+
+```
+cd C:\
+mkdir DevoTeam && cd DevoTeam
+git clone --branch Version_2 https://github.com/YusfAI/DevoTeam_Project.git
 ```
 
-## Google Sheets (source de données)
+Double-cliquer sur **`DevoTeam_Project\INSTALLER.bat`** et suivre ses sept étapes.
+Il s'arrête volontairement après avoir installé Docker Desktop : redémarrer Windows,
+ouvrir Docker Desktop une fois (et cocher *Settings › General › Start Docker Desktop
+when you sign in*), puis le relancer — il reprend là où il s'était arrêté.
+L'installation est terminée quand il affiche **« TOUT EST JUSTE »**.
 
-Lecture seule, par le lien d'export public du Sheet — aucune clé API, aucun
-compte de service, aucun fichier JSON à télécharger ni à déposer.
+> - **`--branch Version_2` est indispensable** : la branche `main` est une version
+>   antérieure.
+> - **`git clone`, jamais « Download ZIP »** : le dossier `.git` est nécessaire au
+>   moteur des tableaux de bord ; sans lui, ils restent vides.
+> - **Hors de OneDrive** : un dossier synchronisé peut verrouiller les fichiers que
+>   l'application réécrit.
 
-1. Ouvre ton Google Sheet → **Partager** → Accès général → **"Toute personne
-   disposant du lien"**, rôle **Lecteur**. Sans ce partage, Google sert une page
-   de connexion (HTML) au lieu des données — une clé n'y changerait rien, il n'y
-   en a pas : le lien lui-même est la seule autorisation qui compte ici.
-2. Renseigne `GOOGLE_SHEET_ID` (l'identifiant dans l'URL, ou l'URL complète —
-   l'identifiant en est extrait automatiquement) et `GOOGLE_SHEET_TAB` (le nom de
-   l'onglet) dans `.env`.
-   > **Piège à connaître** : un `GOOGLE_SHEET_TAB` qui ne correspond à AUCUN
-   > onglet ne produit aucune erreur — Google charge silencieusement le premier
-   > onglet de la feuille à la place. Vérifier que le nom tapé correspond
-   > exactement à celui affiché en bas de la feuille.
-3. La première ligne du Sheet doit contenir ces en-têtes exacts (n'importe quel
-   ordre) : `id, country, created_date, deadline, practice, description, buyer,
-   opp_type, status, budget, funding_source, partner, financial_offer,
-   win_probability`. Ligne avec `id` vide = nouvelle opportunité (un id lui est
-   attribué en mémoire à chaque chargement — jamais réécrit dans le Sheet, le
-   lien d'export public ne permettant de toute façon pas l'écriture).
-4. `deadline_month`, `deadline_year`, `days_remaining` et `weighted_amount` sont
-   **toujours recalculés** depuis les colonnes ci-dessus, uniquement affichés dans
-   les tableaux de bord — inutile (et sans effet) de les éditer dans le Sheet.
-5. `practice`, `opp_type` et `status` doivent correspondre exactement aux valeurs
-   whitelistées dans `backend/schema_and_whitelist.py` (insensible à la casse) —
-   sinon la ligne est ignorée et journalisée, sans bloquer les autres.
+Compter 45 minutes à 1 h 30 sur un poste neuf. Guide pas à pas, avec captures des
+messages et dépannage : **[`Installing DevoTeam Dashboard.pdf`](Installing%20DevoTeam%20Dashboard.pdf)**
+(en anglais) ou [`Documentation/INSTALLATION_DOCKER.md`](Documentation/INSTALLATION_DOCKER.md).
 
-## Dashboards « as code » (Bruin DAC)
+### Alternative sans Docker
 
-Le tableau de bord affiché à l'ouverture n'est pas codé en dur dans le frontend :
-ce sont cinq dashboards **versionnés en YAML** (`dac/dashboards/accueil.yml` et
-`section_*.yml`, tous produits par `scripts/generate_accueil.py`), rendus par
-[Bruin DAC](https://getbruin.com/docs/dac/) — 21 types de graphiques, filtres
-interactifs, grille 12 colonnes. L'UI React l'affiche en iframe (port 8321).
+Si Docker ne peut pas être installé : **`setup\INSTALLER_NATIF.bat`** installe
+Python, les dépendances, l'interface et le moteur des tableaux de bord directement
+sur le poste. Voir [`setup/README.md`](setup/README.md) et
+[`Documentation/INSTALLATION.md`](Documentation/INSTALLATION.md).
 
-Installation (une seule fois, dans Git Bash sous Windows) :
+---
 
-```bash
-curl -LsSf https://getbruin.com/install/dac | sh   # installe bruin + dac dans ~/.local/bin
+## Utilisation au quotidien
+
+### Démarrer, arrêter
+
+| Action | Comment |
+|---|---|
+| **Démarrer** | Raccourci **« DevoTeam Dashboard (Docker) »** sur le Bureau — l'application s'ouvre sur http://127.0.0.1:8000. Docker Desktop doit tourner (il démarre avec Windows si le réglage a été coché). |
+| **Arrêter** | Raccourci **« Arrêter DevoTeam Dashboard »** (icône marche/arrêt) : arrête l'application, libère les ports 8000 / 8321 / 8322 et la mémoire du modèle (~5 Go). Docker Desktop et Ollama restent en arrière-plan ; un nouveau démarrage prend une dizaine de secondes. |
+| **Vérifier** | Bouton **« 🩺 Santé des données »** dans l'application (voir plus bas), ou, pour un contrôle complet des chiffres : `docker compose exec -e TEST_DAC_URL=http://dac-light:8321 backend python scripts/test_fonctionnel.py` → « TOUT EST JUSTE ». |
+
+### Poser des questions
+
+Taper la question dans le champ en haut du chat. Quelques formulations :
+
+| Question | Réponse |
+|---|---|
+| « Budget par practice » | répartition du budget, graphique et détail |
+| « Top 5 des pays par budget » | classement des cinq premiers pays |
+| « Combien d'offres gagnées ? » | nombre d'offres gagnées ou signées |
+| « Que sont devenues les offres remises ? » | gagnées / perdues / en attente |
+| « Compare la France et le Maroc » | comparaison des deux pays |
+| « Combien d'offres remises depuis janvier 2026 ? » | période en mois nommés |
+| « Liste des opportunités urgentes (< 7 jours) » | échéances proches, en tableau |
+| « en camembert », « par statut », « sans filtre » | retouche du tableau de bord affiché |
+
+Les questions courantes reçoivent une réponse immédiate ; les formulations plus
+libres passent par le modèle de langage — quelques secondes, plusieurs dizaines sans
+carte graphique, la première étant la plus lente (chargement du modèle).
+
+### Les boutons de l'interface
+
+| Bouton | Où | Rôle |
+|---|---|---|
+| 🔗 **Lier une feuille Google** | en-tête du chat | Choisir la feuille lue par l'application (voir ci-dessous). |
+| 🗑️ | en-tête du chat | Effacer la conversation. |
+| ☀️ / 🌙 | en-tête du chat | Mode clair ou sombre. |
+| 🩺 **Santé des données** | en-tête du tableau de bord | État de la lecture du Google Sheet, chiffres clés, cellules à corriger, aperçu des lignes, et « Relire la feuille maintenant ». |
+| 🕘 **Historique** | en-tête du tableau de bord | Toutes les analyses, groupées par jour ; chacune rouvre son tableau de bord. |
+| ⧉ **Ouvrir en grand** | en-tête du tableau de bord | Le tableau de bord dans un onglet — pour l'imprimer ou l'enregistrer en PDF. |
+| − 100 % + | en-tête du tableau de bord | Taille d'affichage des graphiques. |
+| ← **Tableau de bord principal** | en-tête du tableau de bord | Revenir à la vue d'ensemble depuis une analyse. |
+
+### Santé des données
+
+Le bouton **🩺 Santé des données** répond à la question « la lecture du Google Sheet
+marche-t-elle ? » :
+
+- **un verdict** : la lecture fonctionne / fonctionne avec des points à vérifier /
+  échoue — avec la cause en clair et le geste à faire (feuille non partagée, lien
+  erroné, connexion…) ;
+- **la source** : lien vers la feuille, onglet, date et durée de la dernière lecture,
+  état du moteur des tableaux de bord ;
+- **les chiffres clés** : lignes chargées et ignorées, cellules à corriger, colonnes
+  reconnues, période couverte, nombre de pays et de practices, budget total ;
+- **les cellules à corriger dans la feuille** (ligne, colonne, valeur) — une valeur
+  non reconnue garde sa ligne mais compte pour « Non renseigné » ;
+- **un aperçu** des cinq premières lignes.
+
+« Relire la feuille maintenant » relance la lecture sans attendre le rafraîchissement
+automatique (toutes les 15 minutes). Si une lecture échoue, l'application continue
+d'afficher les données de la lecture précédente — et l'écran le signale.
+
+### Lier une autre feuille Google
+
+Le bouton **🔗 Lier une feuille Google** remplace toute manipulation de fichier ou
+de terminal :
+
+1. partager la feuille en **Lecteur — « toute personne disposant du lien »** ;
+2. ouvrir l'onglet des opportunités, copier l'adresse du navigateur, la coller ;
+3. choisir l'onglet dans la liste — l'onglet du lien collé est présélectionné ;
+4. **① Tester la lecture** : la feuille est lue exactement comme l'application la
+   lira, avec le même diagnostic que « Santé des données » ;
+5. **② Utiliser cette feuille** : activé seulement si le test a réussi. La feuille
+   est enregistrée dans `.env` et chargée aussitôt — chat, alertes et tableaux de bord.
+
+Un onglet inexistant, des colonnes obligatoires absentes ou un onglet vide bloquent
+la liaison. Le changement n'est accepté que depuis l'application elle-même, sur le
+poste qui l'héberge.
+
+### Mettre à jour l'application
+
+```
+cd C:\DevoTeam\DevoTeam_Project
+git pull
+docker compose up -d --build
 ```
 
-⚠️ **L'installeur n'ajoute pas `~/.local/bin` au PATH système.** C'est indispensable :
-`dac` délègue l'exécution du SQL à `bruin`, qu'il cherche dans le PATH. Sans ça, DAC
-démarre normalement mais chaque widget affiche
-`bruin query failed: executable file not found in %PATH%`.
+La configuration (`.env`) n'est jamais écrasée par une mise à jour. Ne modifier
+aucun fichier suivi par Git sur un poste d'utilisation : `git pull` refuserait de
+mettre à jour.
 
-`scripts/start_dev.bat` s'en charge automatiquement. Pour lancer `dac` à la main,
-ajoute le dossier au PATH de ton terminal :
+---
 
-```bash
-export PATH="$PATH:$HOME/.local/bin"     # Git Bash
+## La feuille Google Sheets
+
+L'application la **lit seulement** — par son lien d'export public, sans clé d'API ni
+compte de service — et ne peut rien y modifier. Elle est relue au démarrage, toutes
+les 15 minutes, et à la demande.
+
+### Colonnes
+
+La première ligne porte les en-têtes, dans n'importe quel ordre et sans distinction
+de majuscules. Les intitulés français de la feuille métier sont reconnus :
+
+| Colonne | Intitulés acceptés | Obligatoire |
+|---|---|:-:|
+| `id` | id | non — attribué à la lecture s'il manque |
+| `country` | Pays | oui |
+| `created_date` | Date de création | oui |
+| `deadline` | Deadline | oui |
+| `practice` | Practice | oui |
+| `description` | Description, Description de la prestation | oui |
+| `buyer` | Acheteur, Lead (acheteur) | oui |
+| `opp_type` | Type, Types | oui |
+| `status` | Statut | oui |
+| `budget` | Budget | oui |
+| `funding_source` | Financement | oui |
+| `partner` | Partenaire | oui |
+| `financial_offer` | Offre financière | oui |
+| `win_probability` | Pondéré à | oui |
+
+`deadline_month`, `deadline_year`, `days_remaining` et `weighted_amount` sont
+recalculés à chaque lecture : inutile de les tenir à jour dans la feuille.
+
+### Valeurs reconnues
+
+`practice`, `opp_type` et `status` prennent leurs valeurs dans une liste fermée
+([`backend/schema_and_whitelist.py`](backend/schema_and_whitelist.py)) — par exemple
+Digital Transformation, Risk Advisory, Data Management pour les practices. Une cellule
+non reconnue (ou une date, un montant illisible) **ne fait pas perdre la ligne** : la
+valeur devient « Non renseigné » et la cellule apparaît dans *Santé des données ›
+À corriger dans la feuille*.
+
+### Règles métier appliquées aux chiffres
+
+- **Affaires perdues exclues par défaut** (Offre perdue, Infructueux, NO GO, Hors
+  scope, Non shortlisté) — sauf si la question porte explicitement sur un statut.
+  C'est pourquoi le budget total des tableaux de bord est inférieur à celui de
+  *Santé des données*, qui compte toutes les lignes.
+- **Offres remises** : les offres effectivement déposées (offre remise, en attente,
+  gagnée, signée ou perdue) dont l'échéance est passée.
+- **Affaires chaudes** : statut « Offre remise », ou probabilité de gain entre 80 %
+  inclus et 100 % exclu.
+- **Alertes** : opportunités actives (statuts clos exclus) à échéance dans les 7 jours.
+
+---
+
+## Configuration
+
+Le fichier `.env` à la racine (créé par l'installateur depuis `.env.example`,
+jamais versionné) :
+
+| Variable | Rôle | Défaut |
+|---|---|---|
+| `GOOGLE_SHEET_ID` | Lien ou identifiant de la feuille — modifiable par le bouton « Lier une feuille Google » | *(obligatoire)* |
+| `GOOGLE_SHEET_TAB` | Nom exact de l'onglet | `opportunities` |
+| `OLLAMA_MODEL` | Modèle de langage | `qwen2.5:7b-instruct-q4_K_M` |
+| `OLLAMA_HOST` | Adresse d'Ollama (imposée par Docker : `host.docker.internal`) | `http://localhost:11434` |
+| `GMAIL_SENDER` | Compte Gmail qui envoie l'alerte quotidienne | *(facultatif)* |
+| `GMAIL_APP_PASSWORD` | [Mot de passe d'application](https://myaccount.google.com/apppasswords) de ce compte | *(facultatif)* |
+| `ALERT_RECIPIENT_EMAIL` | Destinataire(s), séparés par une virgule | *(facultatif)* |
+| `DAC_PUBLIC_URL`, `DAC_DARK_PUBLIC_URL` | Adresse des tableaux de bord vue par un navigateur distant (accès par tunnel uniquement) | *(vide)* |
+
+Sans les trois variables Gmail, tout fonctionne sauf l'email quotidien. Après une
+modification manuelle de `.env` : `docker compose up -d --force-recreate` (la
+feuille liée par le bouton de l'interface, elle, s'applique immédiatement).
+
+---
+
+## Architecture
+
 ```
-```powershell
-$env:PATH += ";$env:USERPROFILE\.local\bin"   # PowerShell
-```
-
-DAC interroge un fichier **DuckDB** (`dac/data/devoteam.db`) qui est une simple
-projection en lecture seule du DataFrame de l'application, réécrite à chaque
-rafraîchissement depuis le Google Sheet (`backend/duckdb_export.py`) — les données
-affichées sont donc toujours les mêmes que celles du chat.
-
-```bash
-cd dac && dac validate --dir .   # vérifie la structure des dashboards
-cd dac && dac check --dir .      # exécute réellement chaque requête widget
-```
-
-Les dashboards portent l'identité Devoteam via `dac/themes/devoteam.yml`, passé au
-serveur avec `--template`. Ce fichier reprend les mêmes jetons que
-`frontend/src/styles/tokens.css`, palette de graphiques comprise (validée pour la
-vision daltonienne) : **toute modification de couleur doit être faite des deux
-côtés**, sinon le chat et les dashboards divergent visuellement.
-
-## Lancer en développement (hot-reload)
-
-Trois terminaux (ou `scripts/start_dev.bat` sous Windows, qui lance les trois) :
-
-```bash
-python -m uvicorn backend.main:app --reload          # API sur http://127.0.0.1:8000
-```
-
-```bash
-cd dac && dac serve --dir . --port 8321 --template themes/devoteam.yml
-                                           # dashboards DAC sur http://localhost:8321
-                                           # (PATH doit contenir ~/.local/bin — voir ci-dessus)
-```
-
-```bash
-cd frontend && npm run dev                 # UI sur http://127.0.0.1:5173 (proxy /dashboard -> :8000)
-```
-
-**Windows** : `scripts/start_dev.bat` démarre les trois services en une seule fois,
-chacun dans sa fenêtre, attend une quinzaine de secondes (le premier widget DAC
-déclenche un démarrage à froid du moteur de requête) puis ouvre
-http://localhost:5173. Il n'en relance aucun s'il tourne déjà. Ne pas fermer les
-fenêtres qu'il ouvre.
-
-## Lancer en production
-
-Deux services au lieu de trois : **le frontend est compilé et servi par le backend
-lui-même** (`app.mount(StaticFiles)` dans `backend/main.py`), donc tout passe par
-le port 8000 — en même origine, sans proxy.
-
-```bash
-cd frontend && npm run build                 # OBLIGATOIRE avant de démarrer
-python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1
-cd dac && dac serve --dir . --port 8321 --template themes/devoteam.yml
-```
-
-**Windows** : `scripts/start_prod.bat` enchaîne les trois, et s'arrête si la
-compilation échoue.
-
-Trois différences avec le mode développement, chacune pour une raison :
-
-- **Pas de `--reload`.** Le rechargement à chaud surveille l'arborescence — que
-  l'application modifie elle-même : chaque question réécrit
-  `dac/dashboards/_principal.yml`. En production, le serveur se redémarrerait à
-  chaque réponse qu'il vient de produire.
-- **Pas de serveur Vite.** Il ne sert plus à rien une fois `frontend/dist` compilé,
-  et le proxy de développement devient sans objet. **Compiler d'abord** : le
-  backend sert `dist` tel qu'il le trouve, donc démarrer sur une compilation
-  périmée afficherait l'ancienne interface sans le moindre signe d'anomalie.
-- **Un seul worker.** Le jeu de données vit en mémoire dans le processus
-  (`backend/data_store.py`) et un planificateur y tourne. Avec plusieurs workers,
-  chacun garderait sa propre copie des données ET relancerait le planificateur :
-  emails d'alerte en double, rafraîchissements concurrents des données. Le
-  goulot d'étranglement n'est de toute façon pas le backend (0,03 s par question)
-  mais l'inférence du modèle local (plusieurs secondes sur CPU, sans GPU dédié) —
-  plusieurs workers ne la paralléliseraient pas, Ollama sert un seul modèle à la fois.
-
-`tests/test_lanceurs.py` vérifie que ces trois différences restent vraies : les
-deux scripts ne peuvent pas dériver l'un vers l'autre sans faire échouer les tests.
-
-> **Ce que ce mode ne couvre pas.** Il fait tourner l'application proprement sur un
-> poste ; il ne la rend pas déployable en entreprise. Manquent notamment
-> l'authentification (l'API est ouverte à qui atteint le port), la limitation de
-> débit (aucun quota cloud à surveiller depuis le passage au LLM local, mais rien
-> n'empêche plusieurs utilisateurs de saturer le même modèle Ollama en même temps)
-> et l'épinglage du moteur de tableaux de bord : les dépendances Python sont
-> épinglées dans `requirements.txt`, mais `bruin`/`dac` sont installés dans leur
-> dernière version à chaque construction de l'image (vérifié le 5 octobre 2026 avec
-> dac 0.25.0 et bruin 0.11.771). Les services
-> n'écoutent que sur la boucle locale, ce qui rend l'absence d'authentification
-> sans conséquence tant qu'on ne les expose pas.
-
-Pour le raccourci du Bureau :
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\create_shortcut.ps1
+ Navigateur ── http://127.0.0.1:8000 ──►  backend  (FastAPI, conteneur)
+     │                                      │  ├─ lit le Google Sheet (lien d'export public)
+     │                                      │  ├─ comprend la question ──► Ollama (sur le poste, :11434)
+     │                                      │  ├─ calcule les chiffres (pandas) et compose le tableau de bord (YAML)
+     │                                      │  └─ projette les données dans DuckDB
+     └── iframe http://127.0.0.1:8321 ──►  dac-light / dac-dark (:8321 / :8322, conteneurs)
+                                           exécutent le SQL des tableaux de bord sur DuckDB
 ```
 
-Il (re)crée « DevoTeam Dashboard » avec l'icône `scripts/devoteam.ico`, en pointant
-sur le chemin réel du dépôt — à rejouer après un déplacement du projet ou sur une
-machine neuve, un raccourci vivant hors du dépôt.
+| Brique | Technologie | Rôle |
+|---|---|---|
+| Interface | Vite + React | chat, tableau de bord en iframe, fenêtres de données |
+| API | FastAPI (Python) | questions, alertes, santé, source de données |
+| Données | Google Sheets + pandas | source unique, chargée en mémoire |
+| Compréhension | Ollama · Qwen2.5-7B-Instruct | transforme la question en *intention* structurée |
+| Tableaux de bord | Bruin DAC + DuckDB | tableaux de bord « as code » (YAML versionné) |
+| Tâches planifiées | APScheduler | relecture toutes les 15 min, alerte à 8 h |
+| Déploiement | Docker Compose | trois services + compilation de l'interface |
 
-## Lancer en local "prod" (un seul processus)
+**Le modèle de langage n'écrit jamais de SQL ni de chiffre.** Il produit une intention
+(métrique, axe, filtres, type de graphique), validée contre une liste blanche puis
+traduite par du code. Le chat et les tableaux de bord lisent les mêmes données : ils
+ne peuvent pas se contredire. Le trajet complet d'une question est décrit dans
+[`Documentation/WORKFLOW.md`](Documentation/WORKFLOW.md).
 
-```bash
-cd frontend && npm run build               # génère frontend/dist
-cd .. && python -m uvicorn backend.main:app          # sert l'UI ET l'API sur http://127.0.0.1:8000
-```
+### API
 
-## Tests
+| Méthode | Route | Rôle |
+|---|---|---|
+| `POST` | `/dashboard` | Répond à une question et compose son tableau de bord |
+| `GET` | `/alerts/deadlines` | Opportunités à échéance dans les 7 jours |
+| `GET` | `/health` | État des données et du moteur des tableaux de bord |
+| `GET` | `/data/quality` | Lignes rejetées et cellules remplacées |
+| `GET` | `/data/source` | Santé des données : lecture, chiffres clés, aperçu |
+| `POST` | `/data/source/onglets` | Onglets d'une feuille Google |
+| `POST` | `/data/source/test` | Teste une feuille sans rien modifier |
+| `POST` | `/data/source` | Lie une feuille (testée, puis enregistrée dans `.env`) |
+| `POST` | `/sheets/sync` | Relit la feuille immédiatement |
 
-```bash
+---
+
+## Développement
+
+### Installation native
+
+```bat
+python -m venv .venv && .venv\Scripts\activate
 pip install -r requirements-dev.txt
-pytest tests/
+cd frontend && npm install && cd ..
+curl -LsSf https://getbruin.com/install/dac | sh     # bruin + dac, dans ~/.local/bin (Git Bash)
+ollama pull qwen2.5:7b-instruct-q4_K_M
+copy .env.example .env                               # puis renseigner GOOGLE_SHEET_ID
 ```
 
-La suite ne nécessite ni Google Sheet réel ni Ollama installé (le client du modèle
-local et la lecture du Sheet sont mockés dans les tests qui en ont besoin).
+`setup\INSTALLER_NATIF.bat` fait tout cela de façon assistée.
 
-## Sécurité
+### Lancer
 
-`.env` contient un identifiant réel (le mot de passe d'application Gmail, s'il est
-configuré) — il est dans `.gitignore` et ne doit jamais être commité. Si une
-ancienne version de `.env` a fini dans l'historique git, révoquez le mot de passe
-d'application Gmail sur myaccount.google.com/apppasswords, plutôt que de compter
-sur sa suppression du dépôt.
+| Mode | Lanceur | Adresse | Particularités |
+|---|---|---|---|
+| Développement | `scripts\start_dev.bat` | http://localhost:5173 | rechargement à chaud, interface servie par Vite |
+| Production native | `scripts\start_prod.bat` | http://127.0.0.1:8000 | interface compilée, un seul worker |
+| Docker | `scripts\start_docker.bat` | http://127.0.0.1:8000 | ce qu'utilise un poste installé par `INSTALLER.bat` |
+| Accès distant | `scripts\start_public.bat` | URL du tunnel | voir `DAC_PUBLIC_URL` |
 
-La lecture du Sheet ne passe par aucun identifiant : le lien d'export public
-n'existe que parce que le Sheet est déjà partagé "toute personne disposant du
-lien" — exactement l'inverse d'un secret, rien à protéger de ce côté-là.
+Les raccourcis du Bureau se recréent avec
+`powershell -ExecutionPolicy Bypass -File scripts\create_shortcut.ps1` — ceux des
+modes développement et production seulement si l'installation native existe.
 
-## Structure
+### Tests
+
+```bash
+pytest tests/          # 680 tests
+```
+
+Presque tous tournent hors ligne (modèle et Google Sheet simulés). Exceptions :
+neuf tests comparent les deux moteurs de calcul sur la feuille réelle (`.env` et
+accès Internet requis), dont cinq lisent aussi la projection DuckDB créée au premier
+démarrage de l'application ; un fichier exige l'interface compilée (`frontend/dist`).
+Sur un poste où l'application a tourné une fois, tous passent.
+
+### Tâches de maintenance
+
+| Besoin | Commande |
+|---|---|
+| Régénérer les cinq sections du tableau de bord principal | `python scripts/generate_accueil.py` |
+| Vérifier la structure des tableaux de bord | `cd dac && dac validate --dir .` |
+| Exécuter réellement chaque requête des tableaux de bord | `cd dac && dac check --dir .` |
+| Régénérer le rapport, le guide technique et le guide d'installation (Word, PDF) | `python Documentation/reports/generate_docs.py` |
+| Diagnostic de l'installation, maillon par maillon | `python scripts/verifier_installation.py` |
+
+Conventions à respecter :
+
+- les sections `dac/dashboards/accueil.yml` et `section_*.yml` sont **générées** :
+  modifier `scripts/generate_accueil.py`, pas le YAML ;
+- la palette de graphiques existe en deux exemplaires
+  (`frontend/src/styles/tokens.css` et `dac/themes/*.yml`), qui doivent rester
+  identiques — un test le vérifie ;
+- les `.bat` gardent des fins de ligne Windows (`.gitattributes`) et n'affichent que
+  de l'ASCII : cmd.exe rend les accents en caractères parasites.
+
+---
+
+## Dépannage
+
+| Symptôme | Cause probable | Que faire |
+|---|---|---|
+| Le raccourci affiche « Le démarrage a échoué » | Docker Desktop n'est pas lancé | Ouvrir Docker Desktop, attendre son démarrage, relancer le raccourci |
+| *Santé des données* : « Google refuse l'accès » | Feuille non partagée | Partager › Accès général › « Toute personne disposant du lien », Lecteur |
+| *Santé des données* : « Colonnes obligatoires absentes » | Mauvais onglet ou en-têtes renommés | Vérifier l'onglet et la première ligne (voir [Colonnes](#colonnes)) |
+| Des chiffres « Non renseigné » | Valeurs non reconnues dans la feuille | *Santé des données › À corriger dans la feuille* donne ligne et colonne |
+| Le chat répond « Impossible de joindre Ollama » | Ollama arrêté | Le lancer depuis le menu Démarrer |
+| Tableaux de bord vides, aucune erreur | Dossier obtenu par « Download ZIP » (pas de `.git`) | Récupérer le projet par `git clone` |
+| « Un des ports 8000 / 8321 / 8322 est déjà utilisé » | Autre programme, ou instance précédente | Raccourci « Arrêter DevoTeam Dashboard », puis relancer |
+
+Dépannage détaillé de l'installation :
+[`Documentation/INSTALLATION_DOCKER.md`](Documentation/INSTALLATION_DOCKER.md#pannes-fréquentes).
+
+---
+
+## Structure du dépôt
 
 ```
-INSTALLER.bat                       installation complète en un clic (Docker) — le point d'entrée
-Installing DevoTeam Dashboard.pdf   guide d'installation pas à pas, à remettre à qui installe
+INSTALLER.bat                       installation complète en un clic (Docker)
+Installing DevoTeam Dashboard.pdf   guide d'installation pas à pas (anglais)
 README.md                           ce document
-Demo video.url                      visite guidée de l'application, sans rien installer
-Dockerfile, docker-compose.yml      image d'exécution et les trois services
+Demo video.url                      démonstration en ligne
+Dockerfile, docker-compose.yml      image d'exécution et services
 requirements.txt                    dépendances Python, versions épinglées
-requirements-dev.txt                + outils de test et de génération des documents
-.env.example                        modèle de configuration (le vrai .env n'est jamais versionné)
+requirements-dev.txt                + tests et génération des documents
+.env.example                        modèle de configuration
 
 backend/
-  main.py                application FastAPI, endpoints, planificateur
-  data_store.py          chargement Google Sheet -> DataFrame pandas (source de vérité)
-  db_layer.py            requêtage pandas (chat, message texte)
-  llm.py                 appel au LLM local (Ollama), validation Pydantic, anti-hallucination
-  intent_refiner.py      parseur rapide, dates relatives, garde-fous déterministes
-  sql_builder.py         intention validée -> SQL DuckDB (jamais écrit par le LLM)
-  dac_composer.py        composition du dashboard multi-widgets -> YAML
-  duckdb_export.py       projection du DataFrame vers DuckDB (pour DAC)
-  overview_match.py      décide si une section répond déjà à la question posée, et
-                         laquelle — table de correspondance prouvée par les tests
-  alerts.py              alertes deadlines (email + endpoint)
-  response_builder.py    messages texte déterministes
-  business_rules.py      règles métier indépendantes de l'affichage : ordre du pipeline,
-                         exclusion des affaires perdues, choix du type de graphique
-  data_quality.py        rapport des lignes rejetées et des valeurs manquantes
+  main.py                application FastAPI : routes, planificateur
+  data_store.py          lecture du Google Sheet -> DataFrame pandas (source unique)
+  data_source.py         santé des données et liaison d'une feuille (boutons de l'interface)
+  llm.py                 appel au modèle local, validation, anti-hallucination
+  intent_refiner.py      compréhension rapide sans modèle, dates relatives, retouches
+  schema_and_whitelist.py  métriques, axes et valeurs autorisés
+  db_layer.py            calculs pandas pour les réponses du chat
+  sql_builder.py         intention validée -> SQL DuckDB
+  dac_composer.py        composition des tableaux de bord -> YAML
+  duckdb_export.py       projection des données vers DuckDB
+  overview_match.py      réutilise une section quand elle répond déjà à la question
+  business_rules.py      règles métier (affaires perdues, offres remises, affaires chaudes)
+  response_builder.py    phrases de réponse du chat
+  alerts.py              alertes d'échéance (bandeau, email)
+  data_quality.py        rapport des cellules et lignes rejetées
 dac/
-  .bruin.yml             connexion DuckDB (aucun secret, versionnée volontairement)
-  themes/                thèmes clair et sombre aux couleurs de l'application ; le
-                         sombre est servi par un SECOND dac serve (port 8322)
-  dashboards/accueil.yml          « Vue d'ensemble commerciale »  \
-  dashboards/section_chaudes.yml  « Affaires chaudes »             |  produits par
-  dashboards/section_sante.yml    « Santé du portefeuille »        |  scripts/generate_accueil.py
-  dashboards/section_pipeline.yml « Pipeline commercial »          |  — ne pas éditer à la main
-  dashboards/section_urgences.yml « Échéances à venir »           /
-  dashboards/qualite.yml          tableau de bord de qualité des données, versionné
-  dashboards/_principal.yml       tableau de bord de travail, réécrit à chaque question (gitignoré)
-  dashboards/_analyse_*.yml       instantanés par question, pour les rouvrir (gitignorés)
-  data/devoteam.db                projection DuckDB (gitignorée, régénérée)
-frontend/                Vite + React (compilé, puis servi par FastAPI)
+  dashboards/            sections versionnées (générées) + tableaux de bord du chat (ignorés par Git)
+  themes/                thèmes clair et sombre
+frontend/src/
+  App.jsx, api.js        assemblage et appels au backend
+  components/            chat, tableau de bord, historique, fenêtre « Source de données »…
+  styles/                jetons de design et styles
 scripts/
-  start_docker.bat       lanceur du raccourci Bureau « DevoTeam Dashboard (Docker) »
-  start_dev.bat          mode développement (rechargement à chaud, Vite)
-  start_prod.bat         mode production sans Docker
-  start_public.bat       accès depuis une autre machine (tunnel)
+  start_docker.bat       démarrage (raccourci « DevoTeam Dashboard (Docker) »)
+  stop.bat, stop.ps1     arrêt (raccourci « Arrêter DevoTeam Dashboard »)
+  start_dev.bat, start_prod.bat, start_public.bat   lancements sans Docker
   install.bat            installation native, appelée par setup/
-  test_fonctionnel.py    « les chiffres sont-ils justes ? » — 15 contrôles sur les vraies données
-  verifier_installation.py  diagnostic maillon par maillon (feuille, colonnes, modèle…)
+  test_fonctionnel.py    « les chiffres sont-ils justes ? » — 15 contrôles
+  verifier_installation.py  diagnostic de l'installation
   generate_accueil.py    génère les cinq sections du tableau de bord principal
   create_shortcut.ps1, maj_env.ps1, devoteam.ico   outils de l'installateur
-setup/                   installation native assistée (sans Docker) : INSTALLER_NATIF.bat
-tests/                   suite pytest (mock LLM local/Sheets), 633 tests
-data/, logs/             état et journaux d'exécution (gitignorés, régénérés)
-Documentation/
-  README.md              index de la documentation : quel document, pour qui
-  INSTALLATION_DOCKER.md installation recommandée (INSTALLER.bat, Docker)
-  INSTALLATION.md        installation native, sans Docker
-  OBTENIR_LES_ACCES.md   ce qu'il faut préparer avant le jour de l'installation
-  WORKFLOW.md            traçage concret d'une question, du prompt au dashboard affiché
-  PROGRESS.md            journal de développement, phase par phase
-  reports/               rapport professionnel, guide technique et guide d'installation
-                         (.docx), leur générateur (generate_docs.py) et ses ressources
+setup/                   installation native assistée (INSTALLER_NATIF.bat)
+tests/                   suite pytest — 680 tests
+Documentation/           guides, rapports, journal de développement
 ```
 
-Voir `Documentation/PROGRESS.md` pour le détail des phases livrées et les limites connues.
+---
+
+## Documentation
+
+| Document | Pour qui |
+|---|---|
+| [`Installing DevoTeam Dashboard.pdf`](Installing%20DevoTeam%20Dashboard.pdf) | la personne qui installe — pas à pas, en anglais |
+| [`Documentation/OBTENIR_LES_ACCES.md`](Documentation/OBTENIR_LES_ACCES.md) | ce qu'il faut préparer avant l'installation |
+| [`Documentation/INSTALLATION_DOCKER.md`](Documentation/INSTALLATION_DOCKER.md) | installation recommandée, en détail, et dépannage |
+| [`Documentation/INSTALLATION.md`](Documentation/INSTALLATION.md) | installation sans Docker |
+| [`Documentation/WORKFLOW.md`](Documentation/WORKFLOW.md) | le trajet d'une question, du chat au tableau de bord |
+| [`Documentation/PROGRESS.md`](Documentation/PROGRESS.md) | journal de développement, phase par phase |
+| [`Documentation/reports/`](Documentation/reports/) | rapport professionnel et guide technique (Word) |
+
+Index complet : [`Documentation/README.md`](Documentation/README.md).
+
+---
+
+## Sécurité et limites connues
+
+**Sécurité**
+
+- Les services n'écoutent que sur la boucle locale (`127.0.0.1`) : l'application
+  n'est joignable que depuis le poste qui l'héberge.
+- `.env` (mot de passe d'application Gmail) est exclu de Git. Un secret qui aurait
+  été versionné par le passé doit être **révoqué**, pas seulement supprimé.
+- La feuille Google est lue par lien public : elle est lisible par quiconque obtient
+  ce lien. Y placer uniquement des données compatibles avec ce mode de partage.
+- Le changement de feuille refuse les requêtes venant d'un autre site que
+  l'application elle-même.
+
+**Limites connues**
+
+- Pas d'authentification ni de gestion multi-utilisateurs : l'application est
+  conçue pour un poste et un utilisateur. Le tableau de bord de travail est unique.
+- Les questions au superlatif sans « par » sont lues comme un total : préférer
+  « Top 5 des pays par budget » à « Quel pays a le plus gros budget ? ».
+- Sans carte graphique, les questions qui passent par le modèle prennent plusieurs
+  dizaines de secondes.
+- Les versions de `bruin` et `dac` ne sont pas épinglées : chaque construction de
+  l'image prend leur dernière version publiée.

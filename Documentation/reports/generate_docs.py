@@ -451,7 +451,18 @@ def build_rapport_professionnel():
                      "pondéré) sont toujours recalculées à la lecture puis réécrites dans le Sheet : "
                      "elles ne peuvent donc jamais diverger des données saisies.")
 
-    add_h2(doc, "4.6 Branding et expérience utilisateur")
+    add_h2(doc, "4.6 La source de données pilotée depuis l'interface")
+    add_bullet(doc, "« Santé des données » : un verdict sur la lecture du Google Sheet, les "
+                     "chiffres clés, les cellules à corriger dans la feuille et un aperçu des lignes "
+                     "— pour savoir en un clic si les chiffres affichés reposent sur une lecture "
+                     "réussie.")
+    add_bullet(doc, "« Lier une feuille Google » : changer de feuille sans terminal. Les onglets "
+                     "sont proposés, la feuille est testée comme l'application la lira, et elle "
+                     "n'est enregistrée que si le test réussit.")
+    add_bullet(doc, "Un raccourci « Arrêter DevoTeam Dashboard » arrête l'application et libère "
+                     "ses ports et la mémoire du modèle de langage.")
+
+    add_h2(doc, "4.7 Branding et expérience utilisateur")
     add_bullet(doc, "Interface habillée aux couleurs et au logo Devoteam.")
     add_bullet(doc, "Micro-interactions et animations (fond animé, transitions, mise en avant "
                      "des nouveaux résultats).")
@@ -514,7 +525,7 @@ def build_rapport_professionnel():
              "(alertes deadlines, rafraîchissement des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (633 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
+            ["Tests", "pytest (680 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
              "(mocks), garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -533,7 +544,7 @@ def build_rapport_professionnel():
                      "explicite — il n'écrit jamais lui-même de requête.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "633 tests automatisés couvrent la compréhension du langage, le requêtage des "
+    add_bullet(doc, "680 tests automatisés couvrent la compréhension du langage, le requêtage des "
                      "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -667,6 +678,7 @@ def build_guide_technique():
         "Les deux modes d'exécution",
         "Limites connues",
         "Déploiement sur un poste neuf (Docker, INSTALLER.bat)",
+        "La source de données depuis l'interface (backend/data_source.py)",
     ])
 
     # --- Vue d'ensemble ---
@@ -830,6 +842,8 @@ def build_guide_technique():
             ["backend/alerts.py", "Opportunités à échéance proche, envoi de l'email d'alerte."],
             ["backend/business_rules.py", "Règles métier indépendantes de l'affichage (ordre du pipeline)."],
             ["backend/data_quality.py", "Rapport des lignes rejetées et des valeurs manquantes."],
+            ["backend/data_source.py", "Santé des données, liste des onglets, test et liaison d'une feuille depuis l'interface."],
+            ["scripts/stop.bat, stop.ps1", "Raccourci « Arrêter » : conteneurs, ports et mémoire du modèle."],
             ["dac/.bruin.yml", "Connexion DuckDB de DAC (aucun identifiant, versionnée volontairement)."],
             ["dac/dashboards/accueil.yml", "Section « Vue d'ensemble commerciale » (11 widgets), produite par scripts/generate_accueil.py, versionnée et relue en revue."],
             ["dac/dashboards/section_*.yml", "Les quatre autres sections du tableau de bord principal (affaires chaudes, santé du portefeuille, pipeline, échéances) — 21 widgets, même générateur."],
@@ -837,7 +851,7 @@ def build_guide_technique():
             ["dac/dashboards/_principal.yml", "Tableau de bord de travail, réécrit par chaque question (éphémère, hors suivi git)."],
             ["dac/dashboards/_analyse_*.yml", "Instantané figé par question, pour les rouvrir (éphémère, hors suivi git)."],
             ["frontend/src/", "Application Vite + React (chat, iframe DAC, hooks, styles)."],
-            ["tests/", "Suite pytest — 633 tests, aucune dépendance réseau ni données réelles."],
+            ["tests/", "Suite pytest — 680 tests, aucune dépendance réseau ni données réelles."],
             ["Documentation/WORKFLOW.md", "Traçage d'une question, du prompt au tableau de bord affiché."],
             ["Documentation/reports/", "Ce guide, le rapport, le guide d'installation et leur générateur (generate_docs.py)."],
             ["Documentation/PROGRESS.md", "Journal de développement : chaque phase livrée, ses choix et ses vérifications."],
@@ -1717,7 +1731,7 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "15. Tests automatisés")
     add_body(doc,
-        "633 tests pytest, sans dépendance réseau ni données réelles : le client du "
+        "680 tests pytest, sans dépendance réseau ni données réelles : le client du "
         "modèle local (Ollama) et l'appel HTTP au lien d'export du Sheet sont "
         "simulés (monkeypatch), et les données sont un petit DataFrame construit "
         "dans le test. La suite tourne donc hors ligne, en quelques secondes.")
@@ -2017,6 +2031,39 @@ def build_guide_technique():
                      "virtualisation ou l'accès aux sites de téléchargement : l'installateur "
                      "le signale, mais ne peut pas le contourner.")
 
+    add_h1(doc, "20. La source de données depuis l'interface (backend/data_source.py)")
+    add_body(doc,
+        "Deux boutons remplacent ce qui se faisait jusqu'ici en ligne de commande. "
+        "« Santé des données » (GET /data/source) rapporte la dernière lecture — date, "
+        "durée, feuille, cause en clair d'un échec — et ce qu'elle a produit : lignes, "
+        "colonnes reconnues, cellules réparées, période, aperçu. Statut et données en "
+        "service sont distingués : une lecture qui échoue garde les données précédentes, "
+        "et l'écran le dit.")
+    add_body(doc,
+        "« Lier une feuille Google » enchaîne trois routes : /data/source/onglets lit la "
+        "liste des onglets dans la page publique « htmlview » de la feuille (Google n'en "
+        "expose aucune autre sans clé d'API) ; /data/source/test lit la feuille candidate "
+        "par analyser_valeurs, la même validation que la feuille en service, sans toucher au "
+        "cache ; POST /data/source re-teste côté serveur, inscrit la feuille dans .env et "
+        "recharge les données.")
+    add_table(doc,
+        ["Piège", "Parade"],
+        [
+            ["Google renvoie le premier onglet, sans erreur, pour un nom inexistant",
+             "Onglet choisi dans la liste réelle ; sans liste, comparaison avec la réponse "
+             "à un onglet impossible."],
+            ["Sous Docker, l'environnement du conteneur est figé à sa création",
+             "Au démarrage, la feuille inscrite dans .env prime sur l'environnement — pour ces "
+             "deux clés seulement (OLLAMA_HOST, imposé par Docker, n'est pas touché)."],
+            ["Un « # » dans un nom d'onglet ouvre un commentaire dans .env",
+             "Valeur entre guillemets quand c'est nécessaire, relue à l'identique."],
+            ["Une page d'un autre site pourrait changer la feuille",
+             "En-tête Origin contrôlé : seule l'interface de l'application est acceptée."],
+            [".env écrit en CRLF par INSTALLER.bat",
+             "Lu sans conversion des fins de ligne, réécrit atomiquement, sans BOM."],
+        ])
+    add_cue(doc, "tests/test_source_donnees.py (36 tests) et tests/test_arret.py (11 tests).")
+
     out_path = os.path.join(DOC_DIR, "Guide_Technique_DevoTeam_Dashboard.docx")
     doc.save(out_path)
     return out_path
@@ -2132,7 +2179,7 @@ def build_presentation_script():
     add_h1(doc, "Les chiffres à retenir")
     add_bullet(doc, "1 question = 1 tableau de bord complet, généré automatiquement.")
     add_bullet(doc, "9 types de visualisations choisis automatiquement selon la question.")
-    add_bullet(doc, "633 tests automatisés, aucune dépendance à des données réelles.")
+    add_bullet(doc, "680 tests automatisés, aucune dépendance à des données réelles.")
     add_bullet(doc, "48 phases de développement livrées, de bout en bout, en autonomie.")
     add_bullet(doc, "0 base de données à administrer — le Google Sheet est la source de vérité.")
     add_bullet(doc, "0 hallucination tolérée : donnée non fiable = question posée en retour, jamais un chiffre inventé.")
@@ -2185,7 +2232,7 @@ def build_guide_installation():
     run.font.bold = True
     run.font.color.rgb = CHARCOAL
     meta = doc.add_paragraph()
-    mrun = meta.add_run("Updated October 6, 2026  ·  Youssef Hmidi  ·  version: branch Version_2")
+    mrun = meta.add_run("Updated October 26, 2026  ·  Youssef Hmidi  ·  version: branch Version_2")
     mrun.font.size = Pt(10)
     mrun.font.color.rgb = MUTED
     _bottom_border(meta, CORAL_STRONG_HEX, size="12")
@@ -2330,11 +2377,14 @@ def build_guide_installation():
         "Then ask the chat one question. The first answer is the slowest, because the "
         "model loads into memory; without a dedicated graphics card, a few tens of seconds "
         "per answer is normal, not a failure.")
-    add_h3(doc, "Tidy the Desktop")
+    add_h3(doc, "Two shortcuts on the Desktop")
+    add_bullet(doc, "starts the app and opens it in the browser.",
+               lead="\"DevoTeam Dashboard (Docker)\" (Devoteam logo):")
+    add_bullet(doc, "stops it and frees its ports and the AI model's memory (~5 GB).",
+               lead="\"Arrêter DevoTeam Dashboard\" (red power icon):")
     add_body(doc,
-        "The installer creates three DevoTeam shortcuts. Keep only \"DevoTeam Dashboard "
-        "(Docker)\". Delete \"DevoTeam Dashboard\" and \"DevoTeam Dashboard (Production)\": "
-        "they are for the developer's machine and only show errors on this PC.")
+        "If two more DevoTeam shortcuts appear (\"DevoTeam Dashboard\" and \"(Production)\", "
+        "left by an earlier version), delete them: they are for the developer's machine.")
 
     add_h1(doc, "Step 6 — Restart once and check")
     add_body(doc,
@@ -2347,7 +2397,9 @@ def build_guide_installation():
                    "browser at http://127.0.0.1:8000.")
     _etape(doc, 4, "Ask a question in the chat and check that an answer and a dashboard come "
                    "back.")
-    add_body(doc, "If all four work, the installation is finished.")
+    _etape(doc, 5, "Click \"🩺 Santé des données\" (top right): it must say \"La lecture du "
+                   "Google Sheet fonctionne\".")
+    add_body(doc, "If all five work, the installation is finished.")
 
     add_h1(doc, "Using it day to day")
     add_bullet(doc, "Double-click the \"DevoTeam Dashboard (Docker)\" shortcut on the Desktop. "
@@ -2356,8 +2408,14 @@ def build_guide_installation():
                     "starts with it; it keeps running after the shortcut's window is closed. "
                     "If the shortcut reports an error, open Docker Desktop from the Start menu, "
                     "wait until it runs, and try again.")
-    add_bullet(doc, "To stop everything (rarely needed): in a Command Prompt, "
-                    "cd C:\\DevoTeam\\DevoTeam_Project then docker compose down.")
+    add_bullet(doc, "To stop the app and free its memory: double-click \"Arrêter DevoTeam "
+                    "Dashboard\". Restarting with the start shortcut then takes about ten seconds.")
+    add_bullet(doc, "To check that the Google Sheet is read correctly: \"🩺 Santé des données\" "
+                    "in the app — verdict, key figures, cells to fix in the Sheet, and a preview "
+                    "of the rows. \"Relire la feuille maintenant\" re-reads it at once (otherwise "
+                    "every 15 minutes).")
+    add_bullet(doc, "To use another Google Sheet: \"🔗\" (Lier une feuille Google) at the top of the "
+                    "chat — paste the link, pick the tab, test, then use. No command line needed.")
     add_bullet(doc, "To update later: in the same folder, git pull then "
                     "docker compose up -d --build. The .env settings file is never overwritten.")
 
@@ -2385,18 +2443,19 @@ def build_guide_installation():
              "Open Docker Desktop, wait until it runs, try again; tick the start-at-sign-in "
              "setting (Step 4)"],
             ["[ARRET] Un des ports 8000 / 8321 / 8322 est deja utilise",
-             "Another program uses that port", "Close it (netstat -ano | findstr \"8000 8321 "
-             "8322\" shows which), re-run"],
+             "Another program, or a previous run of the app", "Double-click \"Arrêter DevoTeam "
+             "Dashboard\" — it names any other program holding a port — then re-run"],
             ["A download fails (Docker, Ollama, model, build)", "Company proxy or firewall, "
              "or a network hiccup", "Check the sites listed in \"Before you start\"; re-run — "
              "it resumes"],
-            ["Empty dashboards; \"Reponse inattendue de Google (pas du CSV)\"",
-             "Sheet not shared as \"Anyone with the link\"", "Fix the sharing (part B), re-run "
-             "INSTALLER.bat"],
-            ["\"Sheet introuvable (404)\"", "Wrong Sheet ID", "Re-run INSTALLER.bat and paste the "
-             "full link from the browser"],
-            ["Dashboards work but figures look wrong, no error", "Tab name does not match a "
-             "real tab", "Re-run INSTALLER.bat, type the tab name exactly"],
+            ["Empty dashboards, or \"Santé des données\" says Google refuses access",
+             "Sheet not shared as \"Anyone with the link\"", "Fix the sharing (part B), then "
+             "\"Relire la feuille maintenant\" in Santé des données"],
+            ["\"Santé des données\": \"Feuille introuvable\" or \"Colonnes obligatoires "
+             "absentes\"", "Wrong link, or wrong tab", "\"🔗 Lier une feuille Google\": paste the "
+             "link again and pick the tab from the list"],
+            ["Figures shown as \"Non renseigné\"", "Values not recognised in the Sheet",
+             "\"Santé des données › À corriger dans la feuille\" gives row and column"],
             ["Chat: \"Impossible de joindre Ollama...\" or \"Service IA local indisponible\"",
              "Ollama not running", "Open \"Ollama\" from the Start menu (or re-run "
              "INSTALLER.bat)"],

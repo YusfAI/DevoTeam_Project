@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  DAC_DARK_BASE_URL, DATA_QUALITY_DASHBOARD_NAME, OVERVIEW_DASHBOARD_NAME, SECTIONS,
+  DAC_DARK_BASE_URL, OVERVIEW_DASHBOARD_NAME, SECTIONS,
   dacDashboardUrl, estUneSection,
 } from '../dac'
 import { getHealth } from '../api'
@@ -30,6 +30,7 @@ function zoomInitial() {
 
 export default function DashboardPanel({
   dashboard, dashboardKey, historyOpen, onToggleHistory, onOpenSection, theme,
+  onOpenDataHealth,
 }) {
   // UN SEUL tableau de bord affiché. Il montre la vue d'ensemble tant qu'aucune
   // question n'a été posée, puis ce que les questions en ont fait. Il n'y a plus de
@@ -231,18 +232,18 @@ export default function DashboardPanel({
           >
             ⧉ Ouvrir en grand
           </a>
-          {/* Ouvre le tableau de bord de qualité dans un onglet : il répond à une
-              question ponctuelle (« sur quoi ce chiffre repose-t-il ? ») et n'a pas
-              à remplacer l'analyse en cours dans le cadre. */}
-          <a
-            className="quality-link"
-            href={dacDashboardUrl(DATA_QUALITY_DASHBOARD_NAME, null, racine)}
-            target="_blank"
-            rel="noreferrer"
-            title="Ce que les données contiennent, et ce qui leur manque"
+          {/* La lecture du Google Sheet marche-t-elle, et que contient la feuille ?
+              Remplace le lien « Qualité des données », qui n'ouvrait que le détail
+              des cellules rejetées : ce détail est désormais un lien DANS la
+              fenêtre, à côté de ce qui permet de le comprendre. */}
+          <button
+            type="button"
+            className="history-button"
+            onClick={onOpenDataHealth}
+            title="Vérifier la lecture du Google Sheet : état, chiffres clés et aperçu des données"
           >
-            ⓘ Qualité des données
-          </a>
+            🩺 Santé des données
+          </button>
           <button
             type="button"
             className={`history-button${historyOpen ? ' active' : ''}`}

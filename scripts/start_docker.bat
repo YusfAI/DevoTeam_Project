@@ -62,8 +62,8 @@ echo     - Interface + API   http://127.0.0.1:8000
 echo     - Dashboards        http://127.0.0.1:8321
 echo.
 echo   Les conteneurs continuent de tourner apres la fermeture de cette
-echo   fenetre. Pour tout arreter : docker compose down (dans un terminal,
-echo   depuis ce dossier).
+echo   fenetre. Pour tout arreter et liberer la memoire : raccourci
+echo   "Arreter DevoTeam Dashboard" sur le Bureau.
 echo.
 pause
 endlocal

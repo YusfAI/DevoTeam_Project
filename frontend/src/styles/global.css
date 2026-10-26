@@ -1176,3 +1176,401 @@ body::before {
     flex-wrap: wrap;
   }
 }
+
+/* --- Fenêtre « Source de données » ---------------------------------------- */
+/* Santé des données et liaison d'une feuille Google. Une fenêtre centrée plutôt
+   qu'un volet sur le chat comme l'historique : l'aperçu est un tableau à six
+   colonnes, qui n'aurait pas tenu dans les 360 px du panneau de conversation. */
+.data-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(11, 11, 11, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: dataFade 0.15s ease;
+}
+
+@keyframes dataFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.data-modal {
+  width: min(940px, 100%);
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  outline: none;
+}
+
+.data-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, var(--brand-primary) 0%, var(--header-ink) 68%);
+  color: #ffffff;
+}
+
+.data-modal-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.data-modal-tabs {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.data-modal-tabs button {
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  color: #ffffff;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.data-modal-tabs button:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.data-modal-tabs button.active {
+  background: #ffffff;
+  color: #0b0b0b;
+  font-weight: 600;
+}
+
+.data-modal-body {
+  padding: 20px 22px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.data-loading,
+.data-inline-error,
+.data-note {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.data-inline-error {
+  color: var(--status-critical-text);
+}
+
+/* Le verdict, en tête : c'est la réponse à la question qu'on vient poser. */
+.data-status {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid;
+}
+
+.data-status strong {
+  display: block;
+}
+
+.data-status p {
+  margin: 4px 0 0;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.data-status-icon {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #ffffff;
+}
+
+.data-status-ok {
+  border-color: color-mix(in srgb, var(--status-good) 45%, transparent);
+  background: color-mix(in srgb, var(--status-good) 9%, var(--surface-card));
+}
+
+.data-status-ok .data-status-icon {
+  background: var(--status-good);
+}
+
+.data-status-attention {
+  border-color: color-mix(in srgb, var(--status-warning) 60%, transparent);
+  background: color-mix(in srgb, var(--status-warning) 12%, var(--surface-card));
+}
+
+/* Jaune : le blanc n'y serait pas lisible. */
+.data-status-attention .data-status-icon {
+  background: var(--status-warning);
+  color: #0b0b0b;
+}
+
+.data-status-erreur {
+  border-color: color-mix(in srgb, var(--status-critical) 50%, transparent);
+  background: color-mix(in srgb, var(--status-critical) 9%, var(--surface-card));
+}
+
+.data-status-erreur .data-status-icon {
+  background: var(--status-critical);
+}
+
+.data-source,
+.data-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.data-source div,
+.data-metric {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.data-source div {
+  background: var(--surface-page);
+}
+
+.data-metric {
+  background: var(--surface-card);
+  box-shadow: var(--shadow-sm);
+}
+
+.data-source dt,
+.data-metric-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.data-source dd {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.data-source a {
+  color: var(--brand-primary-strong);
+}
+
+.data-metric-value {
+  font-size: 1.12rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-ok {
+  color: var(--status-good-text);
+}
+
+.data-ko {
+  color: var(--status-critical-text);
+}
+
+.data-section h3 {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.data-section .data-note {
+  margin-bottom: 8px;
+}
+
+.data-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}
+
+.data-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--surface-page);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
+.data-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+}
+
+.data-chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 10px;
+  background: var(--surface-page);
+  color: var(--text-primary);
+}
+
+.data-chip-missing {
+  border-color: var(--status-critical);
+  color: var(--status-critical-text);
+}
+
+.data-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.data-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.data-button:hover:not(:disabled) {
+  border-color: var(--brand-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.data-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.data-button-primary {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.data-button-primary:hover:not(:disabled) {
+  filter: brightness(1.07);
+}
+
+.data-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.data-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.data-field em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.data-field input,
+.data-field select {
+  font: inherit;
+  font-weight: 400;
+  font-size: 0.9rem;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-page);
+  color: var(--text-primary);
+}
+
+.data-field input:focus,
+.data-field select:focus {
+  outline: 3px solid var(--brand-primary-soft);
+  border-color: var(--brand-primary);
+}
+
+.data-result {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--border);
+}
+
+@media (max-width: 760px) {
+  .data-source,
+  .data-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .data-modal-header {
+    flex-wrap: wrap;
+  }
+}

@@ -25,8 +25,8 @@ const SUGGESTIONS = [
 ]
 
 export default function ChatPanel({
-  messages, loading, onSubmit, theme, onToggleTheme, onClearHistory, onSyncSheets,
-  syncingSheets, inputRef, onOpenDashboard, history, currentDashboardName,
+  messages, loading, onSubmit, theme, onToggleTheme, onClearHistory, onOpenLinkSheet,
+  inputRef, onOpenDashboard, history, currentDashboardName,
   historyOpen, onCloseHistory,
 }) {
   const endRef = useRef(null)
@@ -51,15 +51,17 @@ export default function ChatPanel({
           </div>
         </div>
         <div className="chat-header-actions">
+          {/* Choisir la feuille Google lue par l'application — sans invite de
+              commandes. La relecture manuelle qu'occupait ce bouton (🔄) est dans
+              « Santé des données », avec le détail de ce qu'elle a lu. */}
           <button
-            className={`theme-toggle${syncingSheets ? ' syncing' : ''}`}
-            onClick={onSyncSheets}
-            disabled={syncingSheets}
-            title="Synchroniser Google Sheets"
-            aria-label="Synchroniser Google Sheets"
+            className="theme-toggle"
+            onClick={onOpenLinkSheet}
+            title="Lier une feuille Google"
+            aria-label="Lier une feuille Google"
             type="button"
           >
-            🔄
+            🔗
           </button>
           <button
             className="theme-toggle"

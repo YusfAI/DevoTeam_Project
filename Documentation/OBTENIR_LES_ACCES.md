@@ -122,6 +122,9 @@ une virgule dans `ALERT_RECIPIENT_EMAIL` (ex.
 | 4 | Poste vérifié (admin, virtualisation, disque, Internet, licence Docker) + Git installé | *(rien à coller — juste à avoir fait)* |
 | 5 *(optionnel)* | Mot de passe d'application Gmail | `.env` → `GMAIL_APP_PASSWORD` |
 
+La feuille peut aussi être changée plus tard, depuis l'application elle-même :
+bouton « 🔗 Lier une feuille Google », sans terminal.
+
 Une fois sur place, `INSTALLER.bat` (à la racine — recommandé, via Docker) ou
 `setup\INSTALLER_NATIF.bat` (alternative sans Docker) vous demandera ces mêmes
 valeurs — vous n'aurez plus qu'à les coller.

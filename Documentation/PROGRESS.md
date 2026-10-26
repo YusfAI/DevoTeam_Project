@@ -54,6 +54,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 47 — Installation prouvée sur un poste nu : Ollama installé et démarré tout seul, et le piège du « Download ZIP » arrêté avant la démonstration
 - [x] Phase 48 — Installation sans `winget`, WSL2 diagnostiqué, et vérification de livraison avant le déploiement chez le directeur
 - [x] Phase 49 — Vérification finale la veille de la livraison : dépôt rangé, et ce que l'installateur ne peut pas faire à la place de la personne qui installe
+- [x] Phase 50 — Après la livraison : la source de données pilotée depuis l'interface (santé, changement de feuille), un raccourci d'arrêt, et un README réécrit
 
 ## 📝 Journaux
 
@@ -765,6 +766,78 @@ navigateur ne s'ouvrant qu'après 15 s d'attente.
   ce n'est pas une régression. Correctif : `stacked: true` sur ces barres (trois
   widgets de `backend/dac_composer.py`, un de `scripts/generate_accueil.py`).
   Vérifié dans une copie : 633 tests, 15/15, barres pleines dans le navigateur.
+
+**Phase 50** : Terminée. Quatre demandes après la livraison chez le directeur,
+traitées une à une : deux boutons pour la source de données, une icône d'arrêt, et
+un README à la hauteur du projet. Aucune ne touche à la logique d'installation.
+
+*« 🩺 Santé des données » — la lecture du Google Sheet marche-t-elle ?* Un verdict
+(fonctionne / avec des points à vérifier / échoue) avec la cause EN CLAIR et le
+geste à faire, la source (lien, onglet, date et durée de la dernière lecture, état
+du moteur des tableaux de bord), les chiffres clés, les cellules à corriger dans
+la feuille, et un aperçu des lignes. Deux défauts de fond corrigés au passage : un
+échec de lecture n'était consigné que comme « voir les logs » — sa cause (feuille
+non partagée, lien erroné, connexion) remonte désormais jusqu'à l'écran ; et une
+lecture ne disait ni QUAND ni SUR QUELLE FEUILLE elle avait eu lieu. L'état
+distingue la dernière lecture des données en service : une lecture qui échoue
+garde les données précédentes, et l'écran le signale au lieu d'afficher des
+chiffres sans âge. La relecture manuelle (ancien bouton 🔄) vit maintenant ici.
+
+*« 🔗 Lier une feuille Google » — sans terminal.* Remplace l'étape 5/7
+d'INSTALLER.bat pour changer de feuille. Quatre points délicats :
+- **Le piège de l'onglet** : Google renvoie le premier onglet, sans erreur, pour un
+  nom inexistant. Constaté : la page publique « htmlview » d'une feuille partagée
+  liste ses onglets (`items.push({name: …, pageUrl: …gid=…})`) — la seule source
+  sans clé d'API. L'onglet se choisit donc dans la liste réelle, celui du lien
+  collé (son `gid`) présélectionné. Sans liste lisible, un repli compare la
+  réponse à celle d'un onglet impossible. Google ignorant la casse, la
+  comparaison aussi — et c'est le nom exact qui est enregistré.
+- **Tester avant d'enregistrer** : la feuille candidate passe par la même
+  validation que la feuille en service (`analyser_valeurs`, extraite de
+  `_load_from_sheet`), sans toucher au cache. « Utiliser cette feuille » n'est
+  actif qu'après un test réussi, et le serveur re-teste de son côté.
+- **Docker fige l'environnement** à la création du conteneur : une feuille écrite
+  dans .env aurait été oubliée au redémarrage suivant. Au démarrage, .env prime
+  désormais sur l'environnement — pour GOOGLE_SHEET_ID et GOOGLE_SHEET_TAB
+  seulement, OLLAMA_HOST restant imposé par docker-compose.yml.
+- **Une page d'un autre site** pourrait poster sa propre feuille vers l'API
+  locale : l'en-tête Origin est contrôlé (403 vérifié en conditions réelles).
+
+L'écriture de .env ne touche à aucune autre ligne, est atomique, sans BOM, et
+garde les fins de ligne du fichier. Un test a attrapé un vrai défaut avant toute
+livraison : `read_text` convertit CRLF en LF, si bien que le .env écrit par
+INSTALLER.bat aurait été réécrit en LF sans que personne le décide.
+
+*« Arrêter DevoTeam Dashboard » — une icône sur le Bureau.* Portée choisie avec
+l'utilisateur : l'application et la mémoire du modèle, pas la plateforme —
+Docker Desktop et Ollama restent lancés, un redémarrage prend dix secondes.
+`scripts/stop.bat` : `docker compose down`, puis `scripts/stop.ps1`, qui libère les
+ports d'une installation native en n'arrêtant QUE les processus de l'application
+(python, dac, bruin, node) — sous Docker, ces ports appartiennent au moteur de
+Docker Desktop, et un « tuer ce qui occupe le port » l'aurait cassé —, puis
+décharge le modèle par l'API d'Ollama (`keep_alive: 0`) : sa ligne de commande,
+elle, relance l'application Ollama si elle ne tournait pas. Vérifié : conteneurs
+arrêtés, trois ports libérés, 4,4 Go rendus ; un Python leurre sur le port 5173
+arrêté, un programme étranger sur le port 8321 nommé et laissé en vie.
+
+Deux défauts trouvés en chemin. `create_shortcut.ps1` n'avait pas de BOM :
+PowerShell 5.1 le lisait en ANSI, et les infobulles des raccourcis existants
+s'affichaient « rechargAc A� chaud » depuis le début. Et il recréait à chaque
+exécution les raccourcis des modes natifs, inutilisables sur un poste installé par
+Docker seul — ils ne sont plus créés qu'en présence d'une installation native.
+
+*Le README*, réécrit pour qu'on y trouve d'abord comment installer et utiliser
+l'application, puis la feuille, la configuration, l'architecture, le
+développement, le dépannage. Trois affirmations fausses corrigées : une valeur
+inconnue ne fait plus « ignorer la ligne » (Phase 24), les intitulés français sont
+acceptés et `id` est facultatif, et neuf tests utilisent bien la feuille réelle.
+Le guide d'installation PDF, le guide Docker, le rapport et le guide technique
+décrivent les nouveaux boutons et l'icône d'arrêt.
+
+680 tests passent (36 pour la source de données, 11 pour l'arrêt). Parcours
+vérifié dans un vrai navigateur : santé des données, lien invalide, liste des
+onglets, test, liaison — le .env ressort identique à l'octet près pour la même
+feuille.
 
 ## 📊 Bilan du Produit
 

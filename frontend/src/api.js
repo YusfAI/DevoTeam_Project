@@ -52,6 +52,53 @@ export async function postSheetsSync() {
   return data
 }
 
+// Lit la réponse JSON et lève une erreur lisible si le serveur a refusé. FastAPI
+// renvoie `detail` en texte pour une erreur métier (422 « onglet inexistant »…),
+// mais en LISTE pour un corps de requête invalide : les deux doivent finir en phrase.
+async function lireReponse(response) {
+  let data = {}
+  try {
+    data = await response.json()
+  } catch {
+    // réponse non-JSON (ex: serveur injoignable) -> message générique ci-dessous
+  }
+  if (!response.ok) {
+    const detail = Array.isArray(data.detail)
+      ? data.detail.map((d) => d.msg).join(' ; ')
+      : data.detail
+    throw new Error(detail || data.error || 'Erreur de connexion au serveur.')
+  }
+  return data
+}
+
+function enJson(corps) {
+  return {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(corps),
+  }
+}
+
+// « Santé des données » : la feuille en service, sa dernière lecture, un aperçu.
+export async function getDataSource() {
+  return lireReponse(await fetchAvecDelai('/data/source'))
+}
+
+// Les onglets de la feuille collée, pour les proposer au lieu de les faire taper.
+export async function postSheetTabs(sheet) {
+  return lireReponse(await fetchAvecDelai('/data/source/onglets', enJson({ sheet })))
+}
+
+// Lit une feuille candidate comme l'application la lirait — sans rien changer.
+export async function postSourceTest(sheet, tab) {
+  return lireReponse(await fetchAvecDelai('/data/source/test', enJson({ sheet, tab })))
+}
+
+// Lie la feuille : re-testée par le serveur, inscrite dans .env, chargée aussitôt.
+export async function postSource(sheet, tab) {
+  return lireReponse(await fetchAvecDelai('/data/source', enJson({ sheet, tab })))
+}
+
 export async function postDashboardQuery(query, previousIntent) {
   const response = await fetchAvecDelai('/dashboard', {
     method: 'POST',
