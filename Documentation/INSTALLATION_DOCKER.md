@@ -107,7 +107,7 @@ Aucune clé API, aucun compte de service, aucun fichier JSON, aucun Python local
   quotidien : redémarrer Windows, attendre une à deux minutes (Docker Desktop
   et Ollama démarrent seuls, puis l'application), double-cliquer sur
   « DevoTeam Dashboard (Docker) », poser une question dans le chat, puis ouvrir
-  **« 🩺 Santé des données »** : elle doit indiquer « La lecture du Google Sheet
+  **« Santé des données »** : elle doit indiquer « La lecture du Google Sheet
   fonctionne ». L'installation est alors terminée.
 
 **Vérifié de bout en bout le 5 octobre 2026** : clone neuf de la branche
@@ -326,8 +326,8 @@ l'application.
 | Voir ce qui tourne | `docker compose ps` |
 | Suivre les journaux | `docker compose logs -f backend` (ou `dac-light`, `dac-dark`) |
 | Arrêter (ports et mémoire libérés) | raccourci « Arrêter DevoTeam Dashboard », ou `scripts\stop.bat` |
-| Vérifier la lecture du Google Sheet | bouton « 🩺 Santé des données » dans l'application |
-| Changer de feuille Google | bouton « 🔗 Lier une feuille Google » dans l'application |
+| Vérifier la lecture du Google Sheet | bouton « Santé des données » dans l'application |
+| Changer de feuille Google | bouton « Lier une feuille Google » (icône de maillon) dans l'application |
 | Redémarrer après un `git pull` | `docker compose up -d --build` |
 | Tout repartir de zéro | `docker compose down` puis relancer l'étape 4 |
 
@@ -351,10 +351,10 @@ que si une dépendance ou le moteur de tableaux de bord lui-même a changé.
 |---|---|---|
 | `ports are not available` au lancement | Un port (8000/8321/8322) est déjà pris — instance précédente, ou installation native encore active | Raccourci « Arrêter DevoTeam Dashboard » : il arrête l'application et nomme tout autre programme qui tiendrait un port |
 | Page blanche, `StaticFiles` en erreur dans les journaux | `frontend-build` a échoué | `docker compose logs frontend-build` |
-| Des chiffres « Non renseigné » | Valeurs de la feuille non reconnues (statut, practice, type, date, montant) | « 🩺 Santé des données › À corriger dans la feuille » donne la ligne et la colonne |
-| « Santé des données » : « Feuille introuvable » | Lien de feuille mal recopié | « 🔗 Lier une feuille Google » : recoller le lien complet depuis le navigateur |
+| Des chiffres « Non renseigné » | Valeurs de la feuille non reconnues (statut, practice, type, date, montant) | « Santé des données › À corriger dans la feuille » donne la ligne et la colonne |
+| « Santé des données » : « Feuille introuvable » | Lien de feuille mal recopié | « Lier une feuille Google » : recoller le lien complet depuis le navigateur |
 | « Santé des données » : « Google refuse l'accès » (journaux : « pas du CSV ») | Feuille pas encore partagée en Lecteur, toute personne disposant du lien | Repartager depuis Google Sheets, puis « Relire la feuille maintenant » |
-| Les chiffres semblent faux, aucune erreur affichée | Mauvais onglet — Google charge silencieusement le premier onglet quand le nom n'existe pas | « 🔗 Lier une feuille Google » : choisir l'onglet dans la liste réelle de la feuille |
+| Les chiffres semblent faux, aucune erreur affichée | Mauvais onglet — Google charge silencieusement le premier onglet quand le nom n'existe pas | « Lier une feuille Google » : choisir l'onglet dans la liste réelle de la feuille |
 | Le chat répond mais aucun tableau de bord chat-généré ne s'affiche | Écriture atomique en échec (`EXDEV`) | Ne devrait plus arriver — signe que `docker-compose.yml` a été modifié pour monter un sous-dossier séparément (voir la note technique ci-dessous) |
 | Le chat répond « Impossible de joindre Ollama… » ou « Service IA local indisponible » | Ollama pas installé ou pas démarré sur l'hôte | Lancer « Ollama » depuis le menu Démarrer (ou relancer `INSTALLER.bat`, qui démarre le service) — il tourne sur la machine hôte, jamais dans un conteneur |
 | Le chat répond « Modèle … introuvable localement » | Le téléchargement du modèle n'a pas abouti | `ollama pull qwen2.5:7b-instruct-q4_K_M` |

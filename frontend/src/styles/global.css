@@ -86,16 +86,18 @@ body::before {
 
 .alert-banner-icon {
   color: var(--status-critical);
-  font-size: 1rem;
+  flex-shrink: 0;
 }
 
 .alert-banner-chevron {
   color: var(--text-muted);
-  font-size: 0.7rem;
+  display: inline-flex;
   margin-left: 4px;
 }
 
 .alert-banner-dismiss {
+  display: flex;
+  align-items: center;
   background: none;
   border: none;
   color: var(--text-muted);
@@ -382,7 +384,9 @@ body::before {
 
 /* Lien de rappel sous une réponse ayant produit un tableau de bord. */
 .message-replay {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 4px;
   margin-top: 10px;
   background: none;
   border: none;
@@ -569,6 +573,9 @@ body::before {
   color: var(--text-secondary);
   width: 26px;
   height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font: inherit;
   font-size: 1rem;
   line-height: 1;
@@ -860,12 +867,6 @@ body::before {
   background: var(--surface-card);
   display: flex;
   flex-direction: column;
-  animation: historySlide 0.18s ease;
-}
-
-@keyframes historySlide {
-  from { opacity: 0; transform: translateX(-8px); }
-  to   { opacity: 1; transform: translateX(0); }
 }
 
 .history-header {
@@ -884,6 +885,10 @@ body::before {
 }
 
 .history-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   background: rgba(255, 255, 255, 0.14);
   border: none;
   color: #ffffff;
@@ -1181,25 +1186,32 @@ body::before {
 /* Santé des données et liaison d'une feuille Google. Une fenêtre centrée plutôt
    qu'un volet sur le chat comme l'historique : l'aperçu est un tableau à six
    colonnes, qui n'aurait pas tenu dans les 360 px du panneau de conversation. */
-.data-modal-backdrop {
+.data-modal-backdrop,
+.ui-overlay {
   position: fixed;
   inset: 0;
   z-index: 50;
   background: rgba(11, 11, 11, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  animation: dataFade 0.15s ease;
+  backdrop-filter: blur(2px);
 }
 
-@keyframes dataFade {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+.data-modal-backdrop[data-state='open'],
+.ui-overlay[data-state='open'] {
+  animation: uiFadeIn 0.18s ease-out;
+}
+
+.data-modal-backdrop[data-state='closed'],
+.ui-overlay[data-state='closed'] {
+  animation: uiFadeOut 0.15s ease-in;
 }
 
 .data-modal {
-  width: min(940px, 100%);
+  position: fixed;
+  z-index: 51;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(940px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
@@ -1236,6 +1248,9 @@ body::before {
 }
 
 .data-modal-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: rgba(255, 255, 255, 0.12);
   border: none;
   color: #ffffff;
@@ -1244,24 +1259,47 @@ body::before {
   font: inherit;
   font-size: 0.85rem;
   cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .data-modal-tabs button:hover {
   background: rgba(255, 255, 255, 0.22);
 }
 
-.data-modal-tabs button.active {
+.data-modal-tabs button[data-state='active'] {
   background: #ffffff;
   color: #0b0b0b;
   font-weight: 600;
 }
 
+.data-modal-tabs button:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+/* Tabs.Root occupe toute la fenêtre : c'est lui qui contient l'en-tête et le corps
+   défilant, il doit donc transmettre la hauteur disponible. */
+.data-modal-tabs-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .data-modal-body {
   padding: 20px 22px 24px;
   overflow-y: auto;
+}
+
+.data-tab {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  outline: none;
+}
+
+.data-tab[data-state='active'] {
+  animation: uiFadeIn 0.2s ease-out;
 }
 
 .data-loading,
@@ -1300,15 +1338,6 @@ body::before {
 
 .data-status-icon {
   flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 0.9rem;
-  color: #ffffff;
 }
 
 .data-status-ok {
@@ -1317,7 +1346,7 @@ body::before {
 }
 
 .data-status-ok .data-status-icon {
-  background: var(--status-good);
+  color: var(--status-good);
 }
 
 .data-status-attention {
@@ -1325,10 +1354,8 @@ body::before {
   background: color-mix(in srgb, var(--status-warning) 12%, var(--surface-card));
 }
 
-/* Jaune : le blanc n'y serait pas lisible. */
 .data-status-attention .data-status-icon {
-  background: var(--status-warning);
-  color: #0b0b0b;
+  color: var(--status-warning);
 }
 
 .data-status-erreur {
@@ -1337,7 +1364,7 @@ body::before {
 }
 
 .data-status-erreur .data-status-icon {
-  background: var(--status-critical);
+  color: var(--status-critical);
 }
 
 .data-source,
@@ -1572,5 +1599,150 @@ body::before {
 
   .data-modal-header {
     flex-wrap: wrap;
+  }
+}
+
+/* --- Composants d'interface (Radix) et animations ------------------------- */
+
+/* Ouverture : la fenêtre monte légèrement en apparaissant ; fermeture : elle se
+   retire plus vite qu'elle n'est venue — on ne fait pas attendre quelqu'un qui
+   veut revenir à son tableau de bord. */
+.data-modal[data-state='open'],
+.ui-confirm[data-state='open'] {
+  animation: uiPopIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.data-modal[data-state='closed'],
+.ui-confirm[data-state='closed'] {
+  animation: uiPopOut 0.14s ease-in;
+}
+
+@keyframes uiFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes uiFadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes uiPopIn {
+  from { opacity: 0; transform: translate(-50%, -48%) scale(0.97); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes uiPopOut {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to   { opacity: 0; transform: translate(-50%, -49%) scale(0.98); }
+}
+
+/* Infobulles */
+.ui-tooltip {
+  z-index: 60;
+  background: #1a1a19;
+  color: #ffffff;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  padding: 6px 10px;
+  border-radius: 8px;
+  box-shadow: var(--shadow-md);
+  max-width: 260px;
+  user-select: none;
+}
+
+.ui-tooltip[data-state='delayed-open'],
+.ui-tooltip[data-state='instant-open'] {
+  animation: uiTooltipIn 0.14s ease-out;
+}
+
+.ui-tooltip-arrow {
+  fill: #1a1a19;
+}
+
+@keyframes uiTooltipIn {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Boîte de confirmation */
+.ui-confirm {
+  position: fixed;
+  z-index: 51;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100vw - 32px));
+  background: var(--surface-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 22px 22px 18px;
+}
+
+.ui-confirm-title {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.ui-confirm-text {
+  margin: 0 0 18px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.ui-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.data-button-danger {
+  background: var(--status-critical);
+  border-color: var(--status-critical);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.data-button-danger:hover:not(:disabled) {
+  filter: brightness(1.07);
+  border-color: var(--status-critical);
+}
+
+.data-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Icône qui tourne pendant une opération (relecture, test, liaison). */
+.spin {
+  animation: uiSpin 0.9s linear infinite;
+}
+
+@keyframes uiSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Le soleil et la lune du bouton de thème se remplacent en pivotant. */
+.icon-swap {
+  display: inline-flex;
+}
+
+/* Quiconque a demandé à Windows de réduire les animations n'en voit plus aucune :
+   Motion le respecte déjà (MotionConfig, App.jsx) ; ceci couvre les animations
+   CSS — fenêtres, infobulles, icônes qui tournent. */
+@media (prefers-reduced-motion: reduce) {
+  .data-modal-backdrop,
+  .ui-overlay,
+  .data-modal,
+  .ui-confirm,
+  .data-tab,
+  .ui-tooltip,
+  .spin {
+    animation: none !important;
   }
 }

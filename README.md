@@ -107,7 +107,7 @@ sur le poste. Voir [`setup/README.md`](setup/README.md) et
 |---|---|
 | **Démarrer** | Raccourci **« DevoTeam Dashboard (Docker) »** sur le Bureau — l'application s'ouvre sur http://127.0.0.1:8000. Docker Desktop doit tourner (il démarre avec Windows si le réglage a été coché). |
 | **Arrêter** | Raccourci **« Arrêter DevoTeam Dashboard »** (icône marche/arrêt) : arrête l'application, libère les ports 8000 / 8321 / 8322 et la mémoire du modèle (~5 Go). Docker Desktop et Ollama restent en arrière-plan ; un nouveau démarrage prend une dizaine de secondes. |
-| **Vérifier** | Bouton **« 🩺 Santé des données »** dans l'application (voir plus bas), ou, pour un contrôle complet des chiffres : `docker compose exec -e TEST_DAC_URL=http://dac-light:8321 backend python scripts/test_fonctionnel.py` → « TOUT EST JUSTE ». |
+| **Vérifier** | Bouton **« Santé des données »** dans l'application (voir plus bas), ou, pour un contrôle complet des chiffres : `docker compose exec -e TEST_DAC_URL=http://dac-light:8321 backend python scripts/test_fonctionnel.py` → « TOUT EST JUSTE ». |
 
 ### Poser des questions
 
@@ -130,20 +130,22 @@ carte graphique, la première étant la plus lente (chargement du modèle).
 
 ### Les boutons de l'interface
 
-| Bouton | Où | Rôle |
-|---|---|---|
-| 🔗 **Lier une feuille Google** | en-tête du chat | Choisir la feuille lue par l'application (voir ci-dessous). |
-| 🗑️ | en-tête du chat | Effacer la conversation. |
-| ☀️ / 🌙 | en-tête du chat | Mode clair ou sombre. |
-| 🩺 **Santé des données** | en-tête du tableau de bord | État de la lecture du Google Sheet, chiffres clés, cellules à corriger, aperçu des lignes, et « Relire la feuille maintenant ». |
-| 🕘 **Historique** | en-tête du tableau de bord | Toutes les analyses, groupées par jour ; chacune rouvre son tableau de bord. |
-| ⧉ **Ouvrir en grand** | en-tête du tableau de bord | Le tableau de bord dans un onglet — pour l'imprimer ou l'enregistrer en PDF. |
-| − 100 % + | en-tête du tableau de bord | Taille d'affichage des graphiques. |
-| ← **Tableau de bord principal** | en-tête du tableau de bord | Revenir à la vue d'ensemble depuis une analyse. |
+Chaque bouton réduit à une icône affiche son nom au survol.
+
+| Bouton | Icône | Où | Rôle |
+|---|---|---|---|
+| **Lier une feuille Google** | maillon | en-tête du chat | Choisir la feuille lue par l'application (voir ci-dessous). |
+| **Effacer la conversation** | corbeille | en-tête du chat | Vide le chat et l'historique, après confirmation. |
+| **Mode clair / sombre** | soleil / lune | en-tête du chat | Bascule le thème, graphiques compris. |
+| **Santé des données** | stéthoscope | en-tête du tableau de bord | État de la lecture du Google Sheet, chiffres clés, cellules à corriger, aperçu des lignes, et « Relire la feuille maintenant ». |
+| **Historique** | horloge | en-tête du tableau de bord | Toutes les analyses, groupées par jour ; chacune rouvre son tableau de bord. |
+| **Ouvrir en grand** | flèche sortante | en-tête du tableau de bord | Le tableau de bord dans un onglet — pour l'imprimer ou l'enregistrer en PDF. |
+| **− 100 % +** | moins / plus | en-tête du tableau de bord | Taille d'affichage des graphiques. |
+| **Tableau de bord principal** | flèche retour | en-tête du tableau de bord | Revenir à la vue d'ensemble depuis une analyse. |
 
 ### Santé des données
 
-Le bouton **🩺 Santé des données** répond à la question « la lecture du Google Sheet
+Le bouton **Santé des données** répond à la question « la lecture du Google Sheet
 marche-t-elle ? » :
 
 - **un verdict** : la lecture fonctionne / fonctionne avec des points à vérifier /
@@ -163,15 +165,15 @@ d'afficher les données de la lecture précédente — et l'écran le signale.
 
 ### Lier une autre feuille Google
 
-Le bouton **🔗 Lier une feuille Google** remplace toute manipulation de fichier ou
+Le bouton **Lier une feuille Google** (icône de maillon, en tête du chat) remplace toute manipulation de fichier ou
 de terminal :
 
 1. partager la feuille en **Lecteur — « toute personne disposant du lien »** ;
 2. ouvrir l'onglet des opportunités, copier l'adresse du navigateur, la coller ;
 3. choisir l'onglet dans la liste — l'onglet du lien collé est présélectionné ;
-4. **① Tester la lecture** : la feuille est lue exactement comme l'application la
+4. **1 · Tester la lecture** : la feuille est lue exactement comme l'application la
    lira, avec le même diagnostic que « Santé des données » ;
-5. **② Utiliser cette feuille** : activé seulement si le test a réussi. La feuille
+5. **2 · Utiliser cette feuille** : activé seulement si le test a réussi. La feuille
    est enregistrée dans `.env` et chargée aussitôt — chat, alertes et tableaux de bord.
 
 Un onglet inexistant, des colonnes obligatoires absentes ou un onglet vide bloquent
@@ -283,6 +285,7 @@ feuille liée par le bouton de l'interface, elle, s'applique immédiatement).
 | Brique | Technologie | Rôle |
 |---|---|---|
 | Interface | Vite + React | chat, tableau de bord en iframe, fenêtres de données |
+| Composants d'interface | Radix UI · Lucide · Motion | fenêtres, onglets, infobulles et confirmations accessibles ; icônes ; animations |
 | API | FastAPI (Python) | questions, alertes, santé, source de données |
 | Données | Google Sheets + pandas | source unique, chargée en mémoire |
 | Compréhension | Ollama · Qwen2.5-7B-Instruct | transforme la question en *intention* structurée |
@@ -343,7 +346,7 @@ modes développement et production seulement si l'installation native existe.
 ### Tests
 
 ```bash
-pytest tests/          # 680 tests
+pytest tests/          # 686 tests
 ```
 
 Presque tous tournent hors ligne (modèle et Google Sheet simulés). Exceptions :
@@ -436,7 +439,7 @@ scripts/
   generate_accueil.py    génère les cinq sections du tableau de bord principal
   create_shortcut.ps1, maj_env.ps1, devoteam.ico   outils de l'installateur
 setup/                   installation native assistée (INSTALLER_NATIF.bat)
-tests/                   suite pytest — 680 tests
+tests/                   suite pytest — 686 tests
 Documentation/           guides, rapports, journal de développement
 ```
 

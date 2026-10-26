@@ -1,4 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import * as Dialog from '@radix-ui/react-dialog'
+import * as Tabs from '@radix-ui/react-tabs'
+import { motion } from 'motion/react'
+import {
+  Check, CircleCheck, CircleX, ExternalLink, Link2, LoaderCircle, RefreshCw, ScanSearch,
+  Stethoscope, TriangleAlert, X,
+} from 'lucide-react'
 import { getDataSource, postSheetTabs, postSheetsSync, postSource, postSourceTest } from '../api'
 import { dacDashboardUrl, DATA_QUALITY_DASHBOARD_NAME } from '../dac'
 
@@ -14,9 +21,17 @@ import { dacDashboardUrl, DATA_QUALITY_DASHBOARD_NAME } from '../dac'
 //     qui l'enregistre n'apparaît qu'une fois le test concluant.
 
 const STATUTS = {
-  ok: { icone: '✓', titre: 'La lecture du Google Sheet fonctionne' },
-  attention: { icone: '!', titre: 'La lecture fonctionne, avec des points à vérifier' },
-  erreur: { icone: '✕', titre: 'La lecture du Google Sheet échoue' },
+  ok: { Icone: CircleCheck, titre: 'La lecture du Google Sheet fonctionne' },
+  attention: { Icone: TriangleAlert, titre: 'La lecture fonctionne, avec des points à vérifier' },
+  erreur: { Icone: CircleX, titre: 'La lecture du Google Sheet échoue' },
+}
+
+// Ce qui apparaît (verdict, résultat d'un test) entre d'un mouvement bref plutôt
+// que de surgir : on voit QUE quelque chose vient de changer, et où.
+const APPARITION = {
+  initial: { opacity: 0, y: 6 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.2, ease: 'easeOut' },
 }
 
 const nombre = (n) => (n == null ? '—' : Number(n).toLocaleString('fr-FR'))
@@ -50,14 +65,14 @@ function cellule(valeur, indexColonne) {
 function BandeauStatut({ statut, erreur, avertissements }) {
   const s = STATUTS[statut] || STATUTS.erreur
   return (
-    <div className={`data-status data-status-${statut}`} role="status">
-      <span className="data-status-icon" aria-hidden="true">{s.icone}</span>
+    <motion.div className={`data-status data-status-${statut}`} role="status" {...APPARITION}>
+      <s.Icone className="data-status-icon" size={22} aria-hidden="true" />
       <div>
         <strong>{s.titre}</strong>
         {erreur && <p>{erreur}</p>}
         {(avertissements || []).map((a) => <p key={a}>{a}</p>)}
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -223,7 +238,11 @@ function Sante({ onLier, onRelu }) {
           <dt>Feuille</dt>
           <dd>
             {etat.source.url
-              ? <a href={etat.source.url} target="_blank" rel="noreferrer">Ouvrir dans Google Sheets ↗</a>
+              ? (
+                <a href={etat.source.url} target="_blank" rel="noreferrer" className="data-link">
+                  Ouvrir dans Google Sheets <ExternalLink size={13} aria-hidden="true" />
+                </a>
+              )
               : 'aucune'}
           </dd>
         </div>
@@ -249,16 +268,21 @@ function Sante({ onLier, onRelu }) {
 
       <div className="data-actions">
         <button type="button" className="data-button data-button-primary" onClick={relire} disabled={occupe}>
-          {occupe ? 'Lecture en cours…' : '↻ Relire la feuille maintenant'}
+          <RefreshCw size={15} className={occupe ? 'spin' : undefined} aria-hidden="true" />
+          {occupe ? 'Lecture en cours…' : 'Relire la feuille maintenant'}
         </button>
-        <button type="button" className="data-button" onClick={onLier}>🔗 Lier une autre feuille</button>
+        <button type="button" className="data-button" onClick={onLier}>
+          <Link2 size={15} aria-hidden="true" />
+          Lier une autre feuille
+        </button>
         <a
           className="data-button"
           href={dacDashboardUrl(DATA_QUALITY_DASHBOARD_NAME)}
           target="_blank"
           rel="noreferrer"
         >
-          Qualité détaillée ↗
+          Qualité détaillée
+          <ExternalLink size={14} aria-hidden="true" />
         </a>
       </div>
     </>
@@ -408,7 +432,10 @@ function Lier({ onLiee }) {
           onClick={tester}
           disabled={!lien.trim() || !onglet.trim() || etape !== null || rechercheOnglets}
         >
-          {etape === 'test' ? 'Lecture de la feuille…' : '① Tester la lecture'}
+          {etape === 'test'
+            ? <LoaderCircle size={15} className="spin" aria-hidden="true" />
+            : <ScanSearch size={15} aria-hidden="true" />}
+          {etape === 'test' ? 'Lecture de la feuille…' : '1 · Tester la lecture'}
         </button>
         <button
           type="button"
@@ -417,87 +444,69 @@ function Lier({ onLiee }) {
           disabled={!peutLier || etape !== null}
           title={peutLier ? undefined : "Testez d'abord la feuille : elle n'est liée que si la lecture réussit."}
         >
-          {etape === 'liaison' ? 'Liaison en cours…' : '② Utiliser cette feuille'}
+          {etape === 'liaison'
+            ? <LoaderCircle size={15} className="spin" aria-hidden="true" />
+            : <Check size={15} aria-hidden="true" />}
+          {etape === 'liaison' ? 'Liaison en cours…' : '2 · Utiliser cette feuille'}
         </button>
       </div>
 
       {testActuel && (
-        <div className="data-result">
+        <motion.div className="data-result" {...APPARITION}>
           <Diagnostic donnees={diag} />
-        </div>
+        </motion.div>
       )}
     </>
   )
 }
 
 // --- La fenêtre ---------------------------------------------------------------
+//
+// Radix Dialog : focus piégé dans la fenêtre puis rendu à l'élément d'origine,
+// Échap, clic à l'extérieur, défilement de la page bloqué, rôles ARIA — tout ce
+// que la première version faisait à la main, et en partie seulement. La fenêtre
+// reste montée pendant son animation de fermeture (`ouvert` piloté par App.jsx),
+// au lieu de disparaître d'un coup.
+//
+// Radix Tabs : onglets au clavier (flèches gauche/droite), rôles tab/tabpanel.
 
-export default function DataSourcePanel({ vue, onChangerVue, onClose, onRelu, onSourceChangee }) {
-  const fenetre = useRef(null)
-  const fermer = useRef(onClose)
-  useEffect(() => { fermer.current = onClose })
-
-  // Échap ferme, comme le volet d'historique. Le gestionnaire lit `onClose` par une
-  // référence : dépendre de la fonction elle-même réinstallerait l'effet à chaque
-  // rendu de l'application.
-  useEffect(() => {
-    function surTouche(e) {
-      if (e.key === 'Escape') fermer.current()
-    }
-    window.addEventListener('keydown', surTouche)
-    return () => window.removeEventListener('keydown', surTouche)
-  }, [])
-
-  // Le focus entre dans la fenêtre, pour que le clavier ne reste pas sur la page
-  // derrière — sauf s'il y est déjà : le champ du lien, en autoFocus, l'a pris avant.
-  useEffect(() => {
-    if (!fenetre.current?.contains(document.activeElement)) fenetre.current?.focus()
-  }, [])
-
+export default function DataSourcePanel({ ouvert, vue, onChangerVue, onClose, onRelu, onSourceChangee }) {
   return (
-    <div
-      className="data-modal-backdrop"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div
-        className="data-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="data-modal-title"
-        ref={fenetre}
-        tabIndex={-1}
-      >
-        <div className="data-modal-header">
-          <h2 id="data-modal-title">Source de données</h2>
-          <div className="data-modal-tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={vue === 'sante'}
-              className={vue === 'sante' ? 'active' : ''}
-              onClick={() => onChangerVue('sante')}
-            >
-              🩺 Santé des données
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={vue === 'lier'}
-              className={vue === 'lier' ? 'active' : ''}
-              onClick={() => onChangerVue('lier')}
-            >
-              🔗 Lier une feuille Google
-            </button>
-          </div>
-          <button type="button" className="history-close" onClick={onClose} aria-label="Fermer">✕</button>
-        </div>
+    <Dialog.Root open={ouvert} onOpenChange={(etat) => { if (!etat) onClose() }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="data-modal-backdrop" />
+        <Dialog.Content className="data-modal" aria-describedby={undefined}>
+          <Tabs.Root value={vue} onValueChange={onChangerVue} className="data-modal-tabs-root">
+            <div className="data-modal-header">
+              <Dialog.Title className="data-modal-title">Source de données</Dialog.Title>
+              <Tabs.List className="data-modal-tabs" aria-label="Source de données">
+                <Tabs.Trigger value="sante">
+                  <Stethoscope size={15} aria-hidden="true" />
+                  Santé des données
+                </Tabs.Trigger>
+                <Tabs.Trigger value="lier">
+                  <Link2 size={15} aria-hidden="true" />
+                  Lier une feuille Google
+                </Tabs.Trigger>
+              </Tabs.List>
+              <Dialog.Close asChild>
+                <button type="button" className="history-close" aria-label="Fermer">
+                  <X size={16} aria-hidden="true" />
+                </button>
+              </Dialog.Close>
+            </div>
 
-        <div className="data-modal-body">
-          {vue === 'sante'
-            ? <Sante onLier={() => onChangerVue('lier')} onRelu={onRelu} />
-            : <Lier onLiee={(resultat) => { onSourceChangee(resultat); onChangerVue('sante') }} />}
-        </div>
-      </div>
-    </div>
+            <div className="data-modal-body">
+              <Tabs.Content value="sante" className="data-tab">
+                <Sante onLier={() => onChangerVue('lier')} onRelu={onRelu} />
+              </Tabs.Content>
+              <Tabs.Content value="lier" className="data-tab">
+                <Lier onLiee={(resultat) => { onSourceChangee(resultat); onChangerVue('sante') }} />
+              </Tabs.Content>
+            </div>
+          </Tabs.Root>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }

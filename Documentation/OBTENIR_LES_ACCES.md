@@ -123,7 +123,7 @@ une virgule dans `ALERT_RECIPIENT_EMAIL` (ex.
 | 5 *(optionnel)* | Mot de passe d'application Gmail | `.env` → `GMAIL_APP_PASSWORD` |
 
 La feuille peut aussi être changée plus tard, depuis l'application elle-même :
-bouton « 🔗 Lier une feuille Google », sans terminal.
+bouton « Lier une feuille Google » (icône de maillon, en tête du chat), sans terminal.
 
 Une fois sur place, `INSTALLER.bat` (à la racine — recommandé, via Docker) ou
 `setup\INSTALLER_NATIF.bat` (alternative sans Docker) vous demandera ces mêmes

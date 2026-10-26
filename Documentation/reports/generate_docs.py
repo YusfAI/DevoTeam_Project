@@ -520,12 +520,12 @@ def build_rapport_professionnel():
             ["Moteur de requête", "DuckDB (fichier local)", "Copie en lecture seule des données, régénérée "
              "à chaque rafraîchissement — le moteur de tableaux de bord n'interroge que du SQL."],
             ["Frontend", "Vite + React", "Interface de chat réactive, build optimisé pour un déploiement "
-             "local."],
+             "local ; composants Radix UI, icônes Lucide, animations Motion."],
             ["Planification des tâches", "APScheduler", "Exécution fiable des vérifications quotidiennes "
              "(alertes deadlines, rafraîchissement des données) sans dépendance externe."],
             ["Envoi d'emails", "SMTP Gmail (STARTTLS)", "Solution simple et gratuite pour un usage interne, "
              "sans infrastructure d'envoi supplémentaire à maintenir."],
-            ["Tests", "pytest (680 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
+            ["Tests", "pytest (686 tests)", "Suite automatisée sans dépendance réseau ni données réelles "
              "(mocks), garde-fou contre les régressions."],
         ])
     add_body(doc,
@@ -544,7 +544,7 @@ def build_rapport_professionnel():
                      "explicite — il n'écrit jamais lui-même de requête.")
     add_bullet(doc, "Toute valeur de filtre non reconnue avec confiance déclenche une demande "
                      "de clarification plutôt qu'une hypothèse silencieuse.")
-    add_bullet(doc, "680 tests automatisés couvrent la compréhension du langage, le requêtage des "
+    add_bullet(doc, "686 tests automatisés couvrent la compréhension du langage, le requêtage des "
                      "données, la génération des tableaux de bord et le système d'alerte.")
     add_bullet(doc, "Le mot de passe d'envoi d'email est un mot de passe d'application dédié "
                      "(jamais le mot de passe principal du compte), également hors du dépôt git.")
@@ -851,7 +851,7 @@ def build_guide_technique():
             ["dac/dashboards/_principal.yml", "Tableau de bord de travail, réécrit par chaque question (éphémère, hors suivi git)."],
             ["dac/dashboards/_analyse_*.yml", "Instantané figé par question, pour les rouvrir (éphémère, hors suivi git)."],
             ["frontend/src/", "Application Vite + React (chat, iframe DAC, hooks, styles)."],
-            ["tests/", "Suite pytest — 680 tests, aucune dépendance réseau ni données réelles."],
+            ["tests/", "Suite pytest — 686 tests, aucune dépendance réseau ni données réelles."],
             ["Documentation/WORKFLOW.md", "Traçage d'une question, du prompt au tableau de bord affiché."],
             ["Documentation/reports/", "Ce guide, le rapport, le guide d'installation et leur générateur (generate_docs.py)."],
             ["Documentation/PROGRESS.md", "Journal de développement : chaque phase livrée, ses choix et ses vérifications."],
@@ -1731,7 +1731,7 @@ def build_guide_technique():
     # --- Tests ---
     add_h1(doc, "15. Tests automatisés")
     add_body(doc,
-        "680 tests pytest, sans dépendance réseau ni données réelles : le client du "
+        "686 tests pytest, sans dépendance réseau ni données réelles : le client du "
         "modèle local (Ollama) et l'appel HTTP au lien d'export du Sheet sont "
         "simulés (monkeypatch), et les données sont un petit DataFrame construit "
         "dans le test. La suite tourne donc hors ligne, en quelques secondes.")
@@ -2179,7 +2179,7 @@ def build_presentation_script():
     add_h1(doc, "Les chiffres à retenir")
     add_bullet(doc, "1 question = 1 tableau de bord complet, généré automatiquement.")
     add_bullet(doc, "9 types de visualisations choisis automatiquement selon la question.")
-    add_bullet(doc, "680 tests automatisés, aucune dépendance à des données réelles.")
+    add_bullet(doc, "686 tests automatisés, aucune dépendance à des données réelles.")
     add_bullet(doc, "48 phases de développement livrées, de bout en bout, en autonomie.")
     add_bullet(doc, "0 base de données à administrer — le Google Sheet est la source de vérité.")
     add_bullet(doc, "0 hallucination tolérée : donnée non fiable = question posée en retour, jamais un chiffre inventé.")
@@ -2397,7 +2397,7 @@ def build_guide_installation():
                    "browser at http://127.0.0.1:8000.")
     _etape(doc, 4, "Ask a question in the chat and check that an answer and a dashboard come "
                    "back.")
-    _etape(doc, 5, "Click \"🩺 Santé des données\" (top right): it must say \"La lecture du "
+    _etape(doc, 5, "Click \"Santé des données\" (stethoscope icon, top right): it must say \"La lecture du "
                    "Google Sheet fonctionne\".")
     add_body(doc, "If all five work, the installation is finished.")
 
@@ -2410,11 +2410,11 @@ def build_guide_installation():
                     "wait until it runs, and try again.")
     add_bullet(doc, "To stop the app and free its memory: double-click \"Arrêter DevoTeam "
                     "Dashboard\". Restarting with the start shortcut then takes about ten seconds.")
-    add_bullet(doc, "To check that the Google Sheet is read correctly: \"🩺 Santé des données\" "
+    add_bullet(doc, "To check that the Google Sheet is read correctly: \"Santé des données\" "
                     "in the app — verdict, key figures, cells to fix in the Sheet, and a preview "
                     "of the rows. \"Relire la feuille maintenant\" re-reads it at once (otherwise "
                     "every 15 minutes).")
-    add_bullet(doc, "To use another Google Sheet: \"🔗\" (Lier une feuille Google) at the top of the "
+    add_bullet(doc, "To use another Google Sheet: the link icon (Lier une feuille Google) at the top of the "
                     "chat — paste the link, pick the tab, test, then use. No command line needed.")
     add_bullet(doc, "To update later: in the same folder, git pull then "
                     "docker compose up -d --build. The .env settings file is never overwritten.")
@@ -2452,7 +2452,7 @@ def build_guide_installation():
              "Sheet not shared as \"Anyone with the link\"", "Fix the sharing (part B), then "
              "\"Relire la feuille maintenant\" in Santé des données"],
             ["\"Santé des données\": \"Feuille introuvable\" or \"Colonnes obligatoires "
-             "absentes\"", "Wrong link, or wrong tab", "\"🔗 Lier une feuille Google\": paste the "
+             "absentes\"", "Wrong link, or wrong tab", "\"Lier une feuille Google\" (link icon): paste the "
              "link again and pick the tab from the list"],
             ["Figures shown as \"Non renseigné\"", "Values not recognised in the Sheet",
              "\"Santé des données › À corriger dans la feuille\" gives row and column"],

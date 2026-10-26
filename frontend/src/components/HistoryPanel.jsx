@@ -1,4 +1,6 @@
 import { useEffect } from 'react'
+import { motion } from 'motion/react'
+import { X } from 'lucide-react'
 
 // Historique des analyses, dans l'esprit du volet de conversations de Claude : une
 // liste plein écran, groupée par jour, où chaque entrée est la demande telle qu'elle
@@ -51,11 +53,20 @@ export default function HistoryPanel({ history, currentName, onOpen, onClose }) 
   }
 
   return (
-    <div className="history-panel" role="dialog" aria-modal="true" aria-label="Historique des analyses">
+    <motion.div
+      className="history-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Historique des analyses"
+      initial={{ opacity: 0, x: -12 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -12 }}
+      transition={{ duration: 0.18, ease: 'easeOut' }}
+    >
       <div className="history-header">
         <h2>Historique</h2>
         <button type="button" className="history-close" onClick={onClose} aria-label="Fermer l’historique">
-          ✕
+          <X size={16} aria-hidden="true" />
         </button>
       </div>
 
@@ -85,6 +96,6 @@ export default function HistoryPanel({ history, currentName, onOpen, onClose }) 
           ))}
         </div>
       )}
-    </div>
+    </motion.div>
   )
 }

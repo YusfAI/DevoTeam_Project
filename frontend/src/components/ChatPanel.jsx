@@ -1,10 +1,23 @@
 import { useEffect, useRef } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
+import { Link2, Trash2 } from 'lucide-react'
 import ChatMessage from './ChatMessage'
 import ChatInput from './ChatInput'
 import HistoryPanel from './HistoryPanel'
 import TypingIndicator from './TypingIndicator'
 import ThemeToggle from './ThemeToggle'
 import DevoteamLogo from './DevoteamLogo'
+import { BoutonIcone } from './ui/Infobulle'
+
+// Les questions d'amorce arrivent l'une après l'autre, d'un mouvement bref : elles
+// se lisent comme une liste qu'on découvre plutôt qu'un bloc posé d'un coup.
+const SUGGESTIONS_CONTENEUR = {
+  visible: { transition: { staggerChildren: 0.04 } },
+}
+const SUGGESTION_ENTREE = {
+  hidden: { opacity: 0, y: 6 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.2 } },
+}
 
 // Questions d'amorce : un chat vide ne dit pas ce qu'on peut lui demander. Chacune
 // exerce une capacité différente (filtre, comparaison, pipeline, urgence), pour que
@@ -54,24 +67,8 @@ export default function ChatPanel({
           {/* Choisir la feuille Google lue par l'application — sans invite de
               commandes. La relecture manuelle qu'occupait ce bouton (🔄) est dans
               « Santé des données », avec le détail de ce qu'elle a lu. */}
-          <button
-            className="theme-toggle"
-            onClick={onOpenLinkSheet}
-            title="Lier une feuille Google"
-            aria-label="Lier une feuille Google"
-            type="button"
-          >
-            🔗
-          </button>
-          <button
-            className="theme-toggle"
-            onClick={onClearHistory}
-            title="Effacer la conversation"
-            aria-label="Effacer la conversation"
-            type="button"
-          >
-            🗑️
-          </button>
+          <BoutonIcone icone={Link2} libelle="Lier une feuille Google" onClick={onOpenLinkSheet} />
+          <BoutonIcone icone={Trash2} libelle="Effacer la conversation" onClick={onClearHistory} />
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
       </div>
@@ -91,42 +88,58 @@ export default function ChatPanel({
           `polite` plutôt que `assertive` : la réponse ne doit pas couper l'utilisateur
           en train de taper. */}
       <div className="chat-messages" role="log" aria-live="polite" aria-relevant="additions">
-        {messages.map((m) => (
-          <ChatMessage
-            key={m.id}
-            type={m.type}
-            text={m.text}
-            dashboardName={m.dashboardName}
-            question={m.question}
-            onOpenDashboard={onOpenDashboard}
-          />
-        ))}
+        <AnimatePresence initial={false}>
+          {messages.map((m) => (
+            <ChatMessage
+              key={m.id}
+              type={m.type}
+              text={m.text}
+              dashboardName={m.dashboardName}
+              question={m.question}
+              onOpenDashboard={onOpenDashboard}
+            />
+          ))}
+        </AnimatePresence>
 
         {/* Affichées tant que la conversation n'a produit aucune réponse : une fois
             l'utilisateur lancé, elles n'ont plus lieu d'être et laissent la place. */}
         {!loading && history.length === 0 && (
-          <div className="chat-suggestions">
+          <motion.div
+            className="chat-suggestions"
+            variants={SUGGESTIONS_CONTENEUR}
+            initial="hidden"
+            animate="visible"
+          >
             <span className="chat-suggestions-label">Essayez :</span>
             {SUGGESTIONS.map((q) => (
-              <button key={q} type="button" className="chat-suggestion" onClick={() => onSubmit(q)}>
+              <motion.button
+                key={q}
+                type="button"
+                className="chat-suggestion"
+                variants={SUGGESTION_ENTREE}
+                onClick={() => onSubmit(q)}
+              >
                 {q}
-              </button>
+              </motion.button>
             ))}
-          </div>
+          </motion.div>
         )}
 
         {loading && <TypingIndicator />}
         <div ref={endRef} />
       </div>
 
-      {historyOpen && (
-        <HistoryPanel
-          history={history}
-          currentName={currentDashboardName}
-          onOpen={handleOpenFromHistory}
-          onClose={onCloseHistory}
-        />
-      )}
+      <AnimatePresence>
+        {historyOpen && (
+          <HistoryPanel
+            key="historique"
+            history={history}
+            currentName={currentDashboardName}
+            onOpen={handleOpenFromHistory}
+            onClose={onCloseHistory}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

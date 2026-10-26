@@ -1,8 +1,11 @@
 import { useMemo, useRef, useState } from 'react'
+import { MotionConfig } from 'motion/react'
+import * as Tooltip from '@radix-ui/react-tooltip'
 import ChatPanel from './components/ChatPanel'
 import DashboardPanel from './components/DashboardPanel'
 import AlertBanner from './components/AlertBanner'
 import DataSourcePanel from './components/DataSourcePanel'
+import Confirmation from './components/ui/Confirmation'
 import { useTheme } from './hooks/useTheme'
 import { useChatHistory } from './hooks/useChatHistory'
 import { postDashboardQuery } from './api'
@@ -38,9 +41,18 @@ export default function App() {
     useChatHistory(WELCOME_MESSAGE)
   const [loading, setLoading] = useState(false)
   const [dashboardKey, setDashboardKey] = useState(0)
-  // La fenêtre « Source de données » : fermée (null), ou ouverte sur l'un de ses deux
+  // La fenêtre « Source de données » : ouverte ou non, et sur lequel de ses deux
   // onglets — 'sante' depuis l'en-tête du tableau de bord, 'lier' depuis le chat.
-  const [dataPanel, setDataPanel] = useState(null)
+  // Deux états plutôt qu'un : à la fermeture, l'onglet affiché doit rester le même
+  // le temps de l'animation, au lieu de basculer sous les yeux de l'utilisateur.
+  const [dataOuvert, setDataOuvert] = useState(false)
+  const [dataVue, setDataVue] = useState('sante')
+  const [confirmerEffacement, setConfirmerEffacement] = useState(false)
+
+  function ouvrirDonnees(vue) {
+    setDataVue(vue)
+    setDataOuvert(true)
+  }
   // Ouvert depuis l'en-tête du tableau de bord, affiché par-dessus le chat : l'état
   // est partagé par les deux panneaux, il vit donc ici plutôt que dans l'un d'eux.
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -119,8 +131,8 @@ export default function App() {
     setDashboardKey((k) => k + 1)
   }
 
+  // Confirmé auparavant par la boîte « Effacer la conversation ? » (Confirmation).
   function handleClearHistory() {
-    if (!window.confirm('Effacer tout l\'historique de conversation ?')) return
     clearHistory()
     setDashboardKey(0)
   }
@@ -149,6 +161,10 @@ export default function App() {
   }
 
   return (
+    // reducedMotion="user" : les animations s'effacent quand Windows demande de les
+    // réduire (Paramètres › Accessibilité › Effets visuels).
+    <MotionConfig reducedMotion="user">
+    <Tooltip.Provider delayDuration={250} skipDelayDuration={150}>
     <div className="app-shell">
       <AlertBanner />
       <div className="app">
@@ -161,8 +177,8 @@ export default function App() {
           onSubmit={handleSubmit}
           theme={theme}
           onToggleTheme={toggleTheme}
-          onClearHistory={handleClearHistory}
-          onOpenLinkSheet={() => setDataPanel('lier')}
+          onClearHistory={() => setConfirmerEffacement(true)}
+          onOpenLinkSheet={() => ouvrirDonnees('lier')}
           inputRef={inputRef}
           historyOpen={historyOpen}
           onCloseHistory={() => setHistoryOpen(false)}
@@ -174,18 +190,27 @@ export default function App() {
           onOpenSection={handleOpenSection}
           historyOpen={historyOpen}
           onToggleHistory={() => setHistoryOpen((open) => !open)}
-          onOpenDataHealth={() => setDataPanel('sante')}
+          onOpenDataHealth={() => ouvrirDonnees('sante')}
         />
       </div>
-      {dataPanel && (
-        <DataSourcePanel
-          vue={dataPanel}
-          onChangerVue={setDataPanel}
-          onClose={() => setDataPanel(null)}
-          onRelu={handleSheetReread}
-          onSourceChangee={handleSourceChanged}
-        />
-      )}
+      <DataSourcePanel
+        ouvert={dataOuvert}
+        vue={dataVue}
+        onChangerVue={setDataVue}
+        onClose={() => setDataOuvert(false)}
+        onRelu={handleSheetReread}
+        onSourceChangee={handleSourceChanged}
+      />
+      <Confirmation
+        ouvert={confirmerEffacement}
+        onOuvertChange={setConfirmerEffacement}
+        titre="Effacer la conversation ?"
+        description="Les messages et l'historique des analyses de ce navigateur seront supprimés. Les données de la feuille Google ne sont pas touchées."
+        action="Effacer"
+        onConfirmer={handleClearHistory}
+      />
     </div>
+    </Tooltip.Provider>
+    </MotionConfig>
   )
 }

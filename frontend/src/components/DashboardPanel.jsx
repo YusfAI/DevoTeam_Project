@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  DAC_DARK_BASE_URL, OVERVIEW_DASHBOARD_NAME, SECTIONS,
+  OVERVIEW_DASHBOARD_NAME, SECTIONS,
   dacDashboardUrl, estUneSection,
 } from '../dac'
+import { ArrowLeft, ExternalLink, History, Minus, Plus, Stethoscope } from 'lucide-react'
 import { getHealth } from '../api'
 import DevoteamLogo from './DevoteamLogo'
 
@@ -184,7 +185,8 @@ export default function DashboardPanel({
               onClick={() => onOpenSection(OVERVIEW_DASHBOARD_NAME)}
               title="Revenir au tableau de bord principal"
             >
-              ← Tableau de bord principal
+              <ArrowLeft size={15} aria-hidden="true" />
+              Tableau de bord principal
             </button>
           )}
           {/* DAC ne permet pas d'agrandir la police de ses graphiques ; zoomer le
@@ -200,7 +202,7 @@ export default function DashboardPanel({
                  accessible porte l'action, le title reste l'infobulle. */
               aria-label="Réduire l’affichage"
             >
-              −
+              <Minus size={14} aria-hidden="true" />
             </button>
             {/* `aria-live` annonce la nouvelle valeur après chaque clic ; le
                 libellé dit CE QUE le nombre mesure, que rien d'autre n'indique. */}
@@ -214,7 +216,7 @@ export default function DashboardPanel({
               title="Agrandir l’affichage"
               aria-label="Agrandir l’affichage"
             >
-              +
+              <Plus size={14} aria-hidden="true" />
             </button>
           </div>
           {/* Ouvrir l'analyse dans son propre onglet. C'est ce qui permet de la
@@ -230,7 +232,8 @@ export default function DashboardPanel({
             rel="noreferrer"
             title="Ouvrir dans un onglet — pour imprimer ou enregistrer en PDF"
           >
-            ⧉ Ouvrir en grand
+            <ExternalLink size={14} aria-hidden="true" />
+            Ouvrir en grand
           </a>
           {/* La lecture du Google Sheet marche-t-elle, et que contient la feuille ?
               Remplace le lien « Qualité des données », qui n'ouvrait que le détail
@@ -242,7 +245,8 @@ export default function DashboardPanel({
             onClick={onOpenDataHealth}
             title="Vérifier la lecture du Google Sheet : état, chiffres clés et aperçu des données"
           >
-            🩺 Santé des données
+            <Stethoscope size={15} aria-hidden="true" />
+            Santé des données
           </button>
           <button
             type="button"
@@ -251,7 +255,8 @@ export default function DashboardPanel({
             title="Historique des analyses"
             aria-expanded={historyOpen}
           >
-            🕘 Historique
+            <History size={15} aria-hidden="true" />
+            Historique
           </button>
         </div>
       </div>

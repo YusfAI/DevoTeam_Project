@@ -55,6 +55,7 @@ Construire, de bout en bout, une application de dashboard conversationnel pour D
 - [x] Phase 48 — Installation sans `winget`, WSL2 diagnostiqué, et vérification de livraison avant le déploiement chez le directeur
 - [x] Phase 49 — Vérification finale la veille de la livraison : dépôt rangé, et ce que l'installateur ne peut pas faire à la place de la personne qui installe
 - [x] Phase 50 — Après la livraison : la source de données pilotée depuis l'interface (santé, changement de feuille), un raccourci d'arrêt, et un README réécrit
+- [x] Phase 51 — Version 3 de l'interface : icônes Lucide, composants Radix, animations Motion (branche Version_3)
 
 ## 📝 Journaux
 
@@ -838,6 +839,49 @@ décrivent les nouveaux boutons et l'icône d'arrêt.
 vérifié dans un vrai navigateur : santé des données, lien invalide, liste des
 onglets, test, liaison — le .env ressort identique à l'octet près pour la même
 feuille.
+
+**Phase 51** : Terminée, sur la branche `Version_3` — `Version_2`, que suit le poste
+du directeur, n'est pas touchée. Une interface plus soignée, sans changer de
+framework.
+
+*Pourquoi pas Angular.* La question a été posée : passer à Angular pour une plus
+belle application. Écarté, pour trois raisons. Le rendu ne dépend pas du
+framework mais du design (icônes, composants, typographie, mouvement), et
+l'écosystème de React est le plus riche pour cela. Environ 70 % de l'écran est
+dessiné par Bruin DAC dans un cadre intégré : une réécriture n'y aurait rien
+changé. Et réécrire 1 500 lignes d'interface — avec la compilation Docker, le
+dossier servi par le backend et les tests à reprendre — aurait remis en jeu tout
+ce qui venait d'être livré, pour un gain visuel nul.
+
+*Ce qui a été fait.*
+- **Lucide à la place des emojis** : 24 symboles dans 8 composants (🔗 🩺 🗑️ ☀️
+  🕘 ⚠ ✕ ↗ ⧉ ①…). Un emoji change d'aspect d'un Windows à l'autre ; une icône
+  Lucide est un dessin, identique partout, dans la couleur du texte.
+- **Radix UI**, sans style, habillé par la feuille de style existante : la fenêtre
+  « Source de données » (Dialog, Tabs) — focus piégé puis rendu, Échap, clic
+  extérieur, onglets au clavier, ce que la version précédente faisait à la main
+  et en partie seulement ; des infobulles (Tooltip) à la place de l'attribut
+  `title` ; une vraie boîte « Effacer la conversation ? » (AlertDialog) à la place
+  de `window.confirm`, focus sur « Annuler ». Tailwind (shadcn/ui) a été écarté :
+  il aurait imposé un second système de styles à côté des jetons existants.
+- **Motion** pour des animations brèves : messages qui entrent, suggestions en
+  cascade, historique qui glisse à l'ouverture ET à la fermeture (il disparaissait
+  d'un coup), liste d'alertes qui se déplie, soleil et lune qui pivotent ; les
+  fenêtres s'ouvrent et se ferment en fondu. Tout s'efface quand Windows demande
+  de réduire les animations.
+
+*Trouvé en chemin.* Une animation de hauteur sur la liste des alertes masquait son
+débordement — la liste, limitée à 40 % de l'écran, ne défilait plus : corrigé
+avant toute livraison. Un import inutilisé (DAC_DARK_BASE_URL), seul avertissement
+du linter depuis plusieurs phases, retiré.
+
+*Vérifié.* Linter sans avertissement, compilation réussie, 686 tests (6 nouveaux :
+aucun emoji en guise d'icône, bibliothèques verrouillées pour `npm ci`, animations
+désactivables, dialogue Radix, confirmation intégrée, libellé de chaque
+bouton-icône). Parcours dans un vrai navigateur, mode clair et sombre : infobulle au
+survol réel de la souris, question posée puis conversation effacée par la
+confirmation, feuille testée depuis la nouvelle fenêtre. L'interface compilée passe
+de 219 à 460 Ko (149 Ko compressés) — sans effet sensible, elle est servie en local.
 
 ## 📊 Bilan du Produit
 

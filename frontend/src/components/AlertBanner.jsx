@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
+import { ChevronDown, TriangleAlert, X } from 'lucide-react'
 
 // L'unité des montants, ici comme partout ailleurs (backend/labels.py::DEVISE).
 // Ce bandeau était resté en euros après le passage au dinar : les mêmes budgets
@@ -44,14 +46,29 @@ export default function AlertBanner() {
   if (dismissed || opportunities.length === 0) return null
 
   return (
-    <div className="alert-banner">
-      <button className="alert-banner-summary" onClick={() => setExpanded((v) => !v)}>
-        <span className="alert-banner-icon">⚠</span>
+    <motion.div
+      className="alert-banner"
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: 'easeOut' }}
+    >
+      <button
+        className="alert-banner-summary"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
+        <TriangleAlert className="alert-banner-icon" size={16} aria-hidden="true" />
         <span>
           {opportunities.length} opportunité{opportunities.length > 1 ? 's' : ''} à échéance dans les {fenetre}{' '}
           prochains jours
         </span>
-        <span className="alert-banner-chevron">{expanded ? '▲' : '▼'}</span>
+        <motion.span
+          className="alert-banner-chevron"
+          animate={{ rotate: expanded ? 180 : 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <ChevronDown size={16} aria-hidden="true" />
+        </motion.span>
       </button>
       <button
         className="alert-banner-dismiss"
@@ -59,25 +76,33 @@ export default function AlertBanner() {
         aria-label="Masquer l'alerte"
         title="Masquer"
       >
-        ✕
+        <X size={16} aria-hidden="true" />
       </button>
-      {expanded && (
-        <div className="alert-banner-list">
-          {opportunities.map((opp) => (
-            <div key={opp.id} className="alert-banner-row">
-              <span className={`alert-days ${opp.days_left <= 3 ? 'critical' : 'warning'}`}>
-                {opp.days_left} j
-              </span>
-              <span className="alert-buyer">{opp.buyer || 'Client non renseigné'}</span>
-              <span className="alert-meta">
-                {opp.country} · {opp.practice}
-              </span>
-              <span className="alert-meta">{opp.status}</span>
-              <span className="alert-budget">{formatBudget(opp.budget)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            className="alert-banner-list"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+          >
+            {opportunities.map((opp) => (
+              <div key={opp.id} className="alert-banner-row">
+                <span className={`alert-days ${opp.days_left <= 3 ? 'critical' : 'warning'}`}>
+                  {opp.days_left} j
+                </span>
+                <span className="alert-buyer">{opp.buyer || 'Client non renseigné'}</span>
+                <span className="alert-meta">
+                  {opp.country} · {opp.practice}
+                </span>
+                <span className="alert-meta">{opp.status}</span>
+                <span className="alert-budget">{formatBudget(opp.budget)}</span>
+              </div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   )
 }
